@@ -1,0 +1,73 @@
+# Agent Configuration
+# Customize agent behavior
+
+orchestrator:
+  # Maximum investigation iterations
+  max_iterations: 10
+  
+  # Investigation timeout in seconds
+  timeout_seconds: 300
+  
+  # Minimum confidence to stop iterating
+  confidence_threshold: 0.7
+
+observer:
+  prometheus:
+    # Default time range for queries
+    default_range: 1h
+    # Query step size
+    step: 15s
+    
+  kubernetes:
+    # Namespaces to monitor (empty = all)
+    namespaces: []
+    # Include logs in observations
+    include_logs: true
+    # Max log lines per pod
+    max_log_lines: 100
+
+reasoner:
+  # Minimum confidence to report hypothesis
+  confidence_threshold: 0.3
+  # Maximum hypotheses to generate
+  max_hypotheses: 5
+  # Include similar incident search
+  search_similar: true
+
+actor:
+  # Require human approval for actions
+  require_approval: true
+  
+  # Actions that can be auto-executed (low risk)
+  auto_execute:
+    - kubectl get
+    - kubectl describe
+    - kubectl logs
+    - kubectl top
+  
+  # Actions that always require approval
+  require_approval_for:
+    - kubectl delete
+    - kubectl scale
+    - kubectl rollout restart
+    - kubectl apply
+    - kubectl patch
+    - kubectl exec
+
+# Runbook directories
+runbooks:
+  directories:
+    - ./examples/runbooks
+    - ./runbooks
+  
+  # File patterns to include
+  patterns:
+    - "*.md"
+    - "*.yaml"
+    - "*.yml"
+
+# Logging configuration
+logging:
+  level: INFO
+  format: json
+  include_timestamps: true

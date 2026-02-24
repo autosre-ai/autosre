@@ -1,0 +1,207 @@
+{
+  "alert": {
+    "id": "INC0012345",
+    "source": "ServiceNow",
+    "severity": "critical",
+    "service": "checkout-service",
+    "title": "High 5xx error rate on checkout-service",
+    "description": "5xx error rate exceeded 5% threshold",
+    "started_at": "2026-02-17T02:14:00Z",
+    "labels": {
+      "namespace": "checkout",
+      "cluster": "prod-openshift",
+      "region": "us-central1"
+    }
+  },
+  "prometheus": {
+    "error_rate": {
+      "current": 12.4,
+      "baseline": 0.1,
+      "unit": "percent",
+      "query": "sum(rate(http_requests_total{service='checkout-service',status=~'5..'}[5m])) / sum(rate(http_requests_total{service='checkout-service'}[5m])) * 100"
+    },
+    "request_rate": {
+      "current": 1250,
+      "baseline": 1100,
+      "unit": "req/s"
+    },
+    "latency_p99": {
+      "current": 1850,
+      "baseline": 320,
+      "unit": "ms"
+    },
+    "latency_p50": {
+      "current": 450,
+      "baseline": 85,
+      "unit": "ms"
+    },
+    "error_breakdown": {
+      "500": 892,
+      "502": 45,
+      "503": 12,
+      "504": 8
+    },
+    "time_series": [
+      {"time": "02:00", "error_rate": 0.1},
+      {"time": "02:05", "error_rate": 0.2},
+      {"time": "02:10", "error_rate": 0.8},
+      {"time": "02:12", "error_rate": 4.2},
+      {"time": "02:14", "error_rate": 12.4},
+      {"time": "02:16", "error_rate": 11.8}
+    ]
+  },
+  "github": {
+    "recent_deployments": [
+      {
+        "sha": "abc123f",
+        "short_sha": "abc123f",
+        "author": "john.dev",
+        "message": "feat: Add retry logic for payment gateway timeouts",
+        "deployed_at": "2026-02-17T00:15:00Z",
+        "hours_ago": 2.0,
+        "files_changed": [
+          "src/payment/gateway.py",
+          "src/payment/retry.py",
+          "src/config/timeouts.yaml"
+        ],
+        "additions": 145,
+        "deletions": 23
+      },
+      {
+        "sha": "def456a",
+        "short_sha": "def456a", 
+        "author": "jane.sre",
+        "message": "chore: Update prometheus metrics labels",
+        "deployed_at": "2026-02-16T14:30:00Z",
+        "hours_ago": 11.7,
+        "files_changed": [
+          "src/metrics/prometheus.py"
+        ],
+        "additions": 12,
+        "deletions": 8
+      }
+    ],
+    "open_prs": [
+      {
+        "number": 234,
+        "title": "fix: Handle null response from payment gateway",
+        "author": "john.dev",
+        "labels": ["bug", "payment"]
+      }
+    ]
+  },
+  "logs": {
+    "error_samples": [
+      {
+        "timestamp": "2026-02-17T02:14:23Z",
+        "level": "ERROR",
+        "message": "PaymentGatewayTimeout: Connection to payment-gateway.internal:8443 timed out after 30000ms",
+        "trace_id": "abc-123-def",
+        "count": 342
+      },
+      {
+        "timestamp": "2026-02-17T02:14:25Z",
+        "level": "ERROR",
+        "message": "RetryExhausted: Max retries (5) exceeded for payment gateway call",
+        "trace_id": "abc-123-ghi",
+        "count": 287
+      },
+      {
+        "timestamp": "2026-02-17T02:14:28Z",
+        "level": "ERROR",
+        "message": "CircuitBreaker OPEN for payment-gateway, failing fast",
+        "trace_id": "abc-123-jkl",
+        "count": 156
+      }
+    ],
+    "error_patterns": [
+      {
+        "pattern": "PaymentGatewayTimeout",
+        "count": 342,
+        "percentage": 43.5
+      },
+      {
+        "pattern": "RetryExhausted",
+        "count": 287,
+        "percentage": 36.5
+      },
+      {
+        "pattern": "CircuitBreaker OPEN",
+        "count": 156,
+        "percentage": 20.0
+      }
+    ],
+    "first_error_at": "2026-02-17T02:11:45Z",
+    "total_errors_last_5m": 785
+  },
+  "kubernetes": {
+    "pods": [
+      {
+        "name": "checkout-service-7d8f9-abc12",
+        "status": "Running",
+        "restarts": 0,
+        "cpu_usage": "450m",
+        "cpu_limit": "1000m",
+        "memory_usage": "890Mi",
+        "memory_limit": "2Gi",
+        "ready": true
+      },
+      {
+        "name": "checkout-service-7d8f9-def34",
+        "status": "Running",
+        "restarts": 0,
+        "cpu_usage": "480m",
+        "cpu_limit": "1000m", 
+        "memory_usage": "920Mi",
+        "memory_limit": "2Gi",
+        "ready": true
+      },
+      {
+        "name": "checkout-service-7d8f9-ghi56",
+        "status": "Running",
+        "restarts": 0,
+        "cpu_usage": "420m",
+        "cpu_limit": "1000m",
+        "memory_usage": "850Mi",
+        "memory_limit": "2Gi",
+        "ready": true
+      }
+    ],
+    "replica_count": {
+      "desired": 3,
+      "ready": 3,
+      "available": 3
+    },
+    "recent_events": [],
+    "resource_pressure": false
+  },
+  "traffic": {
+    "suspicious_ips": [],
+    "geo_distribution": {
+      "US": 65,
+      "IN": 20,
+      "EU": 15
+    },
+    "is_ddos": false,
+    "is_malicious": false,
+    "akamai_status": "normal"
+  },
+  "dependencies": {
+    "payment-gateway": {
+      "status": "degraded",
+      "latency_p99": 28500,
+      "error_rate": 45.2,
+      "last_healthy": "2026-02-17T02:10:00Z"
+    },
+    "inventory-service": {
+      "status": "healthy",
+      "latency_p99": 45,
+      "error_rate": 0.01
+    },
+    "user-service": {
+      "status": "healthy", 
+      "latency_p99": 32,
+      "error_rate": 0.02
+    }
+  }
+}

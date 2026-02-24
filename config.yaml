@@ -1,0 +1,64 @@
+# SRE Agent Configuration
+
+service:
+  name: checkout-service
+  namespace: checkout
+  team: payments-sre
+  
+# LLM Configuration
+llm:
+  provider: ollama
+  model: llama3.2:latest
+  base_url: http://localhost:11434
+  temperature: 0.1
+  timeout: 120
+
+# Data Sources
+sources:
+  prometheus:
+    enabled: true
+    mode: mock  # mock | live
+    base_url: http://prometheus.internal:9090
+    # For live mode, configure auth:
+    # token: ${PROMETHEUS_TOKEN}
+    
+  github:
+    enabled: true
+    mode: mock
+    org: ford-motor
+    repo: checkout-service
+    # token: ${GITHUB_TOKEN}
+    
+  logs:
+    enabled: true
+    mode: mock
+    provider: gcp  # gcp | file | elasticsearch
+    project: ford-checkout-prod
+    # For GCP live mode:
+    # credentials_file: ~/.gcp/credentials.json
+    
+  kubernetes:
+    enabled: true
+    mode: mock
+    provider: openshift
+    cluster: prod-openshift
+    # kubeconfig: ~/.kube/config
+    
+  dynatrace:
+    enabled: false
+    mode: mock
+    base_url: https://xyz.dynatrace.com
+    # token: ${DYNATRACE_TOKEN}
+
+# Alert Thresholds
+thresholds:
+  error_rate_critical: 5.0    # percentage
+  error_rate_warning: 1.0
+  latency_p99_critical: 2000  # ms
+  latency_p99_warning: 500
+  
+# Output Configuration
+output:
+  format: terminal  # terminal | json | slack
+  color: true
+  verbose: false
