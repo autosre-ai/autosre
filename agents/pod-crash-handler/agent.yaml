@@ -1,0 +1,226 @@
+name: pod-crash-handler
+description: Automatically handles PodCrashLooping events by collecting logs, analyzing issues, and attempting recovery
+version: 1.0.0
+
+triggers:
+  - type: webhook
+    path: /webhook/kubernetes
+    source: kubernetes
+    events:
+      - Warning.BackOff
+      - Warning.CrashLoopBackOff
+  - type: event
+    source: kubernetes
+    resource: pods
+    field_selector: "status.containerStatuses[*].state.waiting.reason=CrashLoopBackOff"
+
+skills:
+  - kubernetes
+  - slack
+  - prometheus
+  - llm
+
+config:
+  slack_channel: "#pod-alerts"
+  max_restart_attempts: 3
+  rollback_on_crash_threshold: 5
+  log_lines: 200
+  auto_rollback: false
+  analysis_enabled: true
+
+variables:
+  pod_name: "{{ trigger.pod_name }}"
+  namespace: "{{ trigger.namespace | default('default') }}"
+  container_name: "{{ trigger.container_name | default('') }}"
+  restart_count: "{{ trigger.restart_count | default(0) }}"
+
+steps:
+  - name: get_pod_details
+    action: kubernetes.get_pod
+    params:
+      namespace: "{{ variables.namespace }}"
+      name: "{{ variables.pod_name }}"
+    on_error: fail
+    retries: 2
+
+  - name: get_pod_logs
+    action: kubernetes.get_logs
+    params:
+      namespace: "{{ variables.namespace }}"
+      pod: "{{ variables.pod_name }}"
+      container: "{{ variables.container_name }}"
+      tail_lines: "{{ config.log_lines }}"
+      previous: true
+    on_error: continue
+    retries: 2
+
+  - name: get_pod_events
+    action: kubernetes.get_events
+    params:
+      namespace: "{{ variables.namespace }}"
+      field_selector: "involvedObject.name={{ variables.pod_name }}"
+      limit: 50
+    on_error: continue
+
+  - name: get_resource_metrics
+    action: prometheus.query
+    params:
+      promql: |
+        {
+          "memory": "container_memory_usage_bytes{pod=\"{{ variables.pod_name }}\", namespace=\"{{ variables.namespace }}\"}",
+          "cpu": "rate(container_cpu_usage_seconds_total{pod=\"{{ variables.pod_name }}\", namespace=\"{{ variables.namespace }}\"}[5m])",
+          "restarts": "kube_pod_container_status_restarts_total{pod=\"{{ variables.pod_name }}\", namespace=\"{{ variables.namespace }}\"}"
+        }
+      time_range: "1h"
+    on_error: continue
+
+  - name: get_deployment_info
+    action: kubernetes.get_deployment
+    params:
+      namespace: "{{ variables.namespace }}"
+      name: "{{ steps.get_pod_details.result.metadata.ownerReferences[0].name }}"
+    condition: "{{ steps.get_pod_details.result.metadata.ownerReferences | length > 0 }}"
+    on_error: continue
+
+  - name: analyze_crash
+    action: llm.analyze
+    condition: "{{ config.analysis_enabled }}"
+    params:
+      prompt: |
+        Analyze this Kubernetes pod crash:
+        
+        Pod: {{ variables.pod_name }}
+        Namespace: {{ variables.namespace }}
+        Restart Count: {{ variables.restart_count }}
+        
+        Container Logs (last {{ config.log_lines }} lines):
+        {{ steps.get_pod_logs.result | truncate(5000) }}
+        
+        Events:
+        {{ steps.get_pod_events.result | event_summary }}
+        
+        Resource Usage:
+        - Memory: {{ steps.get_resource_metrics.result.memory | last_value }}
+        - CPU: {{ steps.get_resource_metrics.result.cpu | last_value }}
+        
+        Provide:
+        1. Root cause analysis
+        2. Severity (low/medium/high/critical)
+        3. Recommended actions
+        4. Is rollback recommended? (yes/no)
+      model: "gpt-4"
+      max_tokens: 1000
+    on_error: continue
+
+  - name: notify_slack_initial
+    action: slack.send_message
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "🔄 Pod CrashLoopBackOff Detected"
+        - type: section
+          fields:
+            - type: mrkdwn
+              text: "*Pod:* `{{ variables.pod_name }}`"
+            - type: mrkdwn
+              text: "*Namespace:* `{{ variables.namespace }}`"
+            - type: mrkdwn
+              text: "*Container:* `{{ variables.container_name | default('main') }}`"
+            - type: mrkdwn
+              text: "*Restarts:* {{ variables.restart_count }}"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Analysis:*
+              {{ steps.analyze_crash.result | default('Analysis unavailable') }}
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Recent Events:*
+              ```{{ steps.get_pod_events.result | event_summary | truncate(500) }}```
+        - type: actions
+          elements:
+            - type: button
+              text:
+                type: plain_text
+                text: "🔄 Restart Pod"
+              action_id: "restart_pod"
+              value: "{{ variables.namespace }}/{{ variables.pod_name }}"
+            - type: button
+              text:
+                type: plain_text
+                text: "⏪ Rollback"
+              style: danger
+              action_id: "rollback_deployment"
+              value: "{{ variables.namespace }}/{{ steps.get_deployment_info.result.metadata.name | default('unknown') }}"
+    on_error: continue
+
+  - name: attempt_restart
+    action: kubernetes.delete_pod
+    condition: "{{ variables.restart_count | int < config.max_restart_attempts }}"
+    params:
+      namespace: "{{ variables.namespace }}"
+      name: "{{ variables.pod_name }}"
+      grace_period_seconds: 30
+    on_error: continue
+
+  - name: check_rollback_needed
+    action: kubernetes.rollback_deployment
+    condition: |
+      {{ 
+        config.auto_rollback == true and 
+        variables.restart_count | int >= config.rollback_on_crash_threshold and
+        steps.get_deployment_info.result != null
+      }}
+    params:
+      namespace: "{{ variables.namespace }}"
+      deployment: "{{ steps.get_deployment_info.result.metadata.name }}"
+      revision: "{{ steps.get_deployment_info.result.metadata.annotations['deployment.kubernetes.io/revision'] | int - 1 }}"
+    on_error: fail
+    retries: 2
+
+  - name: notify_rollback
+    action: slack.send_message
+    condition: "{{ steps.check_rollback_needed.executed }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      text: |
+        ⏪ *Auto-Rollback Executed*
+        
+        Deployment `{{ steps.get_deployment_info.result.metadata.name }}` rolled back to previous revision.
+        Reason: {{ config.rollback_on_crash_threshold }}+ restarts detected.
+        
+        Status: {{ steps.check_rollback_needed.result.status | default('unknown') }}
+    on_error: continue
+
+  - name: create_incident_ticket
+    action: jira.create_issue
+    condition: "{{ steps.analyze_crash.result.severity in ['high', 'critical'] }}"
+    params:
+      project: "SRE"
+      issue_type: "Incident"
+      summary: "Pod CrashLoopBackOff: {{ variables.pod_name }}"
+      description: |
+        h2. Pod Crash Summary
+        
+        * Pod: {{ variables.pod_name }}
+        * Namespace: {{ variables.namespace }}
+        * Restart Count: {{ variables.restart_count }}
+        
+        h2. Analysis
+        {{ steps.analyze_crash.result }}
+        
+        h2. Logs
+        {code}
+        {{ steps.get_pod_logs.result | truncate(10000) }}
+        {code}
+      labels:
+        - crashloop
+        - auto-generated
+        - "{{ variables.namespace }}"
+    on_error: continue

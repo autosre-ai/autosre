@@ -1,0 +1,416 @@
+name: security-scanner
+description: CVE detection, container image scanning, compliance checking, and security posture monitoring
+version: 1.0.0
+
+triggers:
+  - type: schedule
+    cron: "0 2 * * *"  # Daily at 2 AM
+    timezone: "UTC"
+  - type: webhook
+    path: /webhook/security-scan
+    source: manual
+  - type: webhook
+    path: /webhook/image-push
+    source: registry
+    events:
+      - push
+
+skills:
+  - trivy
+  - kubernetes
+  - slack
+  - pagerduty
+  - jira
+  - llm
+
+config:
+  slack_channel: "#security-alerts"
+  email_recipients:
+    - security-team@example.com
+  severity_thresholds:
+    page: ["CRITICAL"]
+    alert: ["HIGH", "CRITICAL"]
+    report: ["MEDIUM", "HIGH", "CRITICAL"]
+  scan_targets:
+    namespaces:
+      - production
+      - staging
+    registries:
+      - "gcr.io/company-project"
+      - "us-docker.pkg.dev/company-project/images"
+  compliance_standards:
+    - CIS
+    - PCI-DSS
+    - HIPAA
+  ignore_unfixed: false
+  max_age_days_critical: 7
+  max_age_days_high: 30
+  pagerduty_service_id: "PSECURITY"
+  jira_project: "SEC"
+  enable_auto_ticket: true
+
+variables:
+  scan_date: "{{ now | date_format('%Y-%m-%d') }}"
+  scan_id: "{{ uuid() }}"
+
+steps:
+  - name: get_running_images
+    action: kubernetes.get_pods
+    params:
+      namespaces: "{{ config.scan_targets.namespaces }}"
+      field_selector: "status.phase=Running"
+    on_error: continue
+    retries: 2
+
+  - name: extract_unique_images
+    action: compute.extract
+    params:
+      data: "{{ steps.get_running_images.result.items }}"
+      expression: |
+        unique([
+          for pod in data
+          for container in pod.spec.containers + (pod.spec.initContainers | default([]))
+          select container.image
+        ])
+    on_error: continue
+
+  - name: scan_images_for_cves
+    action: trivy.scan_images
+    params:
+      images: "{{ steps.extract_unique_images.result }}"
+      severity: "{{ config.severity_thresholds.report | join(',') }}"
+      ignore_unfixed: "{{ config.ignore_unfixed }}"
+      format: "json"
+      timeout_minutes: 30
+    on_error: continue
+    retries: 2
+
+  - name: scan_kubernetes_config
+    action: trivy.scan_config
+    params:
+      namespaces: "{{ config.scan_targets.namespaces }}"
+      checks:
+        - misconfiguration
+        - secrets
+        - rbac
+    on_error: continue
+
+  - name: check_compliance
+    action: trivy.compliance_check
+    params:
+      standards: "{{ config.compliance_standards }}"
+      namespaces: "{{ config.scan_targets.namespaces }}"
+    on_error: continue
+
+  - name: aggregate_vulnerabilities
+    action: compute.aggregate
+    params:
+      sources:
+        - name: image_vulns
+          data: "{{ steps.scan_images_for_cves.result }}"
+        - name: config_issues
+          data: "{{ steps.scan_kubernetes_config.result }}"
+        - name: compliance
+          data: "{{ steps.check_compliance.result }}"
+      grouping:
+        by_severity:
+          - severity
+        by_image:
+          - image
+          - severity
+        by_cve:
+          - cve_id
+          - severity
+          - fixed_version
+    on_error: continue
+
+  - name: identify_critical_vulns
+    action: compute.filter
+    params:
+      data: "{{ steps.aggregate_vulnerabilities.result.by_cve }}"
+      conditions:
+        - field: severity
+          operator: in
+          value: ["CRITICAL", "HIGH"]
+        - field: fixed_version
+          operator: "!="
+          value: null
+    on_error: continue
+
+  - name: check_sla_violations
+    action: compute.calculate
+    params:
+      vulnerabilities: "{{ steps.identify_critical_vulns.result }}"
+      calculations:
+        - name: critical_overdue
+          formula: |
+            filter(vulnerabilities, 
+              severity == 'CRITICAL' AND 
+              days_since_published > {{ config.max_age_days_critical }}
+            )
+        - name: high_overdue
+          formula: |
+            filter(vulnerabilities, 
+              severity == 'HIGH' AND 
+              days_since_published > {{ config.max_age_days_high }}
+            )
+    on_error: continue
+
+  - name: get_affected_workloads
+    action: kubernetes.get_deployments
+    params:
+      namespaces: "{{ config.scan_targets.namespaces }}"
+    on_error: continue
+
+  - name: map_vulns_to_workloads
+    action: compute.join
+    params:
+      left: "{{ steps.identify_critical_vulns.result }}"
+      right: "{{ steps.get_affected_workloads.result.items }}"
+      on: "image"
+      select:
+        - cve_id
+        - severity
+        - image
+        - deployment_name
+        - namespace
+        - fixed_version
+        - description
+    on_error: continue
+
+  - name: generate_ai_prioritization
+    action: llm.analyze
+    params:
+      prompt: |
+        Analyze these security vulnerabilities and prioritize remediation:
+        
+        Critical Vulnerabilities ({{ steps.aggregate_vulnerabilities.result.by_severity.CRITICAL | length }}):
+        {% for vuln in steps.identify_critical_vulns.result | selectattr('severity', '==', 'CRITICAL') | list[:10] %}
+        - {{ vuln.cve_id }}: {{ vuln.title }}
+          CVSS: {{ vuln.cvss_score }} | Exploitable: {{ vuln.exploitability }}
+          Affected: {{ vuln.affected_count }} workloads
+        {% endfor %}
+        
+        High Vulnerabilities ({{ steps.aggregate_vulnerabilities.result.by_severity.HIGH | length }}):
+        {% for vuln in steps.identify_critical_vulns.result | selectattr('severity', '==', 'HIGH') | list[:10] %}
+        - {{ vuln.cve_id }}: {{ vuln.title }}
+          CVSS: {{ vuln.cvss_score }}
+        {% endfor %}
+        
+        Configuration Issues:
+        {{ steps.scan_kubernetes_config.result | summarize_issues }}
+        
+        Provide:
+        1. Top 5 priority fixes
+        2. Risk assessment
+        3. Recommended remediation timeline
+        4. Quick wins (easy fixes with high impact)
+      model: "gpt-4"
+      max_tokens: 1500
+    on_error: continue
+
+  - name: notify_critical_vulns
+    action: slack.send_message
+    condition: "{{ steps.aggregate_vulnerabilities.result.by_severity.CRITICAL | length > 0 }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "🚨 Critical Vulnerabilities Detected"
+        - type: section
+          fields:
+            - type: mrkdwn
+              text: "*Critical:* {{ steps.aggregate_vulnerabilities.result.by_severity.CRITICAL | length }}"
+            - type: mrkdwn
+              text: "*High:* {{ steps.aggregate_vulnerabilities.result.by_severity.HIGH | length }}"
+            - type: mrkdwn
+              text: "*Scan Date:* {{ variables.scan_date }}"
+            - type: mrkdwn
+              text: "*Images Scanned:* {{ steps.extract_unique_images.result | length }}"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Top Critical CVEs:*
+              {% for vuln in steps.identify_critical_vulns.result | selectattr('severity', '==', 'CRITICAL') | list[:5] %}
+              • `{{ vuln.cve_id }}` - {{ vuln.title | truncate(50) }}
+                CVSS: {{ vuln.cvss_score }} | Fix: `{{ vuln.fixed_version | default('No fix') }}`
+              {% endfor %}
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Affected Workloads:*
+              {% for workload in steps.map_vulns_to_workloads.result | selectattr('severity', '==', 'CRITICAL') | groupby('deployment_name') | list[:5] %}
+              • `{{ workload.grouper }}` ({{ workload.list | length }} critical CVEs)
+              {% endfor %}
+        - type: divider
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *AI Recommendations:*
+              {{ steps.generate_ai_prioritization.result | truncate(500) }}
+        - type: actions
+          elements:
+            - type: button
+              text:
+                type: plain_text
+                text: "📋 Full Report"
+              url: "{{ config.report_url | default('#') }}/{{ variables.scan_id }}"
+            - type: button
+              text:
+                type: plain_text
+                text: "🔧 Create Tickets"
+              action_id: "create_sec_tickets"
+              value: "{{ variables.scan_id }}"
+    on_error: continue
+
+  - name: notify_compliance_issues
+    action: slack.send_message
+    condition: "{{ steps.check_compliance.result.failures | length > 0 }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      text: |
+        📋 *Compliance Check Results - {{ variables.scan_date }}*
+        
+        {% for standard in config.compliance_standards %}
+        *{{ standard }}:*
+        • Passed: {{ steps.check_compliance.result[standard].passed }}
+        • Failed: {{ steps.check_compliance.result[standard].failed }}
+        • Score: {{ steps.check_compliance.result[standard].score }}%
+        {% endfor %}
+        
+        *Top Failures:*
+        {% for failure in steps.check_compliance.result.failures[:5] %}
+        • {{ failure.check_id }}: {{ failure.title }}
+          Severity: {{ failure.severity }} | Standard: {{ failure.standard }}
+        {% endfor %}
+    on_error: continue
+
+  - name: page_critical_overdue
+    action: pagerduty.create_incident
+    condition: "{{ steps.check_sla_violations.result.critical_overdue | length > 0 }}"
+    params:
+      service_id: "{{ config.pagerduty_service_id }}"
+      title: "Critical CVE SLA Violation - {{ steps.check_sla_violations.result.critical_overdue | length }} overdue"
+      urgency: "high"
+      body: |
+        Critical vulnerabilities exceeding {{ config.max_age_days_critical }}-day SLA:
+        
+        {% for vuln in steps.check_sla_violations.result.critical_overdue[:10] %}
+        - {{ vuln.cve_id }}: {{ vuln.title }}
+          Published: {{ vuln.published_date }}
+          Days overdue: {{ vuln.days_overdue }}
+          Affected: {{ vuln.affected_workloads | join(', ') }}
+        {% endfor %}
+        
+        Immediate remediation required.
+    on_error: continue
+
+  - name: create_vulnerability_tickets
+    action: jira.bulk_create
+    condition: "{{ config.enable_auto_ticket and steps.identify_critical_vulns.result | length > 0 }}"
+    params:
+      project: "{{ config.jira_project }}"
+      issue_type: "Security Bug"
+      issues: |
+        {% for vuln in steps.identify_critical_vulns.result | selectattr('severity', '==', 'CRITICAL') | list[:20] %}
+        - summary: "[{{ vuln.cve_id }}] {{ vuln.title | truncate(80) }}"
+          description: |
+            h2. Vulnerability Details
+            * CVE ID: {{ vuln.cve_id }}
+            * Severity: {{ vuln.severity }}
+            * CVSS Score: {{ vuln.cvss_score }}
+            * Published: {{ vuln.published_date }}
+            
+            h2. Description
+            {{ vuln.description }}
+            
+            h2. Affected Images
+            {% for image in vuln.affected_images %}
+            * {{ image }}
+            {% endfor %}
+            
+            h2. Remediation
+            Update to version: {{ vuln.fixed_version | default('No fix available') }}
+            
+            h2. References
+            * [NVD|https://nvd.nist.gov/vuln/detail/{{ vuln.cve_id }}]
+          priority: "{{ 'Blocker' if vuln.severity == 'CRITICAL' else 'High' }}"
+          labels: ["security", "cve", "{{ vuln.severity | lower }}", "auto-generated"]
+          due_date: "{{ now | date_add(7 if vuln.severity == 'CRITICAL' else 30) | date_format('%Y-%m-%d') }}"
+        {% endfor %}
+    on_error: continue
+
+  - name: generate_report
+    action: template.render
+    params:
+      template: |
+        # Security Scan Report - {{ variables.scan_date }}
+        
+        ## Executive Summary
+        - **Scan ID:** {{ variables.scan_id }}
+        - **Images Scanned:** {{ steps.extract_unique_images.result | length }}
+        - **Namespaces:** {{ config.scan_targets.namespaces | join(', ') }}
+        
+        ## Vulnerability Summary
+        | Severity | Count | Fixable |
+        |----------|-------|---------|
+        | Critical | {{ steps.aggregate_vulnerabilities.result.by_severity.CRITICAL | length }} | {{ steps.aggregate_vulnerabilities.result.by_severity.CRITICAL | selectattr('fixed_version') | list | length }} |
+        | High | {{ steps.aggregate_vulnerabilities.result.by_severity.HIGH | length }} | {{ steps.aggregate_vulnerabilities.result.by_severity.HIGH | selectattr('fixed_version') | list | length }} |
+        | Medium | {{ steps.aggregate_vulnerabilities.result.by_severity.MEDIUM | length }} | {{ steps.aggregate_vulnerabilities.result.by_severity.MEDIUM | selectattr('fixed_version') | list | length }} |
+        
+        ## Configuration Issues
+        {{ steps.scan_kubernetes_config.result | format_config_issues }}
+        
+        ## Compliance Status
+        {% for standard in config.compliance_standards %}
+        ### {{ standard }}
+        - Score: {{ steps.check_compliance.result[standard].score }}%
+        - Passed: {{ steps.check_compliance.result[standard].passed }}
+        - Failed: {{ steps.check_compliance.result[standard].failed }}
+        {% endfor %}
+        
+        ## SLA Status
+        - Critical CVEs overdue (>{{ config.max_age_days_critical }}d): {{ steps.check_sla_violations.result.critical_overdue | length }}
+        - High CVEs overdue (>{{ config.max_age_days_high }}d): {{ steps.check_sla_violations.result.high_overdue | length }}
+        
+        ## AI Recommendations
+        {{ steps.generate_ai_prioritization.result }}
+      output_format: "markdown"
+    on_error: continue
+
+  - name: push_metrics
+    action: prometheus.push_metrics
+    params:
+      metrics:
+        - name: "opensre_security_vulns_total"
+          value: "{{ steps.aggregate_vulnerabilities.result.by_cve | length }}"
+          labels:
+            scan_date: "{{ variables.scan_date }}"
+        - name: "opensre_security_vulns_critical"
+          value: "{{ steps.aggregate_vulnerabilities.result.by_severity.CRITICAL | length }}"
+        - name: "opensre_security_vulns_high"
+          value: "{{ steps.aggregate_vulnerabilities.result.by_severity.HIGH | length }}"
+        - name: "opensre_security_compliance_score"
+          value: "{{ steps.check_compliance.result.overall_score | default(0) }}"
+        - name: "opensre_security_sla_violations"
+          value: "{{ steps.check_sla_violations.result.critical_overdue | length + steps.check_sla_violations.result.high_overdue | length }}"
+    on_error: continue
+
+  - name: store_scan_results
+    action: database.insert
+    params:
+      table: "security_scans"
+      record:
+        scan_id: "{{ variables.scan_id }}"
+        scan_date: "{{ variables.scan_date }}"
+        images_scanned: "{{ steps.extract_unique_images.result | length }}"
+        critical_count: "{{ steps.aggregate_vulnerabilities.result.by_severity.CRITICAL | length }}"
+        high_count: "{{ steps.aggregate_vulnerabilities.result.by_severity.HIGH | length }}"
+        compliance_score: "{{ steps.check_compliance.result.overall_score }}"
+        report: "{{ steps.generate_report.result }}"
+    on_error: continue

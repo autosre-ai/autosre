@@ -1,0 +1,362 @@
+name: runbook-executor
+description: Generic agent that executes runbook steps based on runbook ID and parameters
+version: 1.0.0
+
+triggers:
+  - type: webhook
+    path: /webhook/runbook
+    source: manual
+  - type: webhook
+    path: /webhook/runbook/pagerduty
+    source: pagerduty
+  - type: event
+    source: slack
+    action: runbook_execute
+
+skills:
+  - runbook
+  - kubernetes
+  - ssh
+  - database
+  - slack
+  - pagerduty
+  - llm
+
+config:
+  runbook_repository: "s3://company-runbooks/"
+  runbook_format: "yaml"
+  slack_channel: "#runbook-executions"
+  require_approval: true
+  approval_timeout_minutes: 30
+  dry_run_default: false
+  max_execution_time_minutes: 60
+  allowed_actions:
+    - kubernetes.*
+    - ssh.execute
+    - database.query
+    - http.request
+    - slack.send_message
+  blocked_actions:
+    - ssh.delete_files
+    - database.drop
+
+variables:
+  runbook_id: "{{ trigger.runbook_id }}"
+  execution_id: "{{ uuid() }}"
+  triggered_by: "{{ trigger.triggered_by | default('manual') }}"
+  parameters: "{{ trigger.parameters | default({}) }}"
+  dry_run: "{{ trigger.dry_run | default(config.dry_run_default) }}"
+
+steps:
+  - name: load_runbook
+    action: runbook.load
+    params:
+      repository: "{{ config.runbook_repository }}"
+      runbook_id: "{{ variables.runbook_id }}"
+      format: "{{ config.runbook_format }}"
+    on_error: fail
+    retries: 3
+
+  - name: validate_runbook
+    action: runbook.validate
+    params:
+      runbook: "{{ steps.load_runbook.result }}"
+      allowed_actions: "{{ config.allowed_actions }}"
+      blocked_actions: "{{ config.blocked_actions }}"
+      parameters: "{{ variables.parameters }}"
+    on_error: fail
+
+  - name: check_prerequisites
+    action: runbook.check_prerequisites
+    params:
+      runbook: "{{ steps.load_runbook.result }}"
+      parameters: "{{ variables.parameters }}"
+    on_error: fail
+
+  - name: request_approval
+    action: slack.send_message
+    condition: "{{ config.require_approval and not variables.dry_run }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "📋 Runbook Execution Request"
+        - type: section
+          fields:
+            - type: mrkdwn
+              text: "*Runbook:* {{ steps.load_runbook.result.name }}"
+            - type: mrkdwn
+              text: "*ID:* `{{ variables.runbook_id }}`"
+            - type: mrkdwn
+              text: "*Triggered by:* {{ variables.triggered_by }}"
+            - type: mrkdwn
+              text: "*Execution ID:* `{{ variables.execution_id }}`"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Description:*
+              {{ steps.load_runbook.result.description }}
+              
+              *Parameters:*
+              {% for key, value in variables.parameters.items() %}
+              • `{{ key }}`: {{ value }}
+              {% endfor %}
+              
+              *Steps to execute:*
+              {% for step in steps.load_runbook.result.steps %}
+              {{ loop.index }}. {{ step.name }} ({{ step.action }})
+              {% endfor %}
+        - type: section
+          text:
+            type: mrkdwn
+            text: "*Prerequisites:* {{ 'All passed ✅' if steps.check_prerequisites.result.passed else 'Some failed ❌' }}"
+        - type: actions
+          elements:
+            - type: button
+              text:
+                type: plain_text
+                text: "✅ Approve"
+              style: primary
+              action_id: "approve_runbook"
+              value: "{{ variables.execution_id }}"
+            - type: button
+              text:
+                type: plain_text
+                text: "❌ Reject"
+              style: danger
+              action_id: "reject_runbook"
+              value: "{{ variables.execution_id }}"
+            - type: button
+              text:
+                type: plain_text
+                text: "👁️ Dry Run"
+              action_id: "dryrun_runbook"
+              value: "{{ variables.execution_id }}"
+    on_error: continue
+
+  - name: wait_for_approval
+    action: slack.wait_interaction
+    condition: "{{ config.require_approval and not variables.dry_run }}"
+    params:
+      execution_id: "{{ variables.execution_id }}"
+      timeout_minutes: "{{ config.approval_timeout_minutes }}"
+      valid_actions:
+        - approve_runbook
+        - reject_runbook
+        - dryrun_runbook
+    on_error: fail
+
+  - name: handle_rejection
+    action: slack.send_message
+    condition: "{{ steps.wait_for_approval.result.action == 'reject_runbook' }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      text: |
+        ❌ *Runbook Rejected*
+        
+        Runbook: {{ variables.runbook_id }}
+        Rejected by: {{ steps.wait_for_approval.result.user }}
+        
+        Execution cancelled.
+    on_error: continue
+
+  - name: abort_if_rejected
+    action: compute.abort
+    condition: "{{ steps.wait_for_approval.result.action == 'reject_runbook' }}"
+    params:
+      reason: "Runbook rejected by {{ steps.wait_for_approval.result.user }}"
+
+  - name: set_dry_run_mode
+    action: compute.set_variable
+    condition: "{{ steps.wait_for_approval.result.action == 'dryrun_runbook' }}"
+    params:
+      name: "dry_run"
+      value: true
+
+  - name: notify_execution_start
+    action: slack.send_message
+    params:
+      channel: "{{ config.slack_channel }}"
+      text: |
+        🚀 *Runbook Execution Started*
+        
+        Runbook: {{ steps.load_runbook.result.name }}
+        Execution ID: `{{ variables.execution_id }}`
+        Mode: {{ 'DRY RUN 🔍' if variables.dry_run else 'LIVE 🔴' }}
+        Approved by: {{ steps.wait_for_approval.result.user | default('N/A (auto-approved)') }}
+    on_error: continue
+
+  - name: execute_runbook
+    action: runbook.execute
+    params:
+      runbook: "{{ steps.load_runbook.result }}"
+      parameters: "{{ variables.parameters }}"
+      dry_run: "{{ variables.dry_run }}"
+      execution_id: "{{ variables.execution_id }}"
+      max_time_minutes: "{{ config.max_execution_time_minutes }}"
+      on_step_complete: |
+        slack.send_message(
+          channel="{{ config.slack_channel }}",
+          thread_ts="{{ steps.notify_execution_start.result.ts }}",
+          text="✅ Step {{ step.index }}/{{ total_steps }}: {{ step.name }} completed"
+        )
+      on_step_error: |
+        slack.send_message(
+          channel="{{ config.slack_channel }}",
+          thread_ts="{{ steps.notify_execution_start.result.ts }}",
+          text="❌ Step {{ step.index }}/{{ total_steps }}: {{ step.name }} failed: {{ error }}"
+        )
+    on_error: continue
+    retries: 0
+
+  - name: collect_execution_logs
+    action: runbook.get_logs
+    params:
+      execution_id: "{{ variables.execution_id }}"
+    on_error: continue
+
+  - name: analyze_execution
+    action: llm.analyze
+    condition: "{{ steps.execute_runbook.result.status != 'success' }}"
+    params:
+      prompt: |
+        Analyze this runbook execution failure:
+        
+        Runbook: {{ steps.load_runbook.result.name }}
+        Failed Step: {{ steps.execute_runbook.result.failed_step.name }}
+        Error: {{ steps.execute_runbook.result.failed_step.error }}
+        
+        Logs:
+        {{ steps.collect_execution_logs.result | truncate(5000) }}
+        
+        Provide:
+        1. Root cause
+        2. Suggested fix
+        3. Should this be retried?
+      model: "gpt-4"
+      max_tokens: 500
+    on_error: continue
+
+  - name: notify_success
+    action: slack.send_message
+    condition: "{{ steps.execute_runbook.result.status == 'success' }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "✅ Runbook Completed Successfully"
+        - type: section
+          fields:
+            - type: mrkdwn
+              text: "*Runbook:* {{ steps.load_runbook.result.name }}"
+            - type: mrkdwn
+              text: "*Execution ID:* `{{ variables.execution_id }}`"
+            - type: mrkdwn
+              text: "*Duration:* {{ steps.execute_runbook.result.duration_seconds }}s"
+            - type: mrkdwn
+              text: "*Steps:* {{ steps.execute_runbook.result.completed_steps }}/{{ steps.load_runbook.result.steps | length }}"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Summary:*
+              {{ steps.execute_runbook.result.summary }}
+    on_error: continue
+
+  - name: notify_failure
+    action: slack.send_message
+    condition: "{{ steps.execute_runbook.result.status != 'success' }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "❌ Runbook Execution Failed"
+        - type: section
+          fields:
+            - type: mrkdwn
+              text: "*Runbook:* {{ steps.load_runbook.result.name }}"
+            - type: mrkdwn
+              text: "*Execution ID:* `{{ variables.execution_id }}`"
+            - type: mrkdwn
+              text: "*Failed Step:* {{ steps.execute_runbook.result.failed_step.name }}"
+            - type: mrkdwn
+              text: "*Error:* {{ steps.execute_runbook.result.failed_step.error | truncate(100) }}"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Analysis:*
+              {{ steps.analyze_execution.result | default('Analysis unavailable') }}
+        - type: actions
+          elements:
+            - type: button
+              text:
+                type: plain_text
+                text: "🔄 Retry"
+              action_id: "retry_runbook"
+              value: "{{ variables.execution_id }}"
+            - type: button
+              text:
+                type: plain_text
+                text: "📋 View Logs"
+              url: "{{ config.logs_url }}/{{ variables.execution_id }}"
+    on_error: continue
+
+  - name: update_pagerduty
+    action: pagerduty.add_note
+    condition: "{{ trigger.source == 'pagerduty' and trigger.incident_id }}"
+    params:
+      incident_id: "{{ trigger.incident_id }}"
+      content: |
+        Runbook Execution: {{ steps.execute_runbook.result.status | upper }}
+        
+        Runbook: {{ steps.load_runbook.result.name }}
+        Execution ID: {{ variables.execution_id }}
+        Duration: {{ steps.execute_runbook.result.duration_seconds }}s
+        
+        {% if steps.execute_runbook.result.status == 'success' %}
+        Summary: {{ steps.execute_runbook.result.summary }}
+        {% else %}
+        Failed Step: {{ steps.execute_runbook.result.failed_step.name }}
+        Error: {{ steps.execute_runbook.result.failed_step.error }}
+        {% endif %}
+    on_error: continue
+
+  - name: store_execution_record
+    action: database.insert
+    params:
+      table: "runbook_executions"
+      record:
+        execution_id: "{{ variables.execution_id }}"
+        runbook_id: "{{ variables.runbook_id }}"
+        triggered_by: "{{ variables.triggered_by }}"
+        status: "{{ steps.execute_runbook.result.status }}"
+        started_at: "{{ steps.notify_execution_start.timestamp }}"
+        completed_at: "{{ now }}"
+        duration_seconds: "{{ steps.execute_runbook.result.duration_seconds }}"
+        parameters: "{{ variables.parameters | json }}"
+        dry_run: "{{ variables.dry_run }}"
+        logs: "{{ steps.collect_execution_logs.result | json }}"
+    on_error: continue
+
+  - name: push_metrics
+    action: prometheus.push_metrics
+    params:
+      metrics:
+        - name: "opensre_runbook_execution_total"
+          value: 1
+          labels:
+            runbook_id: "{{ variables.runbook_id }}"
+            status: "{{ steps.execute_runbook.result.status }}"
+        - name: "opensre_runbook_execution_duration_seconds"
+          value: "{{ steps.execute_runbook.result.duration_seconds }}"
+          labels:
+            runbook_id: "{{ variables.runbook_id }}"
+    on_error: continue

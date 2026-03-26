@@ -1,0 +1,143 @@
+name: incident-responder
+description: Auto-responds to production incidents with automatic acknowledgment, context gathering, and Slack notification
+version: 1.0.0
+
+triggers:
+  - type: webhook
+    path: /webhook/pagerduty
+    source: pagerduty
+    events:
+      - incident.triggered
+      - incident.escalated
+  - type: webhook
+    path: /webhook/prometheus
+    source: alertmanager
+    events:
+      - alert.firing
+
+skills:
+  - prometheus
+  - kubernetes
+  - slack
+  - pagerduty
+
+config:
+  slack_channel: "#incidents"
+  auto_ack: true
+  escalation_timeout_minutes: 30
+  severity_threshold: warning
+
+variables:
+  incident_id: "{{ trigger.incident_id }}"
+  alert_name: "{{ trigger.alert_name | default('Unknown Alert') }}"
+  namespace: "{{ trigger.namespace | default('default') }}"
+  severity: "{{ trigger.severity | default('warning') }}"
+
+steps:
+  - name: acknowledge
+    action: pagerduty.acknowledge_incident
+    condition: "{{ config.auto_ack == true and trigger.source == 'pagerduty' }}"
+    params:
+      incident_id: "{{ variables.incident_id }}"
+      message: "Auto-acknowledged by OpenSRE incident-responder"
+    on_error: continue
+    retries: 2
+
+  - name: gather_context
+    action: prometheus.query
+    params:
+      promql: "{{ trigger.alert_query | default('up{job=\"' + trigger.job + '\"}') }}"
+      time_range: "30m"
+      step: "1m"
+    on_error: continue
+    retries: 3
+
+  - name: check_pods
+    action: kubernetes.get_pods
+    params:
+      namespace: "{{ variables.namespace }}"
+      labels: "{{ trigger.labels | default({}) }}"
+      field_selector: "status.phase!=Running"
+    on_error: continue
+    retries: 2
+
+  - name: get_recent_events
+    action: kubernetes.get_events
+    params:
+      namespace: "{{ variables.namespace }}"
+      field_selector: "type=Warning"
+      limit: 20
+    on_error: continue
+
+  - name: check_deployments
+    action: kubernetes.get_deployments
+    params:
+      namespace: "{{ variables.namespace }}"
+      labels: "{{ trigger.labels | default({}) }}"
+    on_error: continue
+
+  - name: notify_slack
+    action: slack.send_message
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "🚨 Incident: {{ trigger.title | default(variables.alert_name) }}"
+        - type: section
+          fields:
+            - type: mrkdwn
+              text: "*Severity:* {{ variables.severity | upper }}"
+            - type: mrkdwn
+              text: "*Namespace:* {{ variables.namespace }}"
+            - type: mrkdwn
+              text: "*Source:* {{ trigger.source }}"
+            - type: mrkdwn
+              text: "*Time:* {{ trigger.fired_at | default('now') }}"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Metrics Summary:*
+              {{ steps.gather_context.result | summarize }}
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Pod Status:*
+              {{ steps.check_pods.result | pod_status }}
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Recent Events:*
+              {{ steps.get_recent_events.result | event_summary | default('No warning events') }}
+        - type: context
+          elements:
+            - type: mrkdwn
+              text: "Investigating... | <{{ trigger.runbook_url | default('#') }}|Runbook>"
+      thread_ts: "{{ trigger.thread_ts | default('') }}"
+    on_error: fail
+    retries: 3
+
+  - name: create_incident_channel
+    action: slack.create_channel
+    condition: "{{ variables.severity == 'critical' }}"
+    params:
+      name: "inc-{{ trigger.incident_id | default(timestamp) | slugify }}"
+      topic: "Incident: {{ trigger.title | default(variables.alert_name) }}"
+    on_error: continue
+
+  - name: update_pagerduty_notes
+    action: pagerduty.add_note
+    condition: "{{ trigger.source == 'pagerduty' }}"
+    params:
+      incident_id: "{{ variables.incident_id }}"
+      content: |
+        OpenSRE Auto-Analysis:
+        - Metrics gathered: {{ steps.gather_context.result | length }} data points
+        - Unhealthy pods: {{ steps.check_pods.result | select('status', '!=', 'Running') | length }}
+        - Warning events: {{ steps.get_recent_events.result | length }}
+        - Slack notification sent to {{ config.slack_channel }}
+    on_error: continue

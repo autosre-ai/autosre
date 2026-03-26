@@ -1,0 +1,272 @@
+name: dependency-checker
+description: Check upstream service health, API dependencies, and external service availability
+version: 1.0.0
+
+triggers:
+  - type: schedule
+    cron: "*/5 * * * *"  # Every 5 minutes
+    timezone: "UTC"
+  - type: webhook
+    path: /webhook/dependency-check
+    source: manual
+
+skills:
+  - http
+  - dns
+  - prometheus
+  - slack
+  - pagerduty
+
+config:
+  slack_channel: "#dependency-alerts"
+  dependencies:
+    internal:
+      - name: user-service
+        url: "http://user-service.default.svc.cluster.local/health"
+        timeout_seconds: 5
+        critical: true
+      - name: payment-service
+        url: "http://payment-service.default.svc.cluster.local/health"
+        timeout_seconds: 5
+        critical: true
+      - name: inventory-service
+        url: "http://inventory-service.default.svc.cluster.local/health"
+        timeout_seconds: 5
+        critical: false
+    external:
+      - name: stripe-api
+        url: "https://api.stripe.com/v1"
+        timeout_seconds: 10
+        critical: true
+        expected_status: 401  # Unauthorized without key
+      - name: aws-s3
+        url: "https://s3.amazonaws.com"
+        timeout_seconds: 10
+        critical: true
+      - name: sendgrid-api
+        url: "https://api.sendgrid.com/v3"
+        timeout_seconds: 10
+        critical: false
+    dns:
+      - name: primary-db
+        host: "primary.db.example.com"
+        expected_ip_prefix: "10.0."
+      - name: redis-cluster
+        host: "redis.example.com"
+  health_criteria:
+    response_time_warning_ms: 500
+    response_time_critical_ms: 2000
+    consecutive_failures_alert: 2
+    consecutive_failures_page: 5
+  pagerduty_service_id: "PDEPS"
+
+variables:
+  check_time: "{{ now | date_format('%Y-%m-%d %H:%M:%S') }}"
+
+steps:
+  - name: check_internal_services
+    action: http.batch_check
+    params:
+      endpoints: "{{ config.dependencies.internal }}"
+      parallel: true
+      timeout_seconds: 5
+      expected_status: 200
+    on_error: continue
+    retries: 1
+
+  - name: check_external_services
+    action: http.batch_check
+    params:
+      endpoints: "{{ config.dependencies.external }}"
+      parallel: true
+      timeout_seconds: 10
+    on_error: continue
+    retries: 2
+
+  - name: check_dns_resolution
+    action: dns.resolve_batch
+    params:
+      hosts: "{{ config.dependencies.dns }}"
+      record_type: "A"
+      timeout_seconds: 5
+    on_error: continue
+
+  - name: get_historical_metrics
+    action: prometheus.query
+    params:
+      queries:
+        upstream_latency: |
+          histogram_quantile(0.99, 
+            sum(rate(http_client_request_duration_seconds_bucket[5m])) by (le, service)
+          ) * 1000
+        upstream_errors: |
+          sum(rate(http_client_request_total{status=~"5.."}[5m])) by (service) /
+          sum(rate(http_client_request_total[5m])) by (service) * 100
+        upstream_requests: |
+          sum(rate(http_client_request_total[5m])) by (service)
+    on_error: continue
+
+  - name: aggregate_health_status
+    action: compute.evaluate
+    params:
+      internal_results: "{{ steps.check_internal_services.result }}"
+      external_results: "{{ steps.check_external_services.result }}"
+      dns_results: "{{ steps.check_dns_resolution.result }}"
+      evaluations:
+        - name: internal_health
+          expression: |
+            {
+              "total": len(internal_results),
+              "healthy": len([r for r in internal_results if r.status == 'healthy']),
+              "degraded": len([r for r in internal_results if r.status == 'degraded']),
+              "unhealthy": len([r for r in internal_results if r.status == 'unhealthy']),
+              "details": internal_results
+            }
+        - name: external_health
+          expression: |
+            {
+              "total": len(external_results),
+              "healthy": len([r for r in external_results if r.status == 'healthy']),
+              "unhealthy": len([r for r in external_results if r.status == 'unhealthy']),
+              "details": external_results
+            }
+        - name: dns_health
+          expression: |
+            {
+              "total": len(dns_results),
+              "healthy": len([r for r in dns_results if r.resolved]),
+              "failed": len([r for r in dns_results if not r.resolved]),
+              "details": dns_results
+            }
+    on_error: continue
+
+  - name: identify_issues
+    action: compute.filter
+    params:
+      data:
+        internal: "{{ steps.aggregate_health_status.result.internal_health.details }}"
+        external: "{{ steps.aggregate_health_status.result.external_health.details }}"
+        dns: "{{ steps.aggregate_health_status.result.dns_health.details }}"
+      conditions:
+        unhealthy:
+          - "status == 'unhealthy'"
+        degraded:
+          - "status == 'degraded'"
+          - "response_time_ms > {{ config.health_criteria.response_time_warning_ms }}"
+    on_error: continue
+
+  - name: check_consecutive_failures
+    action: state.get
+    params:
+      key: "dependency_failures"
+      default: {}
+    on_error: continue
+
+  - name: update_failure_counts
+    action: compute.calculate
+    params:
+      current_issues: "{{ steps.identify_issues.result.unhealthy }}"
+      previous_counts: "{{ steps.check_consecutive_failures.result }}"
+      calculation: |
+        new_counts = {}
+        for issue in current_issues:
+          name = issue.name
+          new_counts[name] = previous_counts.get(name, 0) + 1
+        # Reset counts for healthy services
+        for prev_name in previous_counts:
+          if prev_name not in [i.name for i in current_issues]:
+            new_counts[prev_name] = 0
+        return new_counts
+    on_error: continue
+
+  - name: save_failure_counts
+    action: state.set
+    params:
+      key: "dependency_failures"
+      value: "{{ steps.update_failure_counts.result }}"
+    on_error: continue
+
+  - name: notify_degraded
+    action: slack.send_message
+    condition: "{{ steps.identify_issues.result.degraded | length > 0 }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "⚠️ Dependency Degradation Detected"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *{{ steps.identify_issues.result.degraded | length }} service(s) showing degraded performance:*
+              
+              {% for svc in steps.identify_issues.result.degraded %}
+              • *{{ svc.name }}* - {{ svc.response_time_ms }}ms response time
+                Status: {{ svc.status_code }} | Threshold: {{ config.health_criteria.response_time_warning_ms }}ms
+              {% endfor %}
+    on_error: continue
+
+  - name: notify_unhealthy
+    action: slack.send_message
+    condition: "{{ steps.identify_issues.result.unhealthy | length > 0 }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "🚨 Dependency Health Issues"
+        - type: section
+          fields:
+            - type: mrkdwn
+              text: "*Internal:* {{ steps.aggregate_health_status.result.internal_health.unhealthy }} unhealthy"
+            - type: mrkdwn
+              text: "*External:* {{ steps.aggregate_health_status.result.external_health.unhealthy }} unhealthy"
+            - type: mrkdwn
+              text: "*DNS:* {{ steps.aggregate_health_status.result.dns_health.failed }} failed"
+            - type: mrkdwn
+              text: "*Check Time:* {{ variables.check_time }}"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Unhealthy Services:*
+              {% for svc in steps.identify_issues.result.unhealthy %}
+              • *{{ svc.name }}* {{ '🔴 CRITICAL' if svc.critical else '🟡' }}
+                URL: `{{ svc.url }}`
+                Error: {{ svc.error | default('Connection failed') }}
+                Consecutive failures: {{ steps.update_failure_counts.result[svc.name] }}
+              {% endfor %}
+    on_error: continue
+
+  - name: page_critical_failures
+    action: pagerduty.create_incident
+    condition: |
+      {{
+        steps.identify_issues.result.unhealthy 
+        | selectattr('critical', '==', true) 
+        | selectattr('name', 'in', steps.update_failure_counts.result | dict2items | selectattr('value', '>=', config.health_criteria.consecutive_failures_page) | map('key') | list)
+        | list 
+        | length > 0
+      }}
+    params:
+      service_id: "{{ config.pagerduty_service_id }}"
+      title: "Critical Dependency Failure"
+      urgency: "high"
+      body: |
+        Critical dependencies have failed {{ config.health_criteria.consecutive_failures_page }}+ consecutive checks.
+    on_error: continue
+
+  - name: push_metrics
+    action: prometheus.push_metrics
+    params:
+      metrics:
+        - name: "opensre_dependency_healthy"
+          value: "{{ steps.aggregate_health_status.result.internal_health.healthy + steps.aggregate_health_status.result.external_health.healthy }}"
+        - name: "opensre_dependency_unhealthy"
+          value: "{{ steps.aggregate_health_status.result.internal_health.unhealthy + steps.aggregate_health_status.result.external_health.unhealthy }}"
+        - name: "opensre_dns_failures"
+          value: "{{ steps.aggregate_health_status.result.dns_health.failed }}"
+    on_error: continue

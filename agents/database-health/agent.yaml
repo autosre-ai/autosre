@@ -1,0 +1,412 @@
+name: database-health
+description: Monitor database health including connection pools, replication lag, deadlocks, and query performance
+version: 1.0.0
+
+triggers:
+  - type: schedule
+    cron: "*/5 * * * *"  # Every 5 minutes
+    timezone: "UTC"
+  - type: webhook
+    path: /webhook/db-check
+    source: manual
+  - type: webhook
+    path: /webhook/db-alert
+    source: alertmanager
+
+skills:
+  - prometheus
+  - postgres
+  - mysql
+  - redis
+  - slack
+  - pagerduty
+
+config:
+  slack_channel: "#database-alerts"
+  databases:
+    - name: primary-postgres
+      type: postgres
+      host: "primary.db.example.com"
+      port: 5432
+      metrics_job: "postgres-exporter"
+    - name: replica-postgres
+      type: postgres
+      host: "replica.db.example.com"
+      port: 5432
+      role: replica
+      metrics_job: "postgres-exporter"
+    - name: cache-redis
+      type: redis
+      host: "redis.example.com"
+      port: 6379
+      metrics_job: "redis-exporter"
+  thresholds:
+    connection_pool_usage_warning: 70
+    connection_pool_usage_critical: 90
+    replication_lag_warning_seconds: 5
+    replication_lag_critical_seconds: 30
+    deadlock_count_alert: 1
+    long_running_query_seconds: 60
+    slow_query_threshold_ms: 1000
+    cache_hit_ratio_warning: 0.90
+    cache_memory_usage_critical: 0.95
+  pagerduty_service_id: "PDATABASE"
+
+variables:
+  check_time: "{{ now | date_format('%Y-%m-%d %H:%M:%S') }}"
+
+steps:
+  - name: check_connection_pools
+    action: prometheus.query
+    params:
+      queries:
+        postgres_active: |
+          pg_stat_activity_count{state="active"}
+        postgres_idle: |
+          pg_stat_activity_count{state="idle"}
+        postgres_max: |
+          pg_settings_max_connections
+        mysql_active: |
+          mysql_global_status_threads_connected
+        mysql_max: |
+          mysql_global_variables_max_connections
+    on_error: continue
+    retries: 3
+
+  - name: calculate_pool_usage
+    action: compute.calculate
+    params:
+      metrics: "{{ steps.check_connection_pools.result }}"
+      calculations:
+        - name: postgres_pool_percent
+          formula: "(postgres_active + postgres_idle) / postgres_max * 100"
+        - name: mysql_pool_percent
+          formula: "mysql_active / mysql_max * 100"
+    on_error: continue
+
+  - name: check_replication_lag
+    action: prometheus.query
+    params:
+      queries:
+        postgres_lag: |
+          pg_replication_lag_seconds
+        mysql_lag: |
+          mysql_slave_status_seconds_behind_master
+        redis_lag: |
+          redis_connected_slaves_lag_seconds
+    on_error: continue
+    retries: 2
+
+  - name: check_deadlocks
+    action: prometheus.query_range
+    params:
+      queries:
+        postgres_deadlocks: |
+          increase(pg_stat_database_deadlocks[5m])
+        mysql_deadlocks: |
+          increase(mysql_global_status_innodb_deadlocks[5m])
+      start: "{{ now | date_subtract(15, 'minutes') }}"
+      end: "{{ now }}"
+      step: "1m"
+    on_error: continue
+
+  - name: check_long_running_queries
+    action: postgres.query
+    params:
+      query: |
+        SELECT 
+          pid,
+          now() - pg_stat_activity.query_start AS duration,
+          query,
+          state,
+          usename,
+          client_addr
+        FROM pg_stat_activity
+        WHERE (now() - pg_stat_activity.query_start) > interval '{{ config.thresholds.long_running_query_seconds }} seconds'
+          AND state != 'idle'
+        ORDER BY duration DESC
+        LIMIT 20
+      databases: "{{ config.databases | selectattr('type', '==', 'postgres') | list }}"
+    on_error: continue
+    retries: 2
+
+  - name: check_slow_queries
+    action: prometheus.query
+    params:
+      queries:
+        slow_queries_rate: |
+          rate(pg_stat_statements_seconds_total{duration_bucket=">1s"}[5m])
+        query_duration_p99: |
+          histogram_quantile(0.99, 
+            sum(rate(pg_query_duration_seconds_bucket[5m])) by (le, database)
+          )
+    on_error: continue
+
+  - name: check_cache_health
+    action: prometheus.query
+    params:
+      queries:
+        redis_hit_ratio: |
+          redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total)
+        redis_memory_used: |
+          redis_memory_used_bytes / redis_memory_max_bytes
+        redis_evictions: |
+          rate(redis_evicted_keys_total[5m])
+        pg_cache_hit_ratio: |
+          pg_stat_database_blks_hit / (pg_stat_database_blks_hit + pg_stat_database_blks_read)
+    on_error: continue
+
+  - name: check_disk_usage
+    action: prometheus.query
+    params:
+      queries:
+        postgres_disk: |
+          pg_database_size_bytes
+        mysql_disk: |
+          mysql_global_status_innodb_data_file_size
+        disk_free: |
+          node_filesystem_avail_bytes{mountpoint="/var/lib/postgresql"}
+    on_error: continue
+
+  - name: check_table_bloat
+    action: postgres.query
+    condition: "{{ now | minute == 0 }}"  # Hourly
+    params:
+      query: |
+        SELECT 
+          schemaname || '.' || tablename as table_name,
+          pg_size_pretty(pg_relation_size(schemaname || '.' || tablename)) as size,
+          n_dead_tup as dead_tuples,
+          n_live_tup as live_tuples,
+          CASE WHEN n_live_tup > 0 
+            THEN round(100.0 * n_dead_tup / n_live_tup, 2) 
+            ELSE 0 
+          END as dead_tuple_percent
+        FROM pg_stat_user_tables
+        WHERE n_dead_tup > 10000
+        ORDER BY n_dead_tup DESC
+        LIMIT 20
+    on_error: continue
+
+  - name: aggregate_health_status
+    action: compute.evaluate
+    params:
+      checks:
+        - name: connection_pool
+          status: |
+            {% if steps.calculate_pool_usage.result.postgres_pool_percent > config.thresholds.connection_pool_usage_critical %}
+            critical
+            {% elif steps.calculate_pool_usage.result.postgres_pool_percent > config.thresholds.connection_pool_usage_warning %}
+            warning
+            {% else %}
+            healthy
+            {% endif %}
+          value: "{{ steps.calculate_pool_usage.result.postgres_pool_percent }}"
+        - name: replication_lag
+          status: |
+            {% if steps.check_replication_lag.result.postgres_lag > config.thresholds.replication_lag_critical_seconds %}
+            critical
+            {% elif steps.check_replication_lag.result.postgres_lag > config.thresholds.replication_lag_warning_seconds %}
+            warning
+            {% else %}
+            healthy
+            {% endif %}
+          value: "{{ steps.check_replication_lag.result.postgres_lag }}"
+        - name: deadlocks
+          status: |
+            {% if steps.check_deadlocks.result.postgres_deadlocks | sum > config.thresholds.deadlock_count_alert %}
+            warning
+            {% else %}
+            healthy
+            {% endif %}
+          value: "{{ steps.check_deadlocks.result.postgres_deadlocks | sum }}"
+        - name: long_queries
+          status: |
+            {% if steps.check_long_running_queries.result | length > 0 %}
+            warning
+            {% else %}
+            healthy
+            {% endif %}
+          value: "{{ steps.check_long_running_queries.result | length }}"
+        - name: cache_hit_ratio
+          status: |
+            {% if steps.check_cache_health.result.redis_hit_ratio < config.thresholds.cache_hit_ratio_warning %}
+            warning
+            {% else %}
+            healthy
+            {% endif %}
+          value: "{{ steps.check_cache_health.result.redis_hit_ratio }}"
+    on_error: continue
+
+  - name: alert_critical_pool
+    action: slack.send_message
+    condition: "{{ steps.aggregate_health_status.result.connection_pool.status == 'critical' }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "🚨 Database Connection Pool Critical"
+        - type: section
+          fields:
+            - type: mrkdwn
+              text: "*Pool Usage:* {{ steps.calculate_pool_usage.result.postgres_pool_percent | number_format(1) }}%"
+            - type: mrkdwn
+              text: "*Active Connections:* {{ steps.check_connection_pools.result.postgres_active }}"
+            - type: mrkdwn
+              text: "*Idle Connections:* {{ steps.check_connection_pools.result.postgres_idle }}"
+            - type: mrkdwn
+              text: "*Max Connections:* {{ steps.check_connection_pools.result.postgres_max }}"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Recommended Actions:*
+              1. Increase `max_connections` (requires restart)
+              2. Review connection pooling (PgBouncer)
+              3. Check for connection leaks in applications
+    on_error: continue
+
+  - name: alert_replication_lag
+    action: slack.send_message
+    condition: "{{ steps.aggregate_health_status.result.replication_lag.status in ['warning', 'critical'] }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "{{ '🚨' if steps.aggregate_health_status.result.replication_lag.status == 'critical' else '⚠️' }} Replication Lag Detected"
+        - type: section
+          fields:
+            - type: mrkdwn
+              text: "*Current Lag:* {{ steps.check_replication_lag.result.postgres_lag | number_format(1) }}s"
+            - type: mrkdwn
+              text: "*Threshold:* {{ config.thresholds.replication_lag_critical_seconds }}s (critical)"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Possible Causes:*
+              • High write volume on primary
+              • Network latency between primary and replica
+              • Replica under-resourced
+              • Long-running transactions blocking replication
+    on_error: continue
+
+  - name: alert_deadlocks
+    action: slack.send_message
+    condition: "{{ steps.aggregate_health_status.result.deadlocks.status == 'warning' }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      text: |
+        ⚠️ *Database Deadlocks Detected*
+        
+        {{ steps.check_deadlocks.result.postgres_deadlocks | sum }} deadlock(s) in the last 15 minutes.
+        
+        *Investigation Steps:*
+        1. Check `pg_locks` for lock conflicts
+        2. Review application transaction patterns
+        3. Consider adjusting lock timeout settings
+    on_error: continue
+
+  - name: alert_long_queries
+    action: slack.send_message
+    condition: "{{ steps.check_long_running_queries.result | length > 0 }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "⏱️ Long-Running Queries Detected"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *{{ steps.check_long_running_queries.result | length }} queries running longer than {{ config.thresholds.long_running_query_seconds }}s:*
+              
+              {% for query in steps.check_long_running_queries.result[:5] %}
+              • *PID {{ query.pid }}* - {{ query.duration | duration_format }}
+                User: `{{ query.usename }}` | State: {{ query.state }}
+                ```{{ query.query | truncate(200) }}```
+              {% endfor %}
+        - type: actions
+          elements:
+            - type: button
+              text:
+                type: plain_text
+                text: "🛑 Kill Queries"
+              style: danger
+              action_id: "kill_queries"
+              confirm:
+                title:
+                  type: plain_text
+                  text: "Kill long-running queries?"
+                text:
+                  type: mrkdwn
+                  text: "This will terminate the selected queries."
+    on_error: continue
+
+  - name: alert_cache_issues
+    action: slack.send_message
+    condition: "{{ steps.check_cache_health.result.redis_hit_ratio < config.thresholds.cache_hit_ratio_warning }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      text: |
+        ⚠️ *Cache Hit Ratio Low*
+        
+        Redis hit ratio: {{ (steps.check_cache_health.result.redis_hit_ratio * 100) | number_format(1) }}%
+        Threshold: {{ (config.thresholds.cache_hit_ratio_warning * 100) | number_format(0) }}%
+        
+        Memory usage: {{ (steps.check_cache_health.result.redis_memory_used * 100) | number_format(1) }}%
+        Evictions rate: {{ steps.check_cache_health.result.redis_evictions | number_format(2) }}/s
+        
+        *Possible causes:*
+        • Cache too small for workload
+        • TTLs too aggressive
+        • Working set larger than cache
+    on_error: continue
+
+  - name: page_critical_issues
+    action: pagerduty.create_incident
+    condition: |
+      {{ 
+        steps.aggregate_health_status.result.connection_pool.status == 'critical' or
+        steps.aggregate_health_status.result.replication_lag.status == 'critical' or
+        steps.check_cache_health.result.redis_memory_used > config.thresholds.cache_memory_usage_critical
+      }}
+    params:
+      service_id: "{{ config.pagerduty_service_id }}"
+      title: "Database Health Critical"
+      urgency: "high"
+      body: |
+        Critical database health issues detected:
+        
+        Connection Pool: {{ steps.aggregate_health_status.result.connection_pool.status }} ({{ steps.aggregate_health_status.result.connection_pool.value }}%)
+        Replication Lag: {{ steps.aggregate_health_status.result.replication_lag.status }} ({{ steps.aggregate_health_status.result.replication_lag.value }}s)
+        Cache Memory: {{ (steps.check_cache_health.result.redis_memory_used * 100) | number_format(1) }}%
+    on_error: continue
+
+  - name: push_metrics
+    action: prometheus.push_metrics
+    params:
+      metrics:
+        - name: "opensre_db_connection_pool_percent"
+          value: "{{ steps.calculate_pool_usage.result.postgres_pool_percent }}"
+          labels:
+            database: "postgres"
+        - name: "opensre_db_replication_lag_seconds"
+          value: "{{ steps.check_replication_lag.result.postgres_lag }}"
+          labels:
+            database: "postgres"
+        - name: "opensre_db_deadlocks_total"
+          value: "{{ steps.check_deadlocks.result.postgres_deadlocks | sum }}"
+        - name: "opensre_db_long_queries_count"
+          value: "{{ steps.check_long_running_queries.result | length }}"
+        - name: "opensre_cache_hit_ratio"
+          value: "{{ steps.check_cache_health.result.redis_hit_ratio }}"
+          labels:
+            cache: "redis"
+    on_error: continue

@@ -1,0 +1,266 @@
+name: slo-tracker
+version: 1.0.0
+description: >
+  Track SLO burn rates, alert on budget consumption, and generate 
+  SLO compliance reports. Monitors error budgets and triggers 
+  escalations when SLOs are at risk.
+
+triggers:
+  - type: schedule
+    cron: "*/15 * * * *"  # Every 15 minutes
+    timezone: "UTC"
+  - type: webhook
+    path: /webhook/slo-check
+    source: manual
+  - type: webhook
+    path: /webhook/slo-alert
+    source: alertmanager
+
+skills:
+  - prometheus
+  - slack
+  - pagerduty
+  - email
+  - llm
+
+config:
+  slack_channel: "#slo-alerts"
+  email_recipients:
+    - sre-team@example.com
+  burn_rate_windows:
+    fast: "5m"
+    slow: "1h"
+    long: "6h"
+  error_budget_thresholds:
+    warning: 50
+    critical: 75
+    exhausted: 100
+  slos:
+    - name: "api-availability"
+      target: 99.9
+      window_days: 30
+      service: "api-gateway"
+      sli_query: >
+        sum(rate(http_requests_total{service="api-gateway",status!~"5.."}[5m])) /
+        sum(rate(http_requests_total{service="api-gateway"}[5m]))
+    - name: "api-latency-p99"
+      target: 99.0
+      window_days: 30
+      service: "api-gateway"
+      latency_threshold_ms: 500
+      sli_query: >
+        sum(rate(http_request_duration_seconds_bucket{service="api-gateway",le="0.5"}[5m])) /
+        sum(rate(http_request_duration_seconds_count{service="api-gateway"}[5m]))
+    - name: "checkout-availability"
+      target: 99.95
+      window_days: 30
+      service: "checkout"
+      sli_query: >
+        sum(rate(http_requests_total{service="checkout",status!~"5.."}[5m])) /
+        sum(rate(http_requests_total{service="checkout"}[5m]))
+  pagerduty_service_id: "PXXXXXX"
+  grafana_url: "https://grafana.example.com"
+
+variables:
+  check_time: "{{ now | date_format('%Y-%m-%d %H:%M:%S') }}"
+  window_start: "{{ now | date_subtract(30, 'days') | date_format('%Y-%m-%d') }}"
+
+steps:
+  - name: calculate_sli_values
+    action: prometheus.query
+    description: Calculate current SLI values for all tracked SLOs
+    params:
+      query: "{{ config.slos[0].sli_query }}"
+      time: "{{ now }}"
+    on_error: continue
+    retries: 3
+
+  - name: get_error_budget_remaining
+    action: prometheus.query_range
+    description: Query error budget consumption over the SLO window
+    params:
+      query: >
+        1 - ((1 - ({{ config.slos[0].sli_query }})) / (1 - 0.999))
+      start: "{{ variables.window_start }}"
+      end: "{{ now }}"
+      step: "1h"
+    on_error: continue
+    retries: 3
+
+  - name: calculate_burn_rates
+    action: prometheus.query
+    description: Calculate fast and slow burn rates
+    params:
+      query: >
+        (1 - {{ config.slos[0].sli_query | replace('[5m]', '[5m]') }}) /
+        (1 - 0.999)
+    on_error: continue
+    retries: 3
+
+  - name: analyze_burn_rate_trend
+    action: compute.analyze
+    description: Analyze burn rates against thresholds
+    params:
+      burn_rates: "{{ steps.calculate_burn_rates.result }}"
+      thresholds:
+        critical_fast_burn: 14.4
+        critical_slow_burn: 6.0
+        warning_fast_burn: 7.2
+        warning_slow_burn: 3.0
+    on_error: continue
+
+  - name: identify_budget_exhaustion
+    action: compute.calculate
+    description: Identify SLOs with critical budget consumption
+    params:
+      budget_data: "{{ steps.get_error_budget_remaining.result }}"
+      thresholds:
+        warning: "{{ config.error_budget_thresholds.warning }}"
+        critical: "{{ config.error_budget_thresholds.critical }}"
+    on_error: continue
+
+  - name: get_contributing_errors
+    action: prometheus.query
+    description: Get top errors contributing to SLO burn
+    params:
+      query: >
+        topk(5, sum by (error_type, endpoint) (
+          rate(http_requests_total{service="api-gateway",status=~"5.."}[1h])
+        ))
+    on_error: continue
+    retries: 3
+
+  - name: check_pagerduty_incidents
+    action: pagerduty.list_incidents
+    description: Check for existing SLO incidents
+    condition: "{{ steps.identify_budget_exhaustion.result.critical_slos | length > 0 }}"
+    params:
+      service_ids:
+        - "{{ config.pagerduty_service_id }}"
+      statuses:
+        - triggered
+        - acknowledged
+      since: "{{ now | date_subtract(24, 'hours') }}"
+    on_error: continue
+
+  - name: generate_ai_analysis
+    action: llm.analyze
+    description: Generate AI analysis of SLO status
+    params:
+      prompt: >
+        Analyze the following SLO metrics and provide recommendations:
+        
+        Current SLI Values: {{ steps.calculate_sli_values.result | json }}
+        Burn Rates: {{ steps.calculate_burn_rates.result | json }}
+        Budget Status: {{ steps.identify_budget_exhaustion.result | json }}
+        Top Errors: {{ steps.get_contributing_errors.result | json }}
+        
+        Provide:
+        1. Brief summary of SLO health
+        2. Risk assessment for next 24 hours  
+        3. Recommended actions if any SLOs are at risk
+      max_tokens: 500
+    on_error: continue
+
+  - name: send_critical_alert
+    action: slack.post_message
+    description: Alert on critical SLO burn
+    condition: "{{ steps.analyze_burn_rate_trend.result.severity == 'critical' }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      text: |
+        🚨 *SLO Alert: Critical Burn Rate Detected*
+        
+        *SLO:* {{ steps.analyze_burn_rate_trend.result.slo_name }}
+        *Current Burn Rate:* {{ steps.analyze_burn_rate_trend.result.burn_rate }}x
+        *Error Budget Consumed:* {{ steps.identify_budget_exhaustion.result.budget_consumed_percent }}%
+        *Estimated Time to Exhaustion:* {{ steps.identify_budget_exhaustion.result.time_to_exhaustion_hours }}h
+        
+        *Top Contributing Errors:*
+        {{ steps.get_contributing_errors.result | format_list }}
+        
+        *AI Analysis:*
+        {{ steps.generate_ai_analysis.result }}
+    on_error: continue
+
+  - name: create_pagerduty_incident
+    action: pagerduty.create_incident
+    description: Page on-call when budget is critically consumed
+    condition: >
+      {{ steps.identify_budget_exhaustion.result.budget_consumed_percent >= config.error_budget_thresholds.critical 
+         and steps.check_pagerduty_incidents.result | length == 0 }}
+    params:
+      service_id: "{{ config.pagerduty_service_id }}"
+      title: "SLO Critical: {{ steps.analyze_burn_rate_trend.result.slo_name }}"
+      body: |
+        Error budget critically consumed ({{ steps.identify_budget_exhaustion.result.budget_consumed_percent }}%)
+        
+        Burn rate: {{ steps.analyze_burn_rate_trend.result.burn_rate }}x normal
+        Time to exhaustion: {{ steps.identify_budget_exhaustion.result.time_to_exhaustion_hours }} hours
+        
+        {{ steps.generate_ai_analysis.result }}
+      urgency: high
+    on_error: alert
+
+  - name: send_warning_alert
+    action: slack.post_message
+    description: Warning alert for elevated burn rates
+    condition: >
+      {{ steps.analyze_burn_rate_trend.result.severity == 'warning' 
+         and steps.analyze_burn_rate_trend.result.severity != 'critical' }}
+    params:
+      channel: "{{ config.slack_channel }}"
+      text: |
+        ⚠️ *SLO Warning: Elevated Burn Rate*
+        
+        *SLO:* {{ steps.analyze_burn_rate_trend.result.slo_name }}
+        *Current Burn Rate:* {{ steps.analyze_burn_rate_trend.result.burn_rate }}x
+        *Error Budget Consumed:* {{ steps.identify_budget_exhaustion.result.budget_consumed_percent }}%
+        
+        Monitoring closely - will escalate if trend continues.
+    on_error: continue
+
+  - name: generate_weekly_report
+    action: slack.post_message
+    description: Post weekly SLO compliance report
+    condition: "{{ trigger.type == 'schedule' and now.weekday == 0 and now.hour == 9 }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      text: |
+        📊 *Weekly SLO Report*
+        
+        *Period:* {{ variables.window_start }} to {{ variables.check_time }}
+        
+        *SLO Summary:*
+        - API Availability: {{ steps.calculate_sli_values.result.api_availability | format_percent }}
+        - API Latency P99: {{ steps.calculate_sli_values.result.api_latency_p99 | format_percent }}
+        - Checkout Availability: {{ steps.calculate_sli_values.result.checkout_availability | format_percent }}
+        
+        *Error Budget Status:*
+        {{ steps.get_error_budget_remaining.result | format_budget_summary }}
+        
+        *AI Recommendations:*
+        {{ steps.generate_ai_analysis.result }}
+      format: "markdown"
+    on_error: continue
+
+  - name: push_metrics
+    action: prometheus.push_metrics
+    description: Push SLO metrics to Prometheus
+    params:
+      metrics:
+        - name: "opensre_slo_current_value"
+          value: "{{ steps.calculate_sli_values.result | default(0) }}"
+          labels:
+            slo: "api-availability"
+            service: "api-gateway"
+        - name: "opensre_slo_budget_consumed_percent"
+          value: "{{ steps.identify_budget_exhaustion.result.budget_consumed_percent | default(0) }}"
+          labels:
+            slo: "api-availability"
+        - name: "opensre_slo_burn_rate"
+          value: "{{ steps.calculate_burn_rates.result | default(0) }}"
+          labels:
+            slo: "api-availability"
+            window: "fast"
+    on_error: continue

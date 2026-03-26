@@ -1,0 +1,359 @@
+name: change-detector
+description: Track infrastructure changes, configuration drift detection, and change correlation with incidents
+version: 1.0.0
+
+triggers:
+  - type: schedule
+    cron: "*/15 * * * *"  # Every 15 minutes
+    timezone: "UTC"
+  - type: webhook
+    path: /webhook/change-detect
+    source: manual
+  - type: webhook
+    path: /webhook/k8s-change
+    source: kubernetes
+
+skills:
+  - kubernetes
+  - git
+  - terraform
+  - slack
+  - prometheus
+  - llm
+
+config:
+  slack_channel: "#infrastructure-changes"
+  change_sources:
+    kubernetes:
+      enabled: true
+      namespaces: ["production", "staging"]
+      watch_resources:
+        - deployments
+        - configmaps
+        - secrets
+        - services
+        - ingresses
+    terraform:
+      enabled: true
+      state_bucket: "s3://company-terraform-state"
+    git:
+      enabled: true
+      repositories:
+        - "github.com/company/infrastructure"
+        - "github.com/company/kubernetes-manifests"
+  correlation:
+    enabled: true
+    lookback_minutes: 60
+    incident_sources:
+      - pagerduty
+      - prometheus_alerts
+  change_window:
+    enabled: false
+    allowed_hours: [9, 10, 11, 14, 15, 16]  # 9-12, 14-17 local
+    timezone: "America/Los_Angeles"
+  high_risk_changes:
+    - pattern: "replicas.*0"
+      description: "Scale to zero"
+    - pattern: "image.*:latest"
+      description: "Latest tag deployment"
+    - pattern: "privileged.*true"
+      description: "Privileged container"
+    - pattern: "hostNetwork.*true"
+      description: "Host network access"
+
+variables:
+  check_time: "{{ now | date_format('%Y-%m-%d %H:%M:%S') }}"
+  last_check: "{{ state.last_check | default(now | date_subtract(15, 'minutes')) }}"
+
+steps:
+  - name: detect_kubernetes_changes
+    action: kubernetes.get_events
+    params:
+      namespaces: "{{ config.change_sources.kubernetes.namespaces }}"
+      field_selector: "type!=Normal"
+      since: "{{ variables.last_check }}"
+    on_error: continue
+    retries: 2
+
+  - name: get_deployment_changes
+    action: kubernetes.get_resource_versions
+    params:
+      namespaces: "{{ config.change_sources.kubernetes.namespaces }}"
+      resources: "{{ config.change_sources.kubernetes.watch_resources }}"
+      since: "{{ variables.last_check }}"
+    on_error: continue
+
+  - name: get_configmap_changes
+    action: kubernetes.diff_configmaps
+    params:
+      namespaces: "{{ config.change_sources.kubernetes.namespaces }}"
+      since: "{{ variables.last_check }}"
+    on_error: continue
+
+  - name: check_terraform_drift
+    action: terraform.plan
+    condition: "{{ config.change_sources.terraform.enabled }}"
+    params:
+      state_bucket: "{{ config.change_sources.terraform.state_bucket }}"
+      detect_drift: true
+    on_error: continue
+    retries: 2
+
+  - name: get_git_commits
+    action: git.get_commits
+    condition: "{{ config.change_sources.git.enabled }}"
+    params:
+      repositories: "{{ config.change_sources.git.repositories }}"
+      since: "{{ variables.last_check }}"
+      include_diff: true
+    on_error: continue
+
+  - name: aggregate_changes
+    action: compute.aggregate
+    params:
+      sources:
+        - name: kubernetes_events
+          data: "{{ steps.detect_kubernetes_changes.result }}"
+        - name: deployments
+          data: "{{ steps.get_deployment_changes.result }}"
+        - name: configmaps
+          data: "{{ steps.get_configmap_changes.result }}"
+        - name: terraform
+          data: "{{ steps.check_terraform_drift.result | default([]) }}"
+        - name: git
+          data: "{{ steps.get_git_commits.result | default([]) }}"
+      normalize:
+        - timestamp
+        - change_type
+        - resource
+        - namespace
+        - user
+        - diff
+    on_error: continue
+
+  - name: detect_high_risk_changes
+    action: compute.pattern_match
+    params:
+      changes: "{{ steps.aggregate_changes.result }}"
+      patterns: "{{ config.high_risk_changes }}"
+      return_matches: true
+    on_error: continue
+
+  - name: check_change_window
+    action: compute.evaluate
+    condition: "{{ config.change_window.enabled }}"
+    params:
+      expression: |
+        current_hour = now.hour
+        allowed = current_hour in {{ config.change_window.allowed_hours }}
+        return {
+          "in_window": allowed,
+          "current_hour": current_hour,
+          "allowed_hours": {{ config.change_window.allowed_hours }}
+        }
+    on_error: continue
+
+  - name: get_recent_incidents
+    action: prometheus.query_range
+    condition: "{{ config.correlation.enabled }}"
+    params:
+      queries:
+        alerts: |
+          ALERTS{alertstate="firing"}
+      start: "{{ now | date_subtract(config.correlation.lookback_minutes, 'minutes') }}"
+      end: "{{ now }}"
+      step: "1m"
+    on_error: continue
+
+  - name: correlate_changes_with_incidents
+    action: compute.correlate
+    condition: "{{ config.correlation.enabled and steps.get_recent_incidents.result | length > 0 }}"
+    params:
+      changes: "{{ steps.aggregate_changes.result }}"
+      incidents: "{{ steps.get_recent_incidents.result }}"
+      time_window_minutes: 30
+      correlation_fields:
+        - namespace
+        - service
+    on_error: continue
+
+  - name: analyze_changes
+    action: llm.analyze
+    condition: "{{ steps.detect_high_risk_changes.result | length > 0 or steps.correlate_changes_with_incidents.result | length > 0 }}"
+    params:
+      prompt: |
+        Analyze these infrastructure changes and their potential impact:
+        
+        Recent Changes ({{ steps.aggregate_changes.result | length }} total):
+        {% for change in steps.aggregate_changes.result[:20] %}
+        - {{ change.timestamp }}: {{ change.change_type }} - {{ change.resource }}
+          Namespace: {{ change.namespace | default('N/A') }}
+          User: {{ change.user | default('Unknown') }}
+        {% endfor %}
+        
+        High-Risk Changes:
+        {% for risk in steps.detect_high_risk_changes.result %}
+        - {{ risk.description }}: {{ risk.resource }}
+          Pattern matched: {{ risk.pattern }}
+        {% endfor %}
+        
+        Correlated Incidents:
+        {% for correlation in steps.correlate_changes_with_incidents.result %}
+        - Change: {{ correlation.change.resource }} at {{ correlation.change.timestamp }}
+          Incident: {{ correlation.incident.alertname }} fired {{ correlation.time_diff_minutes }} minutes later
+        {% endfor %}
+        
+        Provide:
+        1. Risk assessment
+        2. Changes that may have caused incidents
+        3. Recommended rollbacks (if any)
+        4. Best practices violated
+      model: "gpt-4"
+      max_tokens: 1000
+    on_error: continue
+
+  - name: notify_changes
+    action: slack.send_message
+    condition: "{{ steps.aggregate_changes.result | length > 0 }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "🔄 Infrastructure Changes Detected"
+        - type: section
+          fields:
+            - type: mrkdwn
+              text: "*Total Changes:* {{ steps.aggregate_changes.result | length }}"
+            - type: mrkdwn
+              text: "*High Risk:* {{ steps.detect_high_risk_changes.result | length }}"
+            - type: mrkdwn
+              text: "*Time Window:* {{ variables.last_check }} to {{ variables.check_time }}"
+            - type: mrkdwn
+              text: "*Change Window:* {{ 'In window ✅' if steps.check_change_window.result.in_window | default(true) else 'Outside window ⚠️' }}"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Recent Changes:*
+              {% for change in steps.aggregate_changes.result[:10] %}
+              • `{{ change.change_type }}` {{ change.resource }} in `{{ change.namespace | default('cluster') }}`
+                {{ change.user | default('system') }} at {{ change.timestamp | time_format }}
+              {% endfor %}
+              {% if steps.aggregate_changes.result | length > 10 %}
+              _...and {{ steps.aggregate_changes.result | length - 10 }} more_
+              {% endif %}
+    on_error: continue
+
+  - name: alert_high_risk
+    action: slack.send_message
+    condition: "{{ steps.detect_high_risk_changes.result | length > 0 }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "⚠️ High-Risk Changes Detected"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *{{ steps.detect_high_risk_changes.result | length }} high-risk change(s):*
+              
+              {% for risk in steps.detect_high_risk_changes.result %}
+              • *{{ risk.description }}*
+                Resource: `{{ risk.resource }}`
+                Pattern: `{{ risk.pattern }}`
+              {% endfor %}
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *AI Analysis:*
+              {{ steps.analyze_changes.result | truncate(500) }}
+        - type: actions
+          elements:
+            - type: button
+              text:
+                type: plain_text
+                text: "⏪ Rollback"
+              style: danger
+              action_id: "rollback_change"
+            - type: button
+              text:
+                type: plain_text
+                text: "✅ Acknowledge"
+              action_id: "ack_change"
+    on_error: continue
+
+  - name: alert_change_window_violation
+    action: slack.send_message
+    condition: "{{ config.change_window.enabled and not steps.check_change_window.result.in_window and steps.aggregate_changes.result | length > 0 }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      text: |
+        🚨 *Change Window Violation*
+        
+        Changes detected outside of approved change window!
+        
+        Current hour: {{ steps.check_change_window.result.current_hour }}
+        Allowed hours: {{ config.change_window.allowed_hours | join(', ') }}
+        
+        Changes:
+        {% for change in steps.aggregate_changes.result[:5] %}
+        • {{ change.resource }} by {{ change.user | default('unknown') }}
+        {% endfor %}
+    on_error: continue
+
+  - name: alert_incident_correlation
+    action: slack.send_message
+    condition: "{{ steps.correlate_changes_with_incidents.result | length > 0 }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "🔗 Changes Correlated with Incidents"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Potential change-induced incidents:*
+              
+              {% for correlation in steps.correlate_changes_with_incidents.result %}
+              • *Change:* {{ correlation.change.resource }}
+                Time: {{ correlation.change.timestamp }}
+                User: {{ correlation.change.user | default('unknown') }}
+                
+                *Incident:* {{ correlation.incident.alertname }}
+                Fired: {{ correlation.time_diff_minutes }} minutes after change
+              {% endfor %}
+        - type: context
+          elements:
+            - type: mrkdwn
+              text: "Consider rolling back recent changes if incidents persist"
+    on_error: continue
+
+  - name: push_metrics
+    action: prometheus.push_metrics
+    params:
+      metrics:
+        - name: "opensre_changes_total"
+          value: "{{ steps.aggregate_changes.result | length }}"
+          labels:
+            window_minutes: 15
+        - name: "opensre_changes_high_risk"
+          value: "{{ steps.detect_high_risk_changes.result | length }}"
+        - name: "opensre_changes_correlated_incidents"
+          value: "{{ steps.correlate_changes_with_incidents.result | length }}"
+    on_error: continue
+
+  - name: update_state
+    action: state.set
+    params:
+      key: "last_check"
+      value: "{{ now }}"
+    on_error: continue

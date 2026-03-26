@@ -1,0 +1,297 @@
+name: cert-checker
+description: Daily scan for expiring SSL/TLS certificates with tiered alerts at 30/14/7 days before expiry
+version: 1.0.0
+
+triggers:
+  - type: schedule
+    cron: "0 8 * * *"  # Daily at 8 AM
+    timezone: "UTC"
+  - type: webhook
+    path: /webhook/cert-check
+    source: manual
+
+skills:
+  - ssl
+  - kubernetes
+  - slack
+  - pagerduty
+  - jira
+
+config:
+  slack_channel: "#security-alerts"
+  alert_thresholds_days:
+    - 30
+    - 14
+    - 7
+    - 3
+    - 1
+  critical_threshold_days: 7
+  sources:
+    - type: kubernetes
+      namespaces: ["*"]
+      secret_types: ["kubernetes.io/tls"]
+    - type: endpoints
+      urls: []
+    - type: acm
+      regions: ["us-east-1", "us-west-2"]
+    - type: files
+      paths: []
+  auto_renew_enabled: false
+  pagerduty_on_critical: true
+
+variables:
+  check_date: "{{ now | date_format('%Y-%m-%d') }}"
+  critical_days: "{{ config.critical_threshold_days }}"
+
+steps:
+  - name: scan_kubernetes_certs
+    action: kubernetes.list_secrets
+    params:
+      namespaces: "{{ config.sources | selectattr('type', '==', 'kubernetes') | first | attr('namespaces') }}"
+      field_selector: "type=kubernetes.io/tls"
+    on_error: continue
+    retries: 2
+
+  - name: parse_kubernetes_certs
+    action: ssl.parse_certificates
+    params:
+      certificates: "{{ steps.scan_kubernetes_certs.result.items | map('data.tls.crt') | list }}"
+      source: "kubernetes"
+    on_error: continue
+
+  - name: scan_endpoint_certs
+    action: ssl.check_endpoints
+    params:
+      urls: "{{ config.sources | selectattr('type', '==', 'endpoints') | first | attr('urls') }}"
+      timeout_seconds: 10
+      verify: false
+    condition: "{{ config.sources | selectattr('type', '==', 'endpoints') | first | attr('urls') | length > 0 }}"
+    on_error: continue
+    retries: 2
+
+  - name: scan_acm_certs
+    action: aws.acm_list_certificates
+    params:
+      regions: "{{ config.sources | selectattr('type', '==', 'acm') | first | attr('regions') }}"
+      statuses: ["ISSUED", "PENDING_VALIDATION"]
+    on_error: continue
+    retries: 2
+
+  - name: aggregate_certificates
+    action: compute.aggregate
+    params:
+      sources:
+        - name: kubernetes
+          data: "{{ steps.parse_kubernetes_certs.result | default([]) }}"
+        - name: endpoints
+          data: "{{ steps.scan_endpoint_certs.result | default([]) }}"
+        - name: acm
+          data: "{{ steps.scan_acm_certs.result | default([]) }}"
+      fields:
+        - common_name
+        - issuer
+        - not_after
+        - days_until_expiry
+        - source
+        - source_ref
+    on_error: fail
+
+  - name: categorize_by_urgency
+    action: compute.categorize
+    params:
+      items: "{{ steps.aggregate_certificates.result }}"
+      categories:
+        expired:
+          condition: "days_until_expiry < 0"
+        critical:
+          condition: "days_until_expiry >= 0 and days_until_expiry <= 7"
+        warning:
+          condition: "days_until_expiry > 7 and days_until_expiry <= 14"
+        attention:
+          condition: "days_until_expiry > 14 and days_until_expiry <= 30"
+        healthy:
+          condition: "days_until_expiry > 30"
+      sort_by: "days_until_expiry"
+      sort_order: "asc"
+    on_error: fail
+
+  - name: notify_expired
+    action: slack.send_message
+    condition: "{{ steps.categorize_by_urgency.result.expired | length > 0 }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "🚨 EXPIRED CERTIFICATES DETECTED"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *{{ steps.categorize_by_urgency.result.expired | length }} certificate(s) have EXPIRED!*
+              
+              {% for cert in steps.categorize_by_urgency.result.expired %}
+              • `{{ cert.common_name }}` - Expired {{ cert.days_until_expiry | abs }} days ago
+                Source: {{ cert.source }} ({{ cert.source_ref }})
+              {% endfor %}
+              
+              ⚠️ *Immediate action required!*
+    on_error: continue
+
+  - name: notify_critical
+    action: slack.send_message
+    condition: "{{ steps.categorize_by_urgency.result.critical | length > 0 }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "⚠️ Certificates Expiring Within 7 Days"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *{{ steps.categorize_by_urgency.result.critical | length }} certificate(s) expiring soon:*
+              
+              {% for cert in steps.categorize_by_urgency.result.critical %}
+              • `{{ cert.common_name }}` - *{{ cert.days_until_expiry }} days* remaining
+                Expires: {{ cert.not_after }}
+                Source: {{ cert.source }}
+              {% endfor %}
+        - type: actions
+          elements:
+            - type: button
+              text:
+                type: plain_text
+                text: "🔄 Renew Now"
+              style: danger
+              action_id: "renew_cert"
+              value: "{{ steps.categorize_by_urgency.result.critical | map('common_name') | join(',') }}"
+    on_error: continue
+
+  - name: notify_warning
+    action: slack.send_message
+    condition: "{{ steps.categorize_by_urgency.result.warning | length > 0 }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      text: |
+        📋 *Certificate Expiry Warning (7-14 days)*
+        
+        {{ steps.categorize_by_urgency.result.warning | length }} certificate(s) expiring in 7-14 days:
+        {% for cert in steps.categorize_by_urgency.result.warning %}
+        • `{{ cert.common_name }}` - {{ cert.days_until_expiry }} days ({{ cert.not_after }})
+        {% endfor %}
+    on_error: continue
+
+  - name: notify_attention
+    action: slack.send_message
+    condition: "{{ steps.categorize_by_urgency.result.attention | length > 0 }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      text: |
+        📅 *Certificate Expiry Notice (14-30 days)*
+        
+        {{ steps.categorize_by_urgency.result.attention | length }} certificate(s) expiring in 14-30 days:
+        {% for cert in steps.categorize_by_urgency.result.attention %}
+        • `{{ cert.common_name }}` - {{ cert.days_until_expiry }} days
+        {% endfor %}
+    on_error: continue
+
+  - name: page_on_critical
+    action: pagerduty.create_incident
+    condition: "{{ config.pagerduty_on_critical and (steps.categorize_by_urgency.result.expired | length > 0 or steps.categorize_by_urgency.result.critical | length > 0) }}"
+    params:
+      service_id: "{{ config.pagerduty_service_id }}"
+      title: "SSL Certificate Expiry - Immediate Action Required"
+      urgency: "high"
+      body: |
+        Expired: {{ steps.categorize_by_urgency.result.expired | length }}
+        Critical (<7 days): {{ steps.categorize_by_urgency.result.critical | length }}
+        
+        Certificates:
+        {% for cert in steps.categorize_by_urgency.result.expired + steps.categorize_by_urgency.result.critical %}
+        - {{ cert.common_name }}: {{ cert.days_until_expiry }} days
+        {% endfor %}
+    on_error: continue
+
+  - name: create_renewal_tickets
+    action: jira.bulk_create
+    condition: "{{ steps.categorize_by_urgency.result.critical | length > 0 }}"
+    params:
+      project: "SEC"
+      issue_type: "Task"
+      issues: |
+        {% for cert in steps.categorize_by_urgency.result.critical %}
+        - summary: "Renew SSL Certificate: {{ cert.common_name }}"
+          description: |
+            Certificate expiring in {{ cert.days_until_expiry }} days.
+            
+            * Common Name: {{ cert.common_name }}
+            * Issuer: {{ cert.issuer }}
+            * Expiry: {{ cert.not_after }}
+            * Source: {{ cert.source }} ({{ cert.source_ref }})
+          priority: "High"
+          labels: ["ssl-renewal", "auto-generated"]
+          due_date: "{{ cert.not_after }}"
+        {% endfor %}
+    on_error: continue
+
+  - name: attempt_auto_renewal
+    action: ssl.request_renewal
+    condition: "{{ config.auto_renew_enabled and steps.categorize_by_urgency.result.critical | selectattr('source', '==', 'acm') | list | length > 0 }}"
+    params:
+      certificates: "{{ steps.categorize_by_urgency.result.critical | selectattr('source', '==', 'acm') | map('source_ref') | list }}"
+    on_error: continue
+    retries: 2
+
+  - name: store_metrics
+    action: prometheus.push_metrics
+    params:
+      metrics:
+        - name: "opensre_cert_total"
+          value: "{{ steps.aggregate_certificates.result | length }}"
+          labels:
+            date: "{{ variables.check_date }}"
+        - name: "opensre_cert_expired"
+          value: "{{ steps.categorize_by_urgency.result.expired | length }}"
+        - name: "opensre_cert_critical"
+          value: "{{ steps.categorize_by_urgency.result.critical | length }}"
+        - name: "opensre_cert_warning"
+          value: "{{ steps.categorize_by_urgency.result.warning | length }}"
+        - name: "opensre_cert_healthy"
+          value: "{{ steps.categorize_by_urgency.result.healthy | length }}"
+    on_error: continue
+
+  - name: generate_report
+    action: template.render
+    params:
+      template: |
+        # SSL Certificate Status Report - {{ variables.check_date }}
+        
+        ## Summary
+        | Status | Count |
+        |--------|-------|
+        | Expired | {{ steps.categorize_by_urgency.result.expired | length }} |
+        | Critical (≤7 days) | {{ steps.categorize_by_urgency.result.critical | length }} |
+        | Warning (8-14 days) | {{ steps.categorize_by_urgency.result.warning | length }} |
+        | Attention (15-30 days) | {{ steps.categorize_by_urgency.result.attention | length }} |
+        | Healthy (>30 days) | {{ steps.categorize_by_urgency.result.healthy | length }} |
+        
+        ## Action Required
+        {% if steps.categorize_by_urgency.result.expired | length > 0 %}
+        ### 🚨 Expired
+        {% for cert in steps.categorize_by_urgency.result.expired %}
+        - **{{ cert.common_name }}** - Expired {{ cert.days_until_expiry | abs }} days ago
+        {% endfor %}
+        {% endif %}
+        
+        {% if steps.categorize_by_urgency.result.critical | length > 0 %}
+        ### ⚠️ Critical
+        {% for cert in steps.categorize_by_urgency.result.critical %}
+        - **{{ cert.common_name }}** - {{ cert.days_until_expiry }} days remaining
+        {% endfor %}
+        {% endif %}
+      output_format: "markdown"
+    on_error: continue

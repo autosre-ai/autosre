@@ -1,0 +1,216 @@
+name: cost-anomaly
+description: Daily cost anomaly detection comparing current spend against baseline with alerting
+version: 1.0.0
+
+triggers:
+  - type: schedule
+    cron: "0 9 * * *"  # Daily at 9 AM
+    timezone: "UTC"
+  - type: webhook
+    path: /webhook/cost-check
+    source: manual
+
+skills:
+  - cloud-cost
+  - prometheus
+  - slack
+  - email
+
+config:
+  slack_channel: "#cost-alerts"
+  email_recipients:
+    - finops@example.com
+  anomaly_threshold_percent: 20
+  baseline_period_days: 30
+  alert_on_increase_only: false
+  cloud_providers:
+    - aws
+    - gcp
+  breakdown_by:
+    - service
+    - team
+    - environment
+
+variables:
+  check_date: "{{ trigger.date | default(now | date_format('%Y-%m-%d')) }}"
+  threshold: "{{ config.anomaly_threshold_percent }}"
+
+steps:
+  - name: get_current_costs
+    action: cloud-cost.get_daily_costs
+    params:
+      date: "{{ variables.check_date }}"
+      providers: "{{ config.cloud_providers }}"
+      group_by: "{{ config.breakdown_by }}"
+    on_error: fail
+    retries: 3
+
+  - name: get_baseline_costs
+    action: cloud-cost.get_average_costs
+    params:
+      start_date: "{{ variables.check_date | date_subtract(config.baseline_period_days) }}"
+      end_date: "{{ variables.check_date | date_subtract(1) }}"
+      providers: "{{ config.cloud_providers }}"
+      group_by: "{{ config.breakdown_by }}"
+    on_error: fail
+    retries: 3
+
+  - name: calculate_anomalies
+    action: compute.detect_anomalies
+    params:
+      current: "{{ steps.get_current_costs.result }}"
+      baseline: "{{ steps.get_baseline_costs.result }}"
+      threshold_percent: "{{ config.anomaly_threshold_percent }}"
+      method: "zscore"
+      min_absolute_change: 100
+    on_error: fail
+
+  - name: get_cost_trend
+    action: cloud-cost.get_cost_trend
+    params:
+      providers: "{{ config.cloud_providers }}"
+      period_days: 7
+      group_by: "service"
+    on_error: continue
+
+  - name: get_resource_changes
+    action: cloud-cost.get_resource_changes
+    condition: "{{ steps.calculate_anomalies.result.has_anomalies }}"
+    params:
+      date: "{{ variables.check_date }}"
+      providers: "{{ config.cloud_providers }}"
+    on_error: continue
+
+  - name: format_report
+    action: template.render
+    params:
+      template: |
+        # Daily Cost Report - {{ variables.check_date }}
+        
+        ## Summary
+        - **Total Spend:** ${{ steps.get_current_costs.result.total | number_format(2) }}
+        - **Baseline Average:** ${{ steps.get_baseline_costs.result.total | number_format(2) }}
+        - **Variance:** {{ steps.calculate_anomalies.result.total_variance_percent | number_format(1) }}%
+        
+        ## Anomalies Detected
+        {% if steps.calculate_anomalies.result.has_anomalies %}
+        {% for anomaly in steps.calculate_anomalies.result.anomalies %}
+        ### {{ anomaly.category }}: {{ anomaly.name }}
+        - Current: ${{ anomaly.current | number_format(2) }}
+        - Baseline: ${{ anomaly.baseline | number_format(2) }}
+        - Change: {{ anomaly.change_percent | number_format(1) }}% ({{ anomaly.direction }})
+        - Likely cause: {{ anomaly.probable_cause | default('Unknown') }}
+        
+        {% endfor %}
+        {% else %}
+        No significant anomalies detected.
+        {% endif %}
+        
+        ## 7-Day Trend
+        {{ steps.get_cost_trend.result | trend_chart }}
+        
+        ## Recent Resource Changes
+        {{ steps.get_resource_changes.result | resource_changes_summary | default('No resource changes detected') }}
+    on_error: continue
+
+  - name: notify_slack_anomaly
+    action: slack.send_message
+    condition: "{{ steps.calculate_anomalies.result.has_anomalies }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "💰 Cost Anomaly Detected - {{ variables.check_date }}"
+        - type: section
+          fields:
+            - type: mrkdwn
+              text: "*Today's Spend:* ${{ steps.get_current_costs.result.total | number_format(2) }}"
+            - type: mrkdwn
+              text: "*Baseline:* ${{ steps.get_baseline_costs.result.total | number_format(2) }}"
+            - type: mrkdwn
+              text: "*Variance:* {{ steps.calculate_anomalies.result.total_variance_percent | number_format(1) }}%"
+            - type: mrkdwn
+              text: "*Anomalies:* {{ steps.calculate_anomalies.result.anomalies | length }}"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Top Anomalies:*
+              {% for anomaly in steps.calculate_anomalies.result.anomalies[:5] %}
+              • *{{ anomaly.name }}*: ${{ anomaly.current | number_format(0) }} ({{ anomaly.change_percent | number_format(0) }}% {{ anomaly.direction }})
+              {% endfor %}
+        - type: divider
+        - type: section
+          text:
+            type: mrkdwn
+            text: "*Possible Causes:*\n{{ steps.get_resource_changes.result | resource_summary | default('No obvious resource changes found') }}"
+        - type: actions
+          elements:
+            - type: button
+              text:
+                type: plain_text
+                text: "📊 Full Report"
+              url: "{{ config.dashboard_url | default('#') }}"
+            - type: button
+              text:
+                type: plain_text
+                text: "🔍 Investigate"
+              action_id: "investigate_cost"
+              value: "{{ variables.check_date }}"
+    on_error: continue
+
+  - name: notify_slack_normal
+    action: slack.send_message
+    condition: "{{ not steps.calculate_anomalies.result.has_anomalies }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      text: |
+        ✅ *Daily Cost Check - {{ variables.check_date }}*
+        
+        No anomalies detected.
+        Total spend: ${{ steps.get_current_costs.result.total | number_format(2) }} ({{ steps.calculate_anomalies.result.total_variance_percent | number_format(1) }}% vs baseline)
+    on_error: continue
+
+  - name: send_email_report
+    action: email.send
+    condition: "{{ steps.calculate_anomalies.result.has_anomalies and steps.calculate_anomalies.result.severity == 'high' }}"
+    params:
+      to: "{{ config.email_recipients }}"
+      subject: "⚠️ Cost Anomaly Alert - {{ variables.check_date }}"
+      body: "{{ steps.format_report.result }}"
+      format: "markdown"
+    on_error: continue
+
+  - name: store_metrics
+    action: prometheus.push_metrics
+    params:
+      metrics:
+        - name: "opensre_daily_cost_total"
+          value: "{{ steps.get_current_costs.result.total }}"
+          labels:
+            date: "{{ variables.check_date }}"
+        - name: "opensre_cost_anomaly_count"
+          value: "{{ steps.calculate_anomalies.result.anomalies | length }}"
+          labels:
+            date: "{{ variables.check_date }}"
+        - name: "opensre_cost_variance_percent"
+          value: "{{ steps.calculate_anomalies.result.total_variance_percent }}"
+          labels:
+            date: "{{ variables.check_date }}"
+    on_error: continue
+
+  - name: create_ticket_high_severity
+    action: jira.create_issue
+    condition: "{{ steps.calculate_anomalies.result.severity == 'critical' }}"
+    params:
+      project: "FINOPS"
+      issue_type: "Task"
+      summary: "Cost Anomaly Investigation - {{ variables.check_date }}"
+      description: "{{ steps.format_report.result }}"
+      priority: "High"
+      labels:
+        - cost-anomaly
+        - auto-generated
+    on_error: continue

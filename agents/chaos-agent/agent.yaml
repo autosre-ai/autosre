@@ -1,0 +1,486 @@
+name: chaos-agent
+description: Controlled chaos engineering experiments with automated rollback and impact analysis
+version: 1.0.0
+
+triggers:
+  - type: schedule
+    cron: "0 3 * * 2,4"  # Tuesdays and Thursdays at 3 AM
+    timezone: "UTC"
+  - type: webhook
+    path: /webhook/chaos-run
+    source: manual
+
+skills:
+  - kubernetes
+  - prometheus
+  - slack
+  - pagerduty
+  - litmus
+  - llm
+
+config:
+  slack_channel: "#chaos-engineering"
+  approval_channel: "#chaos-approvals"
+  enabled: true  # Master kill switch
+  require_approval: true
+  approval_timeout_minutes: 30
+  environments:
+    allowed: ["staging", "chaos-testing"]
+    blocked: ["production"]  # Never run in production automatically
+  experiments:
+    - name: pod-kill
+      description: "Random pod termination"
+      type: pod-delete
+      enabled: true
+      target:
+        namespace: staging
+        label_selector: "chaos-enabled=true"
+        count: 1
+      duration_seconds: 60
+      cooldown_minutes: 30
+    - name: network-latency
+      description: "Inject 200ms network latency"
+      type: network-chaos
+      enabled: true
+      target:
+        namespace: staging
+        label_selector: "chaos-enabled=true"
+      params:
+        latency: "200ms"
+        jitter: "50ms"
+      duration_seconds: 300
+    - name: cpu-stress
+      description: "CPU stress test"
+      type: stress-chaos
+      enabled: false
+      target:
+        namespace: staging
+        label_selector: "app=api-server"
+      params:
+        cpu_cores: 2
+        cpu_load: 80
+      duration_seconds: 180
+    - name: memory-hog
+      description: "Memory pressure test"
+      type: stress-chaos
+      enabled: false
+      target:
+        namespace: staging
+        label_selector: "app=worker"
+      params:
+        memory_bytes: "512Mi"
+      duration_seconds: 120
+  safety:
+    max_affected_pods_percent: 30
+    min_healthy_pods: 2
+    abort_on_alert: true
+    alert_names_to_watch:
+      - HighErrorRate
+      - PodCrashLooping
+      - ServiceDown
+    rollback_on_slo_breach: true
+    slo_threshold_percent: 95
+  baseline_duration_minutes: 5
+  experiment_timeout_minutes: 15
+  pagerduty_service_id: "PCHAOS"
+
+variables:
+  experiment_id: "{{ uuid() }}"
+  start_time: "{{ now | date_format('%Y-%m-%d %H:%M:%S') }}"
+
+steps:
+  - name: check_enabled
+    action: compute.assert
+    params:
+      condition: "{{ config.enabled }}"
+      message: "Chaos engineering is disabled"
+    on_error: fail
+
+  - name: check_environment
+    action: compute.assert
+    params:
+      condition: "{{ trigger.namespace | default('staging') not in config.environments.blocked }}"
+      message: "Cannot run chaos experiments in blocked environment"
+    on_error: fail
+
+  - name: select_experiment
+    action: compute.select
+    params:
+      items: "{{ config.experiments | selectattr('enabled', '==', true) | list }}"
+      strategy: "{{ trigger.experiment | default('random') }}"
+    on_error: fail
+
+  - name: validate_targets
+    action: kubernetes.get_pods
+    params:
+      namespace: "{{ steps.select_experiment.result.target.namespace }}"
+      labels: "{{ steps.select_experiment.result.target.label_selector }}"
+    on_error: fail
+
+  - name: check_safety_constraints
+    action: compute.evaluate
+    params:
+      pods: "{{ steps.validate_targets.result.items }}"
+      experiment: "{{ steps.select_experiment.result }}"
+      safety: "{{ config.safety }}"
+      checks:
+        - name: min_pods
+          expression: "len(pods) >= safety.min_healthy_pods"
+          message: "Not enough pods to safely run experiment"
+        - name: max_affected
+          expression: |
+            affected = experiment.target.count | default(1)
+            max_allowed = len(pods) * (safety.max_affected_pods_percent / 100)
+            return affected <= max_allowed
+          message: "Experiment would affect too many pods"
+        - name: pods_healthy
+          expression: |
+            healthy = len([p for p in pods if p.status.phase == 'Running'])
+            return healthy >= safety.min_healthy_pods
+          message: "Not enough healthy pods"
+    on_error: fail
+
+  - name: request_approval
+    action: slack.send_message
+    condition: "{{ config.require_approval }}"
+    params:
+      channel: "{{ config.approval_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "🧪 Chaos Experiment Approval Request"
+        - type: section
+          fields:
+            - type: mrkdwn
+              text: "*Experiment:* {{ steps.select_experiment.result.name }}"
+            - type: mrkdwn
+              text: "*Type:* {{ steps.select_experiment.result.type }}"
+            - type: mrkdwn
+              text: "*Target:* {{ steps.select_experiment.result.target.namespace }}"
+            - type: mrkdwn
+              text: "*Duration:* {{ steps.select_experiment.result.duration_seconds }}s"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Description:* {{ steps.select_experiment.result.description }}
+              
+              *Target Pods:* {{ steps.validate_targets.result.items | length }} pods match selector
+              
+              *Safety Checks:* All passed ✅
+        - type: actions
+          elements:
+            - type: button
+              text:
+                type: plain_text
+                text: "✅ Approve"
+              style: primary
+              action_id: "approve_chaos"
+              value: "{{ variables.experiment_id }}"
+            - type: button
+              text:
+                type: plain_text
+                text: "❌ Reject"
+              style: danger
+              action_id: "reject_chaos"
+              value: "{{ variables.experiment_id }}"
+    on_error: continue
+
+  - name: wait_for_approval
+    action: slack.wait_interaction
+    condition: "{{ config.require_approval }}"
+    params:
+      execution_id: "{{ variables.experiment_id }}"
+      timeout_minutes: "{{ config.approval_timeout_minutes }}"
+      valid_actions:
+        - approve_chaos
+        - reject_chaos
+    on_error: fail
+
+  - name: abort_if_rejected
+    action: compute.abort
+    condition: "{{ steps.wait_for_approval.result.action == 'reject_chaos' }}"
+    params:
+      reason: "Experiment rejected by {{ steps.wait_for_approval.result.user }}"
+
+  - name: collect_baseline_metrics
+    action: prometheus.query_range
+    params:
+      queries:
+        error_rate: |
+          sum(rate(http_requests_total{namespace="{{ steps.select_experiment.result.target.namespace }}", status=~"5.."}[1m])) /
+          sum(rate(http_requests_total{namespace="{{ steps.select_experiment.result.target.namespace }}"}[1m])) * 100
+        latency_p99: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket{namespace="{{ steps.select_experiment.result.target.namespace }}"}[1m])) by (le)
+          ) * 1000
+        availability: |
+          sum(up{namespace="{{ steps.select_experiment.result.target.namespace }}"}) /
+          count(up{namespace="{{ steps.select_experiment.result.target.namespace }}"}) * 100
+      start: "{{ now | date_subtract(config.baseline_duration_minutes, 'minutes') }}"
+      end: "{{ now }}"
+      step: "30s"
+    on_error: continue
+    retries: 2
+
+  - name: calculate_baseline
+    action: compute.calculate
+    params:
+      metrics: "{{ steps.collect_baseline_metrics.result }}"
+      calculations:
+        - name: baseline_error_rate
+          formula: "avg(error_rate.values)"
+        - name: baseline_latency_p99
+          formula: "avg(latency_p99.values)"
+        - name: baseline_availability
+          formula: "avg(availability.values)"
+    on_error: continue
+
+  - name: notify_experiment_start
+    action: slack.send_message
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "🧪 Chaos Experiment Starting"
+        - type: section
+          fields:
+            - type: mrkdwn
+              text: "*Experiment:* {{ steps.select_experiment.result.name }}"
+            - type: mrkdwn
+              text: "*ID:* `{{ variables.experiment_id }}`"
+            - type: mrkdwn
+              text: "*Duration:* {{ steps.select_experiment.result.duration_seconds }}s"
+            - type: mrkdwn
+              text: "*Approved by:* {{ steps.wait_for_approval.result.user | default('Auto-approved') }}"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Baseline Metrics:*
+              • Error Rate: {{ steps.calculate_baseline.result.baseline_error_rate | number_format(2) }}%
+              • Latency P99: {{ steps.calculate_baseline.result.baseline_latency_p99 | number_format(0) }}ms
+              • Availability: {{ steps.calculate_baseline.result.baseline_availability | number_format(1) }}%
+        - type: actions
+          elements:
+            - type: button
+              text:
+                type: plain_text
+                text: "🛑 Abort Experiment"
+              style: danger
+              action_id: "abort_chaos"
+              value: "{{ variables.experiment_id }}"
+    on_error: continue
+
+  - name: run_experiment
+    action: litmus.run_experiment
+    params:
+      experiment: "{{ steps.select_experiment.result }}"
+      experiment_id: "{{ variables.experiment_id }}"
+      timeout_minutes: "{{ config.experiment_timeout_minutes }}"
+      abort_on: "{{ config.safety.alert_names_to_watch }}"
+    on_error: continue
+    retries: 0
+
+  - name: monitor_during_experiment
+    action: prometheus.watch
+    params:
+      queries:
+        alerts: "ALERTS{alertstate='firing', namespace='{{ steps.select_experiment.result.target.namespace }}'}"
+        error_rate: |
+          sum(rate(http_requests_total{namespace="{{ steps.select_experiment.result.target.namespace }}", status=~"5.."}[1m])) /
+          sum(rate(http_requests_total{namespace="{{ steps.select_experiment.result.target.namespace }}"}[1m])) * 100
+      duration_seconds: "{{ steps.select_experiment.result.duration_seconds }}"
+      interval_seconds: 10
+      abort_condition: |
+        alerts.firing | length > 0 AND {{ config.safety.abort_on_alert }}
+    on_error: continue
+
+  - name: check_abort_triggered
+    action: compute.evaluate
+    params:
+      monitoring: "{{ steps.monitor_during_experiment.result }}"
+      condition: "monitoring.aborted == true"
+    on_error: continue
+
+  - name: rollback_if_needed
+    action: litmus.rollback
+    condition: "{{ steps.check_abort_triggered.result or steps.run_experiment.result.status == 'failed' }}"
+    params:
+      experiment_id: "{{ variables.experiment_id }}"
+    on_error: continue
+    retries: 2
+
+  - name: collect_experiment_metrics
+    action: prometheus.query_range
+    params:
+      queries:
+        error_rate: |
+          sum(rate(http_requests_total{namespace="{{ steps.select_experiment.result.target.namespace }}", status=~"5.."}[1m])) /
+          sum(rate(http_requests_total{namespace="{{ steps.select_experiment.result.target.namespace }}"}[1m])) * 100
+        latency_p99: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket{namespace="{{ steps.select_experiment.result.target.namespace }}"}[1m])) by (le)
+          ) * 1000
+        pod_restarts: |
+          sum(increase(kube_pod_container_status_restarts_total{namespace="{{ steps.select_experiment.result.target.namespace }}"}[{{ steps.select_experiment.result.duration_seconds }}s]))
+      start: "{{ steps.notify_experiment_start.timestamp }}"
+      end: "{{ now }}"
+      step: "10s"
+    on_error: continue
+
+  - name: analyze_impact
+    action: compute.calculate
+    params:
+      baseline: "{{ steps.calculate_baseline.result }}"
+      experiment: "{{ steps.collect_experiment_metrics.result }}"
+      calculations:
+        - name: error_rate_delta
+          formula: "max(experiment.error_rate.values) - baseline.baseline_error_rate"
+        - name: latency_delta
+          formula: "max(experiment.latency_p99.values) - baseline.baseline_latency_p99"
+        - name: recovery_time_seconds
+          formula: |
+            # Time from peak impact to return to baseline
+            find_recovery_point(experiment.error_rate.values, baseline.baseline_error_rate * 1.1)
+        - name: slo_breach
+          formula: |
+            slo_target = {{ config.safety.slo_threshold_percent }}
+            min_availability = min(experiment.availability.values | default([100]))
+            return min_availability < slo_target
+    on_error: continue
+
+  - name: generate_ai_analysis
+    action: llm.analyze
+    params:
+      prompt: |
+        Analyze this chaos engineering experiment:
+        
+        Experiment: {{ steps.select_experiment.result.name }}
+        Type: {{ steps.select_experiment.result.type }}
+        Duration: {{ steps.select_experiment.result.duration_seconds }}s
+        
+        Baseline Metrics:
+        - Error Rate: {{ steps.calculate_baseline.result.baseline_error_rate | number_format(2) }}%
+        - Latency P99: {{ steps.calculate_baseline.result.baseline_latency_p99 | number_format(0) }}ms
+        
+        During Experiment:
+        - Peak Error Rate: {{ steps.collect_experiment_metrics.result.error_rate | max | number_format(2) }}%
+        - Peak Latency P99: {{ steps.collect_experiment_metrics.result.latency_p99 | max | number_format(0) }}ms
+        - Pod Restarts: {{ steps.collect_experiment_metrics.result.pod_restarts | sum }}
+        
+        Impact Analysis:
+        - Error Rate Increase: {{ steps.analyze_impact.result.error_rate_delta | number_format(2) }}%
+        - Latency Increase: {{ steps.analyze_impact.result.latency_delta | number_format(0) }}ms
+        - Recovery Time: {{ steps.analyze_impact.result.recovery_time_seconds }}s
+        - SLO Breach: {{ 'Yes' if steps.analyze_impact.result.slo_breach else 'No' }}
+        
+        Provide:
+        1. Resilience assessment (Strong/Adequate/Weak)
+        2. Key findings
+        3. Recommendations for improvement
+        4. Suggested next experiments
+      model: "gpt-4"
+      max_tokens: 1000
+    on_error: continue
+
+  - name: notify_experiment_complete
+    action: slack.send_message
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "{{ '✅' if not steps.analyze_impact.result.slo_breach else '⚠️' }} Chaos Experiment Complete"
+        - type: section
+          fields:
+            - type: mrkdwn
+              text: "*Experiment:* {{ steps.select_experiment.result.name }}"
+            - type: mrkdwn
+              text: "*Status:* {{ steps.run_experiment.result.status }}"
+            - type: mrkdwn
+              text: "*Duration:* {{ steps.select_experiment.result.duration_seconds }}s"
+            - type: mrkdwn
+              text: "*SLO Breach:* {{ 'Yes ⚠️' if steps.analyze_impact.result.slo_breach else 'No ✅' }}"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Impact Summary:*
+              • Error Rate: {{ steps.calculate_baseline.result.baseline_error_rate | number_format(2) }}% → {{ (steps.calculate_baseline.result.baseline_error_rate + steps.analyze_impact.result.error_rate_delta) | number_format(2) }}% (+{{ steps.analyze_impact.result.error_rate_delta | number_format(2) }}%)
+              • Latency P99: {{ steps.calculate_baseline.result.baseline_latency_p99 | number_format(0) }}ms → {{ (steps.calculate_baseline.result.baseline_latency_p99 + steps.analyze_impact.result.latency_delta) | number_format(0) }}ms
+              • Recovery Time: {{ steps.analyze_impact.result.recovery_time_seconds }}s
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *AI Analysis:*
+              {{ steps.generate_ai_analysis.result | truncate(800) }}
+    on_error: continue
+
+  - name: page_on_slo_breach
+    action: pagerduty.create_incident
+    condition: "{{ steps.analyze_impact.result.slo_breach and config.safety.rollback_on_slo_breach }}"
+    params:
+      service_id: "{{ config.pagerduty_service_id }}"
+      title: "Chaos Experiment SLO Breach"
+      urgency: "low"
+      body: |
+        Chaos experiment caused SLO breach:
+        
+        Experiment: {{ steps.select_experiment.result.name }}
+        Namespace: {{ steps.select_experiment.result.target.namespace }}
+        
+        Impact:
+        - Error rate increased by {{ steps.analyze_impact.result.error_rate_delta | number_format(2) }}%
+        - SLO threshold: {{ config.safety.slo_threshold_percent }}%
+        
+        This indicates a resilience gap that should be addressed.
+    on_error: continue
+
+  - name: push_metrics
+    action: prometheus.push_metrics
+    params:
+      metrics:
+        - name: "opensre_chaos_experiment_total"
+          value: 1
+          labels:
+            experiment: "{{ steps.select_experiment.result.name }}"
+            status: "{{ steps.run_experiment.result.status }}"
+        - name: "opensre_chaos_error_rate_delta"
+          value: "{{ steps.analyze_impact.result.error_rate_delta }}"
+          labels:
+            experiment: "{{ steps.select_experiment.result.name }}"
+        - name: "opensre_chaos_recovery_time_seconds"
+          value: "{{ steps.analyze_impact.result.recovery_time_seconds }}"
+          labels:
+            experiment: "{{ steps.select_experiment.result.name }}"
+        - name: "opensre_chaos_slo_breach"
+          value: "{{ 1 if steps.analyze_impact.result.slo_breach else 0 }}"
+          labels:
+            experiment: "{{ steps.select_experiment.result.name }}"
+    on_error: continue
+
+  - name: store_experiment_record
+    action: database.insert
+    params:
+      table: "chaos_experiments"
+      record:
+        experiment_id: "{{ variables.experiment_id }}"
+        experiment_name: "{{ steps.select_experiment.result.name }}"
+        experiment_type: "{{ steps.select_experiment.result.type }}"
+        namespace: "{{ steps.select_experiment.result.target.namespace }}"
+        start_time: "{{ variables.start_time }}"
+        end_time: "{{ now }}"
+        status: "{{ steps.run_experiment.result.status }}"
+        baseline_error_rate: "{{ steps.calculate_baseline.result.baseline_error_rate }}"
+        peak_error_rate: "{{ steps.collect_experiment_metrics.result.error_rate | max }}"
+        recovery_time_seconds: "{{ steps.analyze_impact.result.recovery_time_seconds }}"
+        slo_breach: "{{ steps.analyze_impact.result.slo_breach }}"
+        analysis: "{{ steps.generate_ai_analysis.result }}"
+        approved_by: "{{ steps.wait_for_approval.result.user | default('auto') }}"
+    on_error: continue

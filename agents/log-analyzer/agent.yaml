@@ -1,0 +1,337 @@
+name: log-analyzer
+description: Pattern detection in logs, anomaly detection, and automated log-based alerting
+version: 1.0.0
+
+triggers:
+  - type: schedule
+    cron: "*/10 * * * *"  # Every 10 minutes
+    timezone: "UTC"
+  - type: webhook
+    path: /webhook/log-analyze
+    source: manual
+  - type: webhook
+    path: /webhook/log-alert
+    source: fluentd
+
+skills:
+  - elasticsearch
+  - loki
+  - slack
+  - pagerduty
+  - llm
+
+config:
+  slack_channel: "#log-alerts"
+  log_sources:
+    - type: elasticsearch
+      index: "logs-*"
+      url: "https://elasticsearch.example.com"
+    - type: loki
+      url: "https://loki.example.com"
+  analysis_window_minutes: 10
+  patterns:
+    critical:
+      - pattern: "FATAL|CRITICAL|PANIC"
+        min_count: 1
+        description: "Fatal errors"
+      - pattern: "OutOfMemoryError|OOMKilled"
+        min_count: 1
+        description: "Memory exhaustion"
+      - pattern: "Connection refused|Connection timed out"
+        min_count: 50
+        description: "Connection failures"
+    warning:
+      - pattern: "ERROR|Exception"
+        min_count: 100
+        description: "High error rate"
+      - pattern: "timeout|Timeout|TIMEOUT"
+        min_count: 20
+        description: "Timeout spike"
+      - pattern: "retry|Retry|RETRY"
+        min_count: 50
+        description: "High retry rate"
+    noise_filter:
+      - "health check"
+      - "DEBUG"
+      - "TRACE"
+  anomaly_detection:
+    enabled: true
+    baseline_hours: 24
+    deviation_threshold: 3.0  # Standard deviations
+  error_rate_threshold_percent: 5
+  pagerduty_service_id: "PLOGS"
+
+variables:
+  analysis_start: "{{ now | date_subtract(config.analysis_window_minutes, 'minutes') }}"
+  analysis_end: "{{ now }}"
+
+steps:
+  - name: query_recent_logs
+    action: elasticsearch.search
+    params:
+      index: "{{ config.log_sources | selectattr('type', '==', 'elasticsearch') | first | attr('index') }}"
+      query:
+        bool:
+          must:
+            - range:
+                "@timestamp":
+                  gte: "{{ variables.analysis_start }}"
+                  lte: "{{ variables.analysis_end }}"
+          must_not:
+            - terms:
+                message: "{{ config.patterns.noise_filter }}"
+      size: 10000
+      aggs:
+        by_level:
+          terms:
+            field: "level"
+        by_service:
+          terms:
+            field: "kubernetes.labels.app"
+        by_namespace:
+          terms:
+            field: "kubernetes.namespace"
+    on_error: continue
+    retries: 2
+
+  - name: query_loki_logs
+    action: loki.query_range
+    condition: "{{ config.log_sources | selectattr('type', '==', 'loki') | list | length > 0 }}"
+    params:
+      query: '{namespace=~".+"} |~ "(?i)(error|exception|fatal|panic)"'
+      start: "{{ variables.analysis_start }}"
+      end: "{{ variables.analysis_end }}"
+      limit: 5000
+    on_error: continue
+
+  - name: detect_critical_patterns
+    action: compute.pattern_match
+    params:
+      logs: "{{ steps.query_recent_logs.result.hits.hits }}"
+      patterns: "{{ config.patterns.critical }}"
+      return_matches: true
+      group_by: ["service", "namespace"]
+    on_error: continue
+
+  - name: detect_warning_patterns
+    action: compute.pattern_match
+    params:
+      logs: "{{ steps.query_recent_logs.result.hits.hits }}"
+      patterns: "{{ config.patterns.warning }}"
+      return_matches: true
+      group_by: ["service", "namespace"]
+    on_error: continue
+
+  - name: calculate_error_rates
+    action: compute.calculate
+    params:
+      log_stats: "{{ steps.query_recent_logs.result.aggregations }}"
+      calculations:
+        - name: total_logs
+          formula: "sum(by_level.buckets.doc_count)"
+        - name: error_logs
+          formula: "sum(by_level.buckets | selectattr('key', 'in', ['ERROR', 'FATAL', 'CRITICAL']) | map('doc_count'))"
+        - name: error_rate_percent
+          formula: "(error_logs / total_logs) * 100"
+        - name: errors_by_service
+          formula: "group(by_service.buckets, 'key', 'error_count')"
+    on_error: continue
+
+  - name: get_baseline_stats
+    action: elasticsearch.search
+    condition: "{{ config.anomaly_detection.enabled }}"
+    params:
+      index: "{{ config.log_sources | selectattr('type', '==', 'elasticsearch') | first | attr('index') }}"
+      query:
+        range:
+          "@timestamp":
+            gte: "{{ now | date_subtract(config.anomaly_detection.baseline_hours, 'hours') }}"
+            lte: "{{ variables.analysis_start }}"
+      aggs:
+        errors_per_interval:
+          date_histogram:
+            field: "@timestamp"
+            fixed_interval: "{{ config.analysis_window_minutes }}m"
+          aggs:
+            error_count:
+              filter:
+                terms:
+                  level: ["ERROR", "FATAL", "CRITICAL"]
+    on_error: continue
+
+  - name: detect_anomalies
+    action: compute.anomaly_detection
+    condition: "{{ config.anomaly_detection.enabled }}"
+    params:
+      current_value: "{{ steps.calculate_error_rates.result.error_logs }}"
+      baseline_data: "{{ steps.get_baseline_stats.result.aggregations.errors_per_interval.buckets | map('error_count.doc_count') | list }}"
+      method: "zscore"
+      threshold: "{{ config.anomaly_detection.deviation_threshold }}"
+    on_error: continue
+
+  - name: extract_sample_errors
+    action: compute.extract
+    condition: "{{ steps.detect_critical_patterns.result | length > 0 or steps.detect_anomalies.result.is_anomaly }}"
+    params:
+      logs: "{{ steps.query_recent_logs.result.hits.hits }}"
+      filter: "level in ['ERROR', 'FATAL', 'CRITICAL']"
+      limit: 10
+      fields: ["@timestamp", "message", "kubernetes.labels.app", "kubernetes.namespace"]
+    on_error: continue
+
+  - name: analyze_with_ai
+    action: llm.analyze
+    condition: "{{ steps.detect_critical_patterns.result | length > 0 or steps.detect_anomalies.result.is_anomaly }}"
+    params:
+      prompt: |
+        Analyze these log patterns and provide insights:
+        
+        Time window: {{ variables.analysis_start }} to {{ variables.analysis_end }}
+        
+        Error Statistics:
+        - Total logs: {{ steps.calculate_error_rates.result.total_logs }}
+        - Error logs: {{ steps.calculate_error_rates.result.error_logs }}
+        - Error rate: {{ steps.calculate_error_rates.result.error_rate_percent | number_format(2) }}%
+        
+        Critical Patterns Detected:
+        {% for pattern in steps.detect_critical_patterns.result %}
+        - {{ pattern.pattern }}: {{ pattern.count }} occurrences
+          Services: {{ pattern.services | join(', ') }}
+        {% endfor %}
+        
+        Anomaly Detection:
+        - Is anomaly: {{ steps.detect_anomalies.result.is_anomaly }}
+        - Z-score: {{ steps.detect_anomalies.result.zscore | number_format(2) }}
+        - Baseline mean: {{ steps.detect_anomalies.result.baseline_mean | number_format(1) }}
+        
+        Sample Error Messages:
+        {% for log in steps.extract_sample_errors.result[:5] %}
+        - [{{ log.kubernetes.labels.app }}] {{ log.message | truncate(200) }}
+        {% endfor %}
+        
+        Provide:
+        1. Root cause analysis
+        2. Affected services
+        3. Recommended actions
+        4. Severity assessment
+      model: "gpt-4"
+      max_tokens: 1000
+    on_error: continue
+
+  - name: alert_critical_patterns
+    action: slack.send_message
+    condition: "{{ steps.detect_critical_patterns.result | length > 0 }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "🚨 Critical Log Patterns Detected"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *{{ steps.detect_critical_patterns.result | length }} critical pattern(s) found in the last {{ config.analysis_window_minutes }} minutes:*
+              
+              {% for pattern in steps.detect_critical_patterns.result %}
+              • *{{ pattern.description }}* (`{{ pattern.pattern }}`)
+                Count: {{ pattern.count }} | Services: {{ pattern.services | join(', ') }}
+              {% endfor %}
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Sample Messages:*
+              {% for log in steps.extract_sample_errors.result[:3] %}
+              ```{{ log.message | truncate(150) }}```
+              {% endfor %}
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *AI Analysis:*
+              {{ steps.analyze_with_ai.result | truncate(500) }}
+        - type: actions
+          elements:
+            - type: button
+              text:
+                type: plain_text
+                text: "📊 View in Kibana"
+              url: "{{ config.kibana_url | default('#') }}"
+            - type: button
+              text:
+                type: plain_text
+                text: "📋 Create Incident"
+              action_id: "create_log_incident"
+    on_error: continue
+
+  - name: alert_anomaly
+    action: slack.send_message
+    condition: "{{ steps.detect_anomalies.result.is_anomaly and not steps.detect_critical_patterns.result | length > 0 }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      text: |
+        📈 *Log Volume Anomaly Detected*
+        
+        Error count in last {{ config.analysis_window_minutes }} minutes: {{ steps.calculate_error_rates.result.error_logs }}
+        Baseline average: {{ steps.detect_anomalies.result.baseline_mean | number_format(1) }}
+        Z-score: {{ steps.detect_anomalies.result.zscore | number_format(2) }} (threshold: {{ config.anomaly_detection.deviation_threshold }})
+        
+        *Top Error Services:*
+        {% for svc in steps.calculate_error_rates.result.errors_by_service[:5] %}
+        • {{ svc.key }}: {{ svc.error_count }} errors
+        {% endfor %}
+    on_error: continue
+
+  - name: alert_high_error_rate
+    action: slack.send_message
+    condition: "{{ steps.calculate_error_rates.result.error_rate_percent > config.error_rate_threshold_percent }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      text: |
+        ⚠️ *High Error Rate Detected*
+        
+        Error rate: {{ steps.calculate_error_rates.result.error_rate_percent | number_format(2) }}% (threshold: {{ config.error_rate_threshold_percent }}%)
+        
+        Time window: {{ variables.analysis_start }} to {{ variables.analysis_end }}
+        Total logs: {{ steps.calculate_error_rates.result.total_logs }}
+        Error logs: {{ steps.calculate_error_rates.result.error_logs }}
+    on_error: continue
+
+  - name: page_critical
+    action: pagerduty.create_incident
+    condition: "{{ steps.detect_critical_patterns.result | selectattr('pattern', 'match', 'FATAL|PANIC|OOM') | list | length > 0 }}"
+    params:
+      service_id: "{{ config.pagerduty_service_id }}"
+      title: "Critical Log Pattern: {{ steps.detect_critical_patterns.result[0].description }}"
+      urgency: "high"
+      body: |
+        Critical log patterns detected:
+        
+        {% for pattern in steps.detect_critical_patterns.result %}
+        - {{ pattern.description }}: {{ pattern.count }} occurrences
+          Services: {{ pattern.services | join(', ') }}
+        {% endfor %}
+        
+        Sample messages:
+        {% for log in steps.extract_sample_errors.result[:5] %}
+        - {{ log.message | truncate(200) }}
+        {% endfor %}
+    on_error: continue
+
+  - name: push_metrics
+    action: prometheus.push_metrics
+    params:
+      metrics:
+        - name: "opensre_log_error_count"
+          value: "{{ steps.calculate_error_rates.result.error_logs }}"
+          labels:
+            window_minutes: "{{ config.analysis_window_minutes }}"
+        - name: "opensre_log_error_rate_percent"
+          value: "{{ steps.calculate_error_rates.result.error_rate_percent }}"
+        - name: "opensre_log_critical_patterns"
+          value: "{{ steps.detect_critical_patterns.result | length }}"
+        - name: "opensre_log_anomaly_detected"
+          value: "{{ 1 if steps.detect_anomalies.result.is_anomaly else 0 }}"
+    on_error: continue

@@ -1,0 +1,384 @@
+name: capacity-planner
+description: Weekly resource utilization analysis with scaling recommendations and capacity forecasting
+version: 1.0.0
+
+triggers:
+  - type: schedule
+    cron: "0 6 * * 1"  # Every Monday at 6 AM
+    timezone: "UTC"
+  - type: webhook
+    path: /webhook/capacity-report
+    source: manual
+
+skills:
+  - prometheus
+  - kubernetes
+  - slack
+  - email
+  - llm
+
+config:
+  slack_channel: "#capacity-planning"
+  email_recipients:
+    - platform-team@example.com
+  report_period_days: 7
+  forecast_days: 30
+  namespaces:
+    - production
+    - staging
+  thresholds:
+    cpu_utilization_high: 80
+    cpu_utilization_low: 20
+    memory_utilization_high: 85
+    memory_utilization_low: 25
+    node_utilization_target: 70
+  cost_per_cpu_hour: 0.05
+  cost_per_gb_hour: 0.01
+  enable_ai_recommendations: true
+
+variables:
+  report_date: "{{ now | date_format('%Y-%m-%d') }}"
+  period_start: "{{ now | date_subtract(config.report_period_days) | date_format('%Y-%m-%d') }}"
+  period_end: "{{ now | date_format('%Y-%m-%d') }}"
+
+steps:
+  - name: get_cluster_nodes
+    action: kubernetes.get_nodes
+    params:
+      label_selector: ""
+    on_error: fail
+    retries: 2
+
+  - name: get_node_metrics
+    action: prometheus.query_range
+    params:
+      queries:
+        cpu_usage: |
+          avg by (node) (
+            rate(node_cpu_seconds_total{mode!="idle"}[5m])
+          ) * 100
+        memory_usage: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100
+        disk_usage: |
+          (1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})) * 100
+      start: "{{ variables.period_start }}"
+      end: "{{ variables.period_end }}"
+      step: "1h"
+    on_error: continue
+    retries: 3
+
+  - name: get_namespace_metrics
+    action: prometheus.query_range
+    params:
+      queries:
+        cpu_requests: |
+          sum by (namespace) (
+            kube_pod_container_resource_requests{resource="cpu"}
+          )
+        cpu_limits: |
+          sum by (namespace) (
+            kube_pod_container_resource_limits{resource="cpu"}
+          )
+        cpu_usage: |
+          sum by (namespace) (
+            rate(container_cpu_usage_seconds_total[5m])
+          )
+        memory_requests: |
+          sum by (namespace) (
+            kube_pod_container_resource_requests{resource="memory"}
+          )
+        memory_limits: |
+          sum by (namespace) (
+            kube_pod_container_resource_limits{resource="memory"}
+          )
+        memory_usage: |
+          sum by (namespace) (
+            container_memory_usage_bytes
+          )
+      start: "{{ variables.period_start }}"
+      end: "{{ variables.period_end }}"
+      step: "1h"
+      namespaces: "{{ config.namespaces }}"
+    on_error: continue
+    retries: 3
+
+  - name: get_workload_metrics
+    action: prometheus.query_range
+    params:
+      queries:
+        deployment_replicas: |
+          kube_deployment_spec_replicas
+        deployment_available: |
+          kube_deployment_status_replicas_available
+        hpa_current: |
+          kube_horizontalpodautoscaler_status_current_replicas
+        hpa_desired: |
+          kube_horizontalpodautoscaler_status_desired_replicas
+        hpa_min: |
+          kube_horizontalpodautoscaler_spec_min_replicas
+        hpa_max: |
+          kube_horizontalpodautoscaler_spec_max_replicas
+      start: "{{ variables.period_start }}"
+      end: "{{ variables.period_end }}"
+      step: "1h"
+    on_error: continue
+
+  - name: calculate_utilization
+    action: compute.calculate
+    params:
+      node_metrics: "{{ steps.get_node_metrics.result }}"
+      namespace_metrics: "{{ steps.get_namespace_metrics.result }}"
+      calculations:
+        - name: cluster_cpu_avg
+          formula: "avg(node_metrics.cpu_usage)"
+        - name: cluster_memory_avg
+          formula: "avg(node_metrics.memory_usage)"
+        - name: cluster_cpu_peak
+          formula: "max(node_metrics.cpu_usage)"
+        - name: cluster_memory_peak
+          formula: "max(node_metrics.memory_usage)"
+        - name: namespace_efficiency
+          formula: "(cpu_usage / cpu_requests) * 100 for each namespace"
+        - name: overprovisioned_namespaces
+          formula: "filter(namespace_efficiency < 20)"
+        - name: underprovisioned_namespaces
+          formula: "filter(namespace_efficiency > 80)"
+    on_error: fail
+
+  - name: identify_rightsizing_opportunities
+    action: compute.analyze
+    params:
+      namespace_metrics: "{{ steps.get_namespace_metrics.result }}"
+      thresholds: "{{ config.thresholds }}"
+      analysis:
+        - type: overprovisioned
+          condition: "(requests - usage) / requests > 0.5"
+          fields: [namespace, deployment, cpu_requests, cpu_usage, memory_requests, memory_usage]
+        - type: underprovisioned
+          condition: "usage / requests > 0.8"
+          fields: [namespace, deployment, cpu_usage, cpu_limits]
+        - type: no_limits
+          condition: "limits == null or limits == 0"
+          fields: [namespace, deployment]
+        - type: no_requests
+          condition: "requests == null or requests == 0"
+          fields: [namespace, deployment]
+    on_error: continue
+
+  - name: forecast_capacity
+    action: compute.forecast
+    params:
+      metrics:
+        - name: cluster_cpu
+          data: "{{ steps.get_node_metrics.result.cpu_usage }}"
+        - name: cluster_memory
+          data: "{{ steps.get_node_metrics.result.memory_usage }}"
+      forecast_days: "{{ config.forecast_days }}"
+      method: "linear_regression"
+      confidence_interval: 0.95
+    on_error: continue
+
+  - name: calculate_cost_savings
+    action: compute.calculate
+    params:
+      rightsizing: "{{ steps.identify_rightsizing_opportunities.result.overprovisioned }}"
+      cost_per_cpu_hour: "{{ config.cost_per_cpu_hour }}"
+      cost_per_gb_hour: "{{ config.cost_per_gb_hour }}"
+      formula: |
+        for each opportunity:
+          cpu_savings = (cpu_requests - recommended_cpu) * cost_per_cpu_hour * 24 * 30
+          memory_savings = (memory_requests - recommended_memory) / 1e9 * cost_per_gb_hour * 24 * 30
+          total = cpu_savings + memory_savings
+    on_error: continue
+
+  - name: generate_ai_recommendations
+    action: llm.analyze
+    condition: "{{ config.enable_ai_recommendations }}"
+    params:
+      prompt: |
+        Analyze this Kubernetes cluster capacity data and provide recommendations:
+        
+        Cluster Utilization:
+        - Average CPU: {{ steps.calculate_utilization.result.cluster_cpu_avg }}%
+        - Peak CPU: {{ steps.calculate_utilization.result.cluster_cpu_peak }}%
+        - Average Memory: {{ steps.calculate_utilization.result.cluster_memory_avg }}%
+        - Peak Memory: {{ steps.calculate_utilization.result.cluster_memory_peak }}%
+        
+        Overprovisioned Workloads ({{ steps.identify_rightsizing_opportunities.result.overprovisioned | length }}):
+        {% for w in steps.identify_rightsizing_opportunities.result.overprovisioned[:10] %}
+        - {{ w.namespace }}/{{ w.deployment }}: {{ w.cpu_usage }}/{{ w.cpu_requests }} CPU, {{ w.memory_usage }}/{{ w.memory_requests }} Memory
+        {% endfor %}
+        
+        Underprovisioned Workloads ({{ steps.identify_rightsizing_opportunities.result.underprovisioned | length }}):
+        {% for w in steps.identify_rightsizing_opportunities.result.underprovisioned[:10] %}
+        - {{ w.namespace }}/{{ w.deployment }}: {{ w.cpu_usage }}/{{ w.cpu_limits }} CPU
+        {% endfor %}
+        
+        30-Day Forecast:
+        - CPU will reach {{ steps.forecast_capacity.result.cluster_cpu.forecast_30d }}%
+        - Memory will reach {{ steps.forecast_capacity.result.cluster_memory.forecast_30d }}%
+        
+        Provide:
+        1. Top 5 priority actions
+        2. Estimated monthly savings
+        3. Capacity risks
+        4. Scaling recommendations
+      model: "gpt-4"
+      max_tokens: 1500
+    on_error: continue
+
+  - name: generate_report
+    action: template.render
+    params:
+      template: |
+        # Weekly Capacity Report
+        **Period:** {{ variables.period_start }} to {{ variables.period_end }}
+        
+        ## Executive Summary
+        - **Cluster CPU:** {{ steps.calculate_utilization.result.cluster_cpu_avg | number_format(1) }}% avg / {{ steps.calculate_utilization.result.cluster_cpu_peak | number_format(1) }}% peak
+        - **Cluster Memory:** {{ steps.calculate_utilization.result.cluster_memory_avg | number_format(1) }}% avg / {{ steps.calculate_utilization.result.cluster_memory_peak | number_format(1) }}% peak
+        - **Potential Savings:** ${{ steps.calculate_cost_savings.result.total_monthly | number_format(0) }}/month
+        
+        ## Node Utilization
+        | Node | CPU Avg | CPU Peak | Memory Avg | Memory Peak |
+        |------|---------|----------|------------|-------------|
+        {% for node in steps.get_node_metrics.result.by_node %}
+        | {{ node.name }} | {{ node.cpu_avg }}% | {{ node.cpu_peak }}% | {{ node.memory_avg }}% | {{ node.memory_peak }}% |
+        {% endfor %}
+        
+        ## Namespace Utilization
+        | Namespace | CPU Requests | CPU Usage | Efficiency | Memory Requests | Memory Usage |
+        |-----------|--------------|-----------|------------|-----------------|--------------|
+        {% for ns in steps.get_namespace_metrics.result.by_namespace %}
+        | {{ ns.name }} | {{ ns.cpu_requests }} | {{ ns.cpu_usage }} | {{ ns.efficiency }}% | {{ ns.memory_requests }} | {{ ns.memory_usage }} |
+        {% endfor %}
+        
+        ## Rightsizing Opportunities
+        ### Overprovisioned ({{ steps.identify_rightsizing_opportunities.result.overprovisioned | length }})
+        {% for w in steps.identify_rightsizing_opportunities.result.overprovisioned[:20] %}
+        - **{{ w.namespace }}/{{ w.deployment }}**: Reduce CPU {{ w.cpu_requests }} → {{ w.recommended_cpu }}, Memory {{ w.memory_requests }} → {{ w.recommended_memory }}
+          Savings: ${{ w.monthly_savings | number_format(0) }}/month
+        {% endfor %}
+        
+        ### Underprovisioned ({{ steps.identify_rightsizing_opportunities.result.underprovisioned | length }})
+        {% for w in steps.identify_rightsizing_opportunities.result.underprovisioned[:10] %}
+        - **{{ w.namespace }}/{{ w.deployment }}**: Consider increasing limits (currently at {{ w.utilization }}% of limits)
+        {% endfor %}
+        
+        ## 30-Day Forecast
+        - CPU projected: {{ steps.forecast_capacity.result.cluster_cpu.forecast_30d | number_format(1) }}% ({{ steps.forecast_capacity.result.cluster_cpu.trend }})
+        - Memory projected: {{ steps.forecast_capacity.result.cluster_memory.forecast_30d | number_format(1) }}% ({{ steps.forecast_capacity.result.cluster_memory.trend }})
+        
+        {% if steps.forecast_capacity.result.cluster_cpu.forecast_30d > 80 %}
+        ⚠️ **Warning:** CPU utilization projected to exceed 80% within 30 days
+        {% endif %}
+        
+        {% if steps.generate_ai_recommendations.result %}
+        ## AI Recommendations
+        {{ steps.generate_ai_recommendations.result }}
+        {% endif %}
+      output_format: "markdown"
+    on_error: continue
+
+  - name: notify_slack
+    action: slack.send_message
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "📊 Weekly Capacity Report - {{ variables.report_date }}"
+        - type: section
+          fields:
+            - type: mrkdwn
+              text: "*Cluster CPU:* {{ steps.calculate_utilization.result.cluster_cpu_avg | number_format(1) }}% avg"
+            - type: mrkdwn
+              text: "*Cluster Memory:* {{ steps.calculate_utilization.result.cluster_memory_avg | number_format(1) }}% avg"
+            - type: mrkdwn
+              text: "*Overprovisioned:* {{ steps.identify_rightsizing_opportunities.result.overprovisioned | length }} workloads"
+            - type: mrkdwn
+              text: "*Potential Savings:* ${{ steps.calculate_cost_savings.result.total_monthly | number_format(0) }}/mo"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *30-Day Forecast:*
+              • CPU: {{ steps.forecast_capacity.result.cluster_cpu.forecast_30d | number_format(1) }}% {{ '⚠️' if steps.forecast_capacity.result.cluster_cpu.forecast_30d > 80 else '✅' }}
+              • Memory: {{ steps.forecast_capacity.result.cluster_memory.forecast_30d | number_format(1) }}% {{ '⚠️' if steps.forecast_capacity.result.cluster_memory.forecast_30d > 85 else '✅' }}
+        - type: divider
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Top Rightsizing Opportunities:*
+              {% for w in steps.identify_rightsizing_opportunities.result.overprovisioned[:5] %}
+              • `{{ w.namespace }}/{{ w.deployment }}` - Save ${{ w.monthly_savings | number_format(0) }}/mo
+              {% endfor %}
+        - type: actions
+          elements:
+            - type: button
+              text:
+                type: plain_text
+                text: "📄 Full Report"
+              url: "{{ config.report_url | default('#') }}"
+            - type: button
+              text:
+                type: plain_text
+                text: "📊 Grafana Dashboard"
+              url: "{{ config.grafana_url | default('#') }}"
+    on_error: continue
+
+  - name: send_email_report
+    action: email.send
+    params:
+      to: "{{ config.email_recipients }}"
+      subject: "Weekly Capacity Report - {{ variables.report_date }}"
+      body: "{{ steps.generate_report.result }}"
+      format: "markdown"
+    on_error: continue
+
+  - name: store_metrics
+    action: prometheus.push_metrics
+    params:
+      metrics:
+        - name: "opensre_capacity_cluster_cpu_avg"
+          value: "{{ steps.calculate_utilization.result.cluster_cpu_avg }}"
+          labels:
+            report_date: "{{ variables.report_date }}"
+        - name: "opensre_capacity_cluster_memory_avg"
+          value: "{{ steps.calculate_utilization.result.cluster_memory_avg }}"
+          labels:
+            report_date: "{{ variables.report_date }}"
+        - name: "opensre_capacity_savings_potential"
+          value: "{{ steps.calculate_cost_savings.result.total_monthly }}"
+          labels:
+            report_date: "{{ variables.report_date }}"
+        - name: "opensre_capacity_overprovisioned_count"
+          value: "{{ steps.identify_rightsizing_opportunities.result.overprovisioned | length }}"
+    on_error: continue
+
+  - name: create_rightsizing_tickets
+    action: jira.bulk_create
+    condition: "{{ steps.calculate_cost_savings.result.total_monthly > 1000 }}"
+    params:
+      project: "PLATFORM"
+      issue_type: "Task"
+      issues: |
+        {% for w in steps.identify_rightsizing_opportunities.result.overprovisioned | selectattr('monthly_savings', '>', 100) | list[:10] %}
+        - summary: "Rightsize {{ w.namespace }}/{{ w.deployment }} - Save ${{ w.monthly_savings | number_format(0) }}/mo"
+          description: |
+            Current resources:
+            - CPU Requests: {{ w.cpu_requests }}
+            - CPU Usage: {{ w.cpu_usage }}
+            - Memory Requests: {{ w.memory_requests }}
+            - Memory Usage: {{ w.memory_usage }}
+            
+            Recommended:
+            - CPU Requests: {{ w.recommended_cpu }}
+            - Memory Requests: {{ w.recommended_memory }}
+            
+            Estimated savings: ${{ w.monthly_savings | number_format(0) }}/month
+          labels: ["rightsizing", "cost-optimization", "{{ w.namespace }}"]
+        {% endfor %}
+    on_error: continue

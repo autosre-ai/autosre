@@ -251,5 +251,211 @@ def history(
     console.print("[dim]No incidents recorded yet.[/]")
 
 
+# =============================================================================
+# Agent Commands - YAML-based workflow agents
+# =============================================================================
+
+agent_app = typer.Typer(
+    name="agent",
+    help="🤖 Manage and run YAML-based workflow agents.",
+    no_args_is_help=True,
+)
+app.add_typer(agent_app, name="agent")
+
+
+@agent_app.command("list")
+def agent_list(
+    agents_dir: str = typer.Option("agents", "--dir", "-d", help="Agents directory"),
+):
+    """
+    📋 List available agents.
+    """
+    from pathlib import Path
+    import yaml
+    
+    agents_path = Path(agents_dir)
+    if not agents_path.exists():
+        console.print(f"[yellow]Agents directory not found: {agents_dir}[/]")
+        return
+    
+    agents = []
+    for agent_dir in sorted(agents_path.iterdir()):
+        if agent_dir.is_dir():
+            agent_yaml = agent_dir / "agent.yaml"
+            if agent_yaml.exists():
+                try:
+                    with open(agent_yaml) as f:
+                        config = yaml.safe_load(f)
+                    agents.append({
+                        "name": config.get("name", agent_dir.name),
+                        "version": config.get("version", "1.0.0"),
+                        "description": config.get("description", "")[:60],
+                        "triggers": len(config.get("triggers", [])),
+                        "steps": len(config.get("steps", [])),
+                    })
+                except Exception as e:
+                    agents.append({
+                        "name": agent_dir.name,
+                        "version": "?",
+                        "description": f"[red]Error: {e}[/]",
+                        "triggers": 0,
+                        "steps": 0,
+                    })
+    
+    if not agents:
+        console.print("[yellow]No agents found.[/]")
+        return
+    
+    table = Table(title="🤖 Available Agents", box=None)
+    table.add_column("Name", style="cyan")
+    table.add_column("Version", style="dim")
+    table.add_column("Triggers", justify="right")
+    table.add_column("Steps", justify="right")
+    table.add_column("Description", style="dim", max_width=50)
+    
+    for agent in agents:
+        table.add_row(
+            agent["name"],
+            agent["version"],
+            str(agent["triggers"]),
+            str(agent["steps"]),
+            agent["description"],
+        )
+    
+    console.print(table)
+    console.print(f"\n[dim]Total: {len(agents)} agents[/]")
+
+
+@agent_app.command("run")
+def agent_run(
+    agent_path: str = typer.Argument(..., help="Path to agent YAML file or directory"),
+    context: list[str] = typer.Option([], "--context", "-c", help="Context variables (key=value)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be executed"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
+):
+    """
+    ▶️ Run an agent from a YAML file.
+    """
+    from pathlib import Path
+    import yaml
+    
+    agent_file = Path(agent_path)
+    if agent_file.is_dir():
+        agent_file = agent_file / "agent.yaml"
+    
+    if not agent_file.exists():
+        console.print(f"[red]Agent file not found: {agent_file}[/]")
+        raise typer.Exit(1)
+    
+    # Parse context variables
+    ctx = {}
+    for c in context:
+        if "=" in c:
+            key, value = c.split("=", 1)
+            ctx[key] = value
+    
+    # Load agent YAML
+    try:
+        with open(agent_file) as f:
+            agent_config = yaml.safe_load(f)
+    except Exception as e:
+        console.print(f"[red]Failed to load agent: {e}[/]")
+        raise typer.Exit(1)
+    
+    agent_name = agent_config.get("name", agent_file.parent.name)
+    
+    console.print(f"Running agent: [cyan]{agent_name}[/]")
+    if dry_run:
+        console.print("[yellow]DRY RUN - no changes will be made[/]")
+    
+    # Validate agent schema
+    try:
+        from opensre.core.models import AgentDefinition
+        agent_def = AgentDefinition(**agent_config)
+    except Exception as e:
+        console.print(f"[red]Validation error: {e}[/]")
+        raise typer.Exit(1)
+    
+    if dry_run:
+        # Show steps that would be executed
+        table = Table(title=f"Steps in {agent_name}", box=None)
+        table.add_column("#", style="dim")
+        table.add_column("Step", style="cyan")
+        table.add_column("Action")
+        table.add_column("Condition", style="dim", max_width=30)
+        
+        for i, step in enumerate(agent_def.steps, 1):
+            condition = step.condition[:30] + "..." if step.condition and len(step.condition) > 30 else (step.condition or "-")
+            table.add_row(str(i), step.name, f"{step.skill}.{step.method}", condition)
+        
+        console.print(table)
+        console.print(f"\n[dim]Would execute {len(agent_def.steps)} steps[/]")
+        return
+    
+    console.print(f"[yellow]Agent execution not yet implemented in CLI.[/]")
+
+
+@agent_app.command("validate")
+def agent_validate(
+    agent_path: str = typer.Argument(..., help="Path to agent YAML file or directory"),
+):
+    """
+    ✅ Validate an agent YAML file.
+    """
+    from pathlib import Path
+    import yaml
+    
+    agent_file = Path(agent_path)
+    if agent_file.is_dir():
+        agent_file = agent_file / "agent.yaml"
+    
+    if not agent_file.exists():
+        console.print(f"[red]Agent file not found: {agent_file}[/]")
+        raise typer.Exit(1)
+    
+    console.print(f"Validating: [cyan]{agent_file}[/]")
+    
+    # Load YAML
+    try:
+        with open(agent_file) as f:
+            agent_config = yaml.safe_load(f)
+    except Exception as e:
+        console.print(f"[red]✗ YAML parse error: {e}[/]")
+        raise typer.Exit(1)
+    
+    console.print("[green]✓ Valid YAML syntax[/]")
+    
+    # Validate schema
+    try:
+        from opensre.core.models import AgentDefinition
+        agent_def = AgentDefinition(**agent_config)
+    except Exception as e:
+        console.print(f"[red]✗ Schema validation error: {e}[/]")
+        raise typer.Exit(1)
+    
+    console.print("[green]✓ Valid agent schema[/]")
+    
+    # Check skills
+    skills = agent_config.get("skills", [])
+    console.print(f"[green]✓ {len(skills)} skills declared: {', '.join(skills)}[/]")
+    
+    # Check steps
+    steps = agent_config.get("steps", [])
+    console.print(f"[green]✓ {len(steps)} steps defined[/]")
+    
+    # Validate step actions reference declared skills
+    step_skills = set()
+    for step in agent_def.steps:
+        step_skills.add(step.skill)
+    
+    undeclared = step_skills - set(skills) - {"compute", "state", "template"}
+    if undeclared:
+        console.print(f"[yellow]⚠ Steps use undeclared skills: {', '.join(undeclared)}[/]")
+    else:
+        console.print("[green]✓ All step skills are declared[/]")
+    
+    console.print(f"\n[bold green]✓ Agent '{agent_def.name}' is valid[/]")
+
+
 if __name__ == "__main__":
     app()

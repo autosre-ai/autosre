@@ -1,0 +1,334 @@
+name: deploy-validator
+description: Post-deployment validation checking health endpoints, error rates, and latency against baselines
+version: 1.0.0
+
+triggers:
+  - type: webhook
+    path: /webhook/deployment
+    source: kubernetes
+    events:
+      - deployment.successful
+  - type: webhook
+    path: /webhook/argocd
+    source: argocd
+    events:
+      - sync.succeeded
+  - type: webhook
+    path: /webhook/validate
+    source: manual
+
+skills:
+  - kubernetes
+  - prometheus
+  - http
+  - slack
+  - pagerduty
+
+config:
+  slack_channel: "#deployments"
+  validation_timeout_seconds: 300
+  health_check_retries: 5
+  health_check_interval_seconds: 10
+  metrics_stabilization_seconds: 60
+  thresholds:
+    error_rate_percent: 1.0
+    latency_p99_ms: 500
+    latency_p50_ms: 100
+    success_rate_percent: 99.0
+  auto_rollback: false
+  rollback_on_failure: true
+
+variables:
+  deployment_name: "{{ trigger.deployment_name }}"
+  namespace: "{{ trigger.namespace | default('default') }}"
+  version: "{{ trigger.version | default('unknown') }}"
+  previous_version: "{{ trigger.previous_version | default('unknown') }}"
+
+steps:
+  - name: get_deployment_info
+    action: kubernetes.get_deployment
+    params:
+      namespace: "{{ variables.namespace }}"
+      name: "{{ variables.deployment_name }}"
+    on_error: fail
+    retries: 3
+
+  - name: wait_for_rollout
+    action: kubernetes.wait_rollout
+    params:
+      namespace: "{{ variables.namespace }}"
+      deployment: "{{ variables.deployment_name }}"
+      timeout_seconds: "{{ config.validation_timeout_seconds }}"
+    on_error: fail
+    retries: 2
+
+  - name: get_service_endpoints
+    action: kubernetes.get_endpoints
+    params:
+      namespace: "{{ variables.namespace }}"
+      service: "{{ variables.deployment_name }}"
+    on_error: continue
+
+  - name: check_health_endpoints
+    action: http.check_health
+    params:
+      endpoints: "{{ steps.get_service_endpoints.result.addresses | map('health_url') | list }}"
+      path: "/health"
+      expected_status: 200
+      timeout_seconds: 10
+      retries: "{{ config.health_check_retries }}"
+      retry_interval_seconds: "{{ config.health_check_interval_seconds }}"
+    on_error: continue
+    retries: 3
+
+  - name: check_readiness_endpoints
+    action: http.check_health
+    params:
+      endpoints: "{{ steps.get_service_endpoints.result.addresses | map('readiness_url') | list }}"
+      path: "/ready"
+      expected_status: 200
+      timeout_seconds: 10
+    on_error: continue
+
+  - name: wait_for_metrics
+    action: compute.sleep
+    params:
+      seconds: "{{ config.metrics_stabilization_seconds }}"
+
+  - name: get_baseline_metrics
+    action: prometheus.query
+    params:
+      queries:
+        error_rate: |
+          sum(rate(http_requests_total{deployment="{{ variables.deployment_name }}", status=~"5.."}[5m])) /
+          sum(rate(http_requests_total{deployment="{{ variables.deployment_name }}"}[5m])) * 100
+        latency_p99: |
+          histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{deployment="{{ variables.deployment_name }}"}[5m])) by (le)) * 1000
+        latency_p50: |
+          histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{deployment="{{ variables.deployment_name }}"}[5m])) by (le)) * 1000
+        success_rate: |
+          sum(rate(http_requests_total{deployment="{{ variables.deployment_name }}", status=~"2.."}[5m])) /
+          sum(rate(http_requests_total{deployment="{{ variables.deployment_name }}"}[5m])) * 100
+        rps: |
+          sum(rate(http_requests_total{deployment="{{ variables.deployment_name }}"}[5m]))
+      time_range: "5m"
+    on_error: continue
+    retries: 3
+
+  - name: get_previous_baseline
+    action: prometheus.query_range
+    params:
+      queries:
+        error_rate: |
+          sum(rate(http_requests_total{deployment="{{ variables.deployment_name }}", status=~"5.."}[5m])) /
+          sum(rate(http_requests_total{deployment="{{ variables.deployment_name }}"}[5m])) * 100
+        latency_p99: |
+          histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{deployment="{{ variables.deployment_name }}"}[5m])) by (le)) * 1000
+      start: "{{ now | date_subtract('1h') }}"
+      end: "{{ trigger.deployed_at | default(now) | date_subtract('10m') }}"
+      step: "1m"
+    on_error: continue
+
+  - name: validate_metrics
+    action: compute.validate_thresholds
+    params:
+      metrics: "{{ steps.get_baseline_metrics.result }}"
+      thresholds:
+        - metric: error_rate
+          max: "{{ config.thresholds.error_rate_percent }}"
+          comparison: "lte"
+        - metric: latency_p99
+          max: "{{ config.thresholds.latency_p99_ms }}"
+          comparison: "lte"
+        - metric: latency_p50
+          max: "{{ config.thresholds.latency_p50_ms }}"
+          comparison: "lte"
+        - metric: success_rate
+          min: "{{ config.thresholds.success_rate_percent }}"
+          comparison: "gte"
+      baseline: "{{ steps.get_previous_baseline.result }}"
+      max_regression_percent: 20
+    on_error: continue
+
+  - name: check_pod_status
+    action: kubernetes.get_pods
+    params:
+      namespace: "{{ variables.namespace }}"
+      labels:
+        app: "{{ variables.deployment_name }}"
+    on_error: continue
+
+  - name: analyze_pod_health
+    action: compute.analyze
+    params:
+      pods: "{{ steps.check_pod_status.result.items }}"
+      checks:
+        - all_running: "status.phase == 'Running'"
+        - all_ready: "status.conditions | selectattr('type', '==', 'Ready') | first | attr('status') == 'True'"
+        - no_restarts: "status.containerStatuses | sum('restartCount') == 0"
+    on_error: continue
+
+  - name: determine_validation_result
+    action: compute.evaluate
+    params:
+      conditions:
+        - name: health_check
+          passed: "{{ steps.check_health_endpoints.result.all_healthy | default(false) }}"
+          weight: 30
+        - name: readiness_check
+          passed: "{{ steps.check_readiness_endpoints.result.all_healthy | default(false) }}"
+          weight: 20
+        - name: metrics_validation
+          passed: "{{ steps.validate_metrics.result.passed | default(false) }}"
+          weight: 30
+        - name: pod_health
+          passed: "{{ steps.analyze_pod_health.result.all_checks_passed | default(false) }}"
+          weight: 20
+      pass_threshold: 80
+    on_error: fail
+
+  - name: notify_success
+    action: slack.send_message
+    condition: "{{ steps.determine_validation_result.result.passed }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "✅ Deployment Validated: {{ variables.deployment_name }}"
+        - type: section
+          fields:
+            - type: mrkdwn
+              text: "*Namespace:* `{{ variables.namespace }}`"
+            - type: mrkdwn
+              text: "*Version:* `{{ variables.version }}`"
+            - type: mrkdwn
+              text: "*Previous:* `{{ variables.previous_version }}`"
+            - type: mrkdwn
+              text: "*Score:* {{ steps.determine_validation_result.result.score }}%"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Metrics:*
+              • Error Rate: {{ steps.get_baseline_metrics.result.error_rate | number_format(3) }}% (threshold: {{ config.thresholds.error_rate_percent }}%)
+              • Latency P99: {{ steps.get_baseline_metrics.result.latency_p99 | number_format(0) }}ms (threshold: {{ config.thresholds.latency_p99_ms }}ms)
+              • Latency P50: {{ steps.get_baseline_metrics.result.latency_p50 | number_format(0) }}ms
+              • Success Rate: {{ steps.get_baseline_metrics.result.success_rate | number_format(2) }}%
+              • RPS: {{ steps.get_baseline_metrics.result.rps | number_format(1) }}
+        - type: context
+          elements:
+            - type: mrkdwn
+              text: "All checks passed. Deployment is healthy."
+    on_error: continue
+
+  - name: notify_failure
+    action: slack.send_message
+    condition: "{{ not steps.determine_validation_result.result.passed }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      blocks:
+        - type: header
+          text:
+            type: plain_text
+            text: "❌ Deployment Validation Failed: {{ variables.deployment_name }}"
+        - type: section
+          fields:
+            - type: mrkdwn
+              text: "*Namespace:* `{{ variables.namespace }}`"
+            - type: mrkdwn
+              text: "*Version:* `{{ variables.version }}`"
+            - type: mrkdwn
+              text: "*Score:* {{ steps.determine_validation_result.result.score }}%"
+            - type: mrkdwn
+              text: "*Required:* 80%"
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Failed Checks:*
+              {% for check in steps.determine_validation_result.result.failed_checks %}
+              • {{ check.name }}: {{ check.reason }}
+              {% endfor %}
+        - type: section
+          text:
+            type: mrkdwn
+            text: |
+              *Current Metrics:*
+              • Error Rate: {{ steps.get_baseline_metrics.result.error_rate | number_format(3) }}%
+              • Latency P99: {{ steps.get_baseline_metrics.result.latency_p99 | number_format(0) }}ms
+              • Success Rate: {{ steps.get_baseline_metrics.result.success_rate | number_format(2) }}%
+        - type: actions
+          elements:
+            - type: button
+              text:
+                type: plain_text
+                text: "⏪ Rollback"
+              style: danger
+              action_id: "rollback_deployment"
+              value: "{{ variables.namespace }}/{{ variables.deployment_name }}"
+            - type: button
+              text:
+                type: plain_text
+                text: "📊 View Metrics"
+              url: "{{ config.grafana_url | default('#') }}/d/deployment?var-deployment={{ variables.deployment_name }}"
+    on_error: continue
+
+  - name: auto_rollback
+    action: kubernetes.rollback_deployment
+    condition: "{{ not steps.determine_validation_result.result.passed and config.auto_rollback }}"
+    params:
+      namespace: "{{ variables.namespace }}"
+      deployment: "{{ variables.deployment_name }}"
+    on_error: fail
+    retries: 2
+
+  - name: notify_rollback
+    action: slack.send_message
+    condition: "{{ steps.auto_rollback.executed }}"
+    params:
+      channel: "{{ config.slack_channel }}"
+      text: |
+        ⏪ *Auto-Rollback Executed*
+        
+        Deployment `{{ variables.deployment_name }}` in `{{ variables.namespace }}` has been rolled back.
+        Reason: Validation failed (score: {{ steps.determine_validation_result.result.score }}%)
+    on_error: continue
+
+  - name: page_on_failure
+    action: pagerduty.create_incident
+    condition: "{{ not steps.determine_validation_result.result.passed and not config.auto_rollback }}"
+    params:
+      service_id: "{{ config.pagerduty_service_id }}"
+      title: "Deployment Validation Failed: {{ variables.deployment_name }}"
+      urgency: "high"
+      body: |
+        Deployment: {{ variables.deployment_name }}
+        Namespace: {{ variables.namespace }}
+        Version: {{ variables.version }}
+        
+        Failed Checks:
+        {% for check in steps.determine_validation_result.result.failed_checks %}
+        - {{ check.name }}: {{ check.reason }}
+        {% endfor %}
+        
+        Auto-rollback is disabled. Manual intervention required.
+    on_error: continue
+
+  - name: store_metrics
+    action: prometheus.push_metrics
+    params:
+      metrics:
+        - name: "opensre_deployment_validation_score"
+          value: "{{ steps.determine_validation_result.result.score }}"
+          labels:
+            deployment: "{{ variables.deployment_name }}"
+            namespace: "{{ variables.namespace }}"
+            version: "{{ variables.version }}"
+        - name: "opensre_deployment_validation_passed"
+          value: "{{ 1 if steps.determine_validation_result.result.passed else 0 }}"
+          labels:
+            deployment: "{{ variables.deployment_name }}"
+            namespace: "{{ variables.namespace }}"
+    on_error: continue
