@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "kubernetes": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/kubernetes-mcp"],
+      "description": "Kubernetes cluster operations"
+    },
+    "prometheus": {
+      "command": "npx", 
+      "args": ["-y", "prometheus-mcp", "--url", "http://localhost:9090"],
+      "description": "Prometheus metrics queries"
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+      },
+      "description": "GitHub operations"
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+      "description": "Filesystem access"
+    }
+  }
+}

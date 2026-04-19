@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "opensre": {
+      "command": "opensre",
+      "args": ["mcp"],
+      "env": {
+        "OPENSRE_PROMETHEUS_URL": "http://localhost:9090",
+        "OPENSRE_OLLAMA_HOST": "http://localhost:11434",
+        "OPENSRE_LOG_LEVEL": "INFO"
+      }
+    }
+  }
+}

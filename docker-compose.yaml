@@ -1,0 +1,120 @@
+# ==============================================================================
+# OpenSRE - AI-Powered Incident Response
+# Production-ready Docker Compose configuration
+# ==============================================================================
+
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # OpenSRE Core
+  # ---------------------------------------------------------------------------
+  opensre:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/srisainath/opensre:${OPENSRE_VERSION:-latest}
+    container_name: opensre
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # LLM Configuration
+      - OPENSRE_LLM_PROVIDER=${OPENSRE_LLM_PROVIDER:-ollama}
+      - OPENSRE_OLLAMA_HOST=http://ollama:11434
+      - OPENSRE_OLLAMA_MODEL=${OPENSRE_OLLAMA_MODEL:-llama3.1:8b}
+      - OPENSRE_OPENAI_API_KEY=${OPENSRE_OPENAI_API_KEY:-}
+      - OPENSRE_ANTHROPIC_API_KEY=${OPENSRE_ANTHROPIC_API_KEY:-}
+      
+      # Infrastructure
+      - OPENSRE_PROMETHEUS_URL=${OPENSRE_PROMETHEUS_URL:-http://prometheus:9090}
+      
+      # Slack
+      - OPENSRE_SLACK_BOT_TOKEN=${OPENSRE_SLACK_BOT_TOKEN:-}
+      - OPENSRE_SLACK_APP_TOKEN=${OPENSRE_SLACK_APP_TOKEN:-}
+      - OPENSRE_SLACK_CHANNEL=${OPENSRE_SLACK_CHANNEL:-#incidents}
+      
+      # Database
+      - OPENSRE_DATABASE_URL=sqlite:///data/opensre.db
+      
+      # Logging
+      - OPENSRE_LOG_LEVEL=${OPENSRE_LOG_LEVEL:-INFO}
+    volumes:
+      - ./config:/app/config:ro
+      - ./runbooks:/app/runbooks:ro
+      - ./agents:/app/agents:ro
+      - opensre_data:/app/data
+      - ${HOME}/.kube/config:/app/.kube/config:ro
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - opensre-network
+
+  # ---------------------------------------------------------------------------
+  # Ollama - Local LLM
+  # ---------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - opensre-network
+    # Uncomment for GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # ---------------------------------------------------------------------------
+  # Redis - Message Bus & Cache (optional, for HA)
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - opensre-network
+    profiles:
+      - ha
+
+volumes:
+  opensre_data:
+    driver: local
+  ollama_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  opensre-network:
+    driver: bridge

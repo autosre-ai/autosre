@@ -1,0 +1,30 @@
+# Development dependencies
+-r requirements.txt
+
+# Testing
+pytest>=8.0
+pytest-asyncio>=0.23
+pytest-cov>=4.1
+pytest-mock>=3.12
+respx>=0.20
+faker>=22.0
+
+# Code quality
+ruff>=0.2
+mypy>=1.8
+pre-commit>=3.6
+bandit>=1.7
+
+# Type stubs
+types-PyYAML>=6.0
+types-requests>=2.31
+
+# Documentation
+mkdocs>=1.5
+mkdocs-material>=9.5
+mkdocstrings[python]>=0.24
+
+# Development tools
+ipython>=8.0
+ipdb>=0.13
+watchdog>=3.0

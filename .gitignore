@@ -23,6 +23,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
 # PyInstaller
 *.manifest
@@ -50,12 +51,32 @@ coverage.xml
 *.mo
 *.pot
 
-# Environments
+# Virtual environments
 .env
 .venv
 env/
 venv/
 ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
 
 # IDE
 .idea/
@@ -64,19 +85,56 @@ ENV/
 *.swo
 *~
 
-# OS
+# macOS
 .DS_Store
-Thumbs.db
+.AppleDouble
+.LSOverride
 
-# Project specific
-*.log
-.mypy_cache/
-.ruff_cache/
+# Thumbnails
+._*
 
-# UI
+# Files that might appear in the root of a volume
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Directories potentially created on remote AFP share
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Environment files with secrets
+.env
+.env.local
+.env.*.local
+*.env
+
+# Data directories
+data/
+logs/
+*.db
+*.sqlite
+*.sqlite3
+
+# ChromaDB
+chroma/
+
+# Kubernetes config (don't commit user configs)
+kubeconfig
+
+# Test outputs
+test_output/
+
+# Local development
+*.local.yaml
+*.local.yml
+config.local.yaml
 ui/node_modules/
 ui/.next/
-ui/dist/
-
-# Local config
-.env.local
+__pycache__/

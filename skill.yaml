@@ -1,0 +1,49 @@
+name: opensre
+version: "0.1.0"
+description: AI-powered incident response for Kubernetes
+author: Sri Sainath Adusumilli
+license: Apache-2.0
+repository: https://github.com/srisainath/opensre
+documentation: https://opensre.dev
+
+tags:
+  - sre
+  - kubernetes
+  - incident-response
+  - prometheus
+  - ai
+  - devops
+  - oncall
+
+prerequisites:
+  - Python 3.11+
+  - Kubernetes cluster access
+  - Prometheus with kube-state-metrics
+
+install:
+  pip: opensre
+  
+  # Or from git
+  git: https://github.com/srisainath/opensre.git
+  command: pip install -e .
+
+commands:
+  - name: investigate
+    description: Investigate a Kubernetes incident
+    example: opensre investigate "high memory on api-service"
+    
+  - name: status
+    description: Check connection status
+    example: opensre status
+    
+  - name: watch
+    description: Watch mode for auto-investigation
+    example: opensre watch --namespace production
+
+capabilities:
+  - mcp_server
+  - slack_integration
+  - pagerduty_integration
+  - prometheus_queries
+  - kubernetes_operations
+  - runbook_search
