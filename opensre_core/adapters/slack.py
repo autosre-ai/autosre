@@ -2,9 +2,13 @@
 OpenSRE Slack Adapter — Interactive incident response in Slack
 """
 
+import hashlib
+import hmac
 import json
-from typing import Optional
+import time
 from dataclasses import dataclass
+from typing import Optional
+
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
@@ -22,42 +26,112 @@ class SlackMessage:
 class SlackAdapter:
     """
     Slack integration for OpenSRE.
-    
+
     Sends investigation results with interactive buttons for:
     - Approving recommended actions
     - Requesting more investigation
     - Dismissing alerts
     """
-    
-    def __init__(self):
-        self.client = WebClient(token=settings.slack_bot_token)
-        self.channel = settings.slack_channel
-    
-    async def send_investigation(self, result) -> Optional[str]:
+
+    def __init__(self, token: str | None = None, channel: str | None = None):
+        self.token = token or settings.slack_bot_token
+        self.channel = channel or settings.slack_channel
+        self.signing_secret = settings.slack_signing_secret
+        self.client = WebClient(token=self.token) if self.token else None
+
+    async def health_check(self) -> dict:
+        """Check Slack connection health."""
+        if not self.client:
+            return {
+                "status": "not_configured",
+                "details": "No Slack bot token configured",
+                "configured": False,
+            }
+
+        try:
+            response = self.client.auth_test()
+            return {
+                "status": "connected",
+                "configured": True,
+                "bot_user": response.get("user"),
+                "team": response.get("team"),
+                "channel": self.channel,
+            }
+        except SlackApiError as e:
+            return {
+                "status": "error",
+                "configured": True,
+                "error": str(e.response.get("error", e)),
+            }
+
+    def verify_signature(self, body: bytes, timestamp: str, signature: str) -> bool:
+        """
+        Verify Slack request signature.
+
+        Args:
+            body: Raw request body
+            timestamp: X-Slack-Request-Timestamp header
+            signature: X-Slack-Signature header
+
+        Returns:
+            True if signature is valid
+        """
+        if not self.signing_secret:
+            return False
+
+        # Check timestamp to prevent replay attacks
+        if abs(time.time() - int(timestamp)) > 60 * 5:
+            return False
+
+        # Create signature
+        sig_basestring = f"v0:{timestamp}:{body.decode()}"
+        computed_sig = "v0=" + hmac.new(
+            self.signing_secret.encode(),
+            sig_basestring.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+
+        return hmac.compare_digest(computed_sig, signature)
+
+    async def send_investigation(self, result, channel: str | None = None) -> Optional[str]:
         """
         Send an investigation result to Slack with interactive buttons.
-        
+
+        Args:
+            result: InvestigationResult from orchestrator
+            channel: Override channel (optional)
+
         Returns the message timestamp (ts) for updates.
         """
+        if not self.client:
+            print("Slack not configured, skipping notification")
+            return None
+
+        target_channel = channel or self.channel
         blocks = self._build_investigation_blocks(result)
-        
+
         try:
             response = self.client.chat_postMessage(
-                channel=self.channel,
+                channel=target_channel,
                 blocks=blocks,
-                text=f"🔍 OpenSRE: {result.alert_name or 'Investigation Complete'}",
+                text=f"🔍 OpenSRE: {result.alert_name or result.issue or 'Investigation Complete'}",
             )
             return response["ts"]
         except SlackApiError as e:
             print(f"Slack error: {e.response['error']}")
             return None
-    
+
+    # Alias for compatibility
+    async def post_investigation(self, result, channel: str | None = None) -> Optional[str]:
+        """Alias for send_investigation."""
+        return await self.send_investigation(result, channel)
+
     def _build_investigation_blocks(self, result) -> list:
         """Build Slack Block Kit blocks for an investigation result."""
-        
+
         # Risk emoji mapping
         risk_emoji = {"low": "🟢", "medium": "🟡", "high": "🔴"}
-        
+
         blocks = [
             # Header
             {
@@ -83,7 +157,7 @@ class SlackAdapter:
                 ]
             },
             {"type": "divider"},
-            
+
             # What was found
             {
                 "type": "section",
@@ -93,7 +167,7 @@ class SlackAdapter:
                 }
             },
         ]
-        
+
         # Add observations as bullet points
         observations_text = "\n".join(f"• {obs.summary}" for obs in result.observations[:5])
         blocks.append({
@@ -103,7 +177,7 @@ class SlackAdapter:
                 "text": observations_text
             }
         })
-        
+
         # Root cause section
         confidence_bar = "█" * int(result.confidence * 10) + "░" * (10 - int(result.confidence * 10))
         blocks.extend([
@@ -116,7 +190,7 @@ class SlackAdapter:
                 }
             }
         ])
-        
+
         # Contributing factors if present
         if result.contributing_factors:
             factors_text = "\n".join(f"• {f}" for f in result.contributing_factors[:3])
@@ -127,7 +201,7 @@ class SlackAdapter:
                     "text": f"*Contributing factors:* {factors_text}"
                 }]
             })
-        
+
         # Recommended action (primary)
         if result.actions:
             primary = result.actions[0]
@@ -141,7 +215,7 @@ class SlackAdapter:
                     }
                 }
             ])
-            
+
             # Command preview (collapsible via context block)
             if primary.command:
                 blocks.append({
@@ -151,10 +225,10 @@ class SlackAdapter:
                         "text": f"```{primary.command}```"
                     }]
                 })
-        
+
         # Interactive buttons
         buttons = []
-        
+
         if result.actions:
             buttons.append({
                 "type": "button",
@@ -166,7 +240,7 @@ class SlackAdapter:
                     "investigation_id": result.id,
                 })
             })
-        
+
         buttons.extend([
             {
                 "type": "button",
@@ -182,12 +256,12 @@ class SlackAdapter:
                 "value": json.dumps({"investigation_id": result.id})
             }
         ])
-        
+
         blocks.append({
             "type": "actions",
             "elements": buttons
         })
-        
+
         # Footer
         blocks.append({
             "type": "context",
@@ -196,9 +270,9 @@ class SlackAdapter:
                 "text": f"🤖 OpenSRE v{settings.version} • Investigation #{result.id[:8]}"
             }]
         })
-        
+
         return blocks
-    
+
     async def update_message(self, channel: str, ts: str, text: str, blocks: list = None):
         """Update an existing Slack message."""
         try:
@@ -210,17 +284,17 @@ class SlackAdapter:
             )
         except SlackApiError as e:
             print(f"Slack update error: {e.response['error']}")
-    
+
     async def send_action_result(self, channel: str, thread_ts: str, action, success: bool):
         """Send action execution result as a thread reply."""
-        
+
         if success:
             text = f"✅ *Action completed successfully*\n```{action.command}```"
             color = "good"
         else:
             text = f"❌ *Action failed*\n```{action.error}```"
             color = "danger"
-        
+
         try:
             self.client.chat_postMessage(
                 channel=channel,
@@ -235,11 +309,11 @@ class SlackAdapter:
             )
         except SlackApiError as e:
             print(f"Slack error: {e.response['error']}")
-    
+
     async def handle_interaction(self, payload: dict):
         """
         Handle Slack interactive component callbacks.
-        
+
         Called when user clicks Approve/Investigate/Dismiss buttons.
         """
         action = payload.get("actions", [{}])[0]
@@ -248,14 +322,14 @@ class SlackAdapter:
         user = payload.get("user", {}).get("name", "unknown")
         channel = payload.get("channel", {}).get("id")
         message_ts = payload.get("message", {}).get("ts")
-        
+
         if action_id == "approve_action":
             # Execute the approved action
             from opensre_core.agents.act import Actor
             actor = Actor()
-            
+
             result = await actor.execute(value["action_id"])
-            
+
             # Update original message
             await self.update_message(
                 channel=channel,
@@ -263,10 +337,10 @@ class SlackAdapter:
                 text=f"✅ Action approved by @{user}",
                 blocks=self._build_approved_blocks(value, user)
             )
-            
+
             # Send result in thread
             await self.send_action_result(channel, message_ts, result, result.success)
-            
+
         elif action_id == "investigate_more":
             # Trigger deeper investigation
             await self.update_message(
@@ -275,7 +349,7 @@ class SlackAdapter:
                 text=f"🔍 Further investigation requested by @{user}",
             )
             # TODO: Trigger orchestrator.investigate_deeper()
-            
+
         elif action_id == "dismiss":
             await self.update_message(
                 channel=channel,
@@ -283,7 +357,7 @@ class SlackAdapter:
                 text=f"❌ Dismissed by @{user}",
                 blocks=self._build_dismissed_blocks(user)
             )
-    
+
     def _build_approved_blocks(self, value: dict, user: str) -> list:
         """Build blocks for an approved action message."""
         return [
@@ -302,7 +376,7 @@ class SlackAdapter:
                 }]
             }
         ]
-    
+
     def _build_dismissed_blocks(self, user: str) -> list:
         """Build blocks for a dismissed alert message."""
         return [
@@ -319,15 +393,15 @@ class SlackAdapter:
 # Webhook handler for Slack events
 async def handle_slack_event(request_body: dict):
     """Handle incoming Slack events (URL verification, interactions)."""
-    
+
     # URL verification challenge
     if request_body.get("type") == "url_verification":
         return {"challenge": request_body.get("challenge")}
-    
+
     # Interactive component callback
     if request_body.get("type") == "block_actions":
         adapter = SlackAdapter()
         await adapter.handle_interaction(request_body)
         return {"ok": True}
-    
+
     return {"ok": True}
