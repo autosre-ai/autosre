@@ -1,0 +1,110 @@
+name: gitlab
+version: 1.0.0
+description: GitLab integration for pipelines, issues, and merge requests
+author: OpenSRE
+
+config:
+  url:
+    type: string
+    required: false
+    default: https://gitlab.com
+    description: GitLab URL
+  token:
+    type: string
+    required: true
+    secret: true
+    description: GitLab personal access token
+  timeout:
+    type: integer
+    required: false
+    default: 30
+
+actions:
+  - name: get_pipelines
+    description: List pipelines for a project
+    params:
+      - name: project_id
+        type: string
+        required: true
+      - name: status
+        type: string
+        required: false
+        enum: [running, pending, success, failed, canceled]
+    returns: list[Pipeline]
+
+  - name: get_pipeline
+    description: Get pipeline details
+    params:
+      - name: project_id
+        type: string
+        required: true
+      - name: pipeline_id
+        type: integer
+        required: true
+    returns: Pipeline
+
+  - name: trigger_pipeline
+    description: Trigger a new pipeline
+    requires_approval: true
+    params:
+      - name: project_id
+        type: string
+        required: true
+      - name: ref
+        type: string
+        required: true
+        description: Branch or tag
+      - name: variables
+        type: object
+        required: false
+    returns: Pipeline
+
+  - name: cancel_pipeline
+    description: Cancel a running pipeline
+    requires_approval: true
+    params:
+      - name: project_id
+        type: string
+        required: true
+      - name: pipeline_id
+        type: integer
+        required: true
+    returns: bool
+
+  - name: retry_pipeline
+    description: Retry a failed pipeline
+    requires_approval: true
+    params:
+      - name: project_id
+        type: string
+        required: true
+      - name: pipeline_id
+        type: integer
+        required: true
+    returns: Pipeline
+
+  - name: get_merge_requests
+    description: List merge requests
+    params:
+      - name: project_id
+        type: string
+        required: true
+      - name: state
+        type: string
+        required: false
+        enum: [opened, closed, merged, all]
+    returns: list[MergeRequest]
+
+  - name: get_jobs
+    description: List pipeline jobs
+    params:
+      - name: project_id
+        type: string
+        required: true
+      - name: pipeline_id
+        type: integer
+        required: true
+    returns: list[Job]
+
+dependencies:
+  - httpx>=0.24.0

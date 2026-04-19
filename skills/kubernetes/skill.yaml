@@ -1,0 +1,140 @@
+name: kubernetes
+version: 1.0.0
+description: Interact with Kubernetes clusters - manage pods, deployments, and troubleshoot
+author: OpenSRE
+
+config:
+  kubeconfig:
+    type: string
+    required: false
+    description: Path to kubeconfig file (uses default if not specified)
+  context:
+    type: string
+    required: false
+    description: Kubernetes context to use
+  namespace:
+    type: string
+    required: false
+    default: default
+    description: Default namespace for operations
+
+actions:
+  - name: get_pods
+    description: List pods in a namespace
+    params:
+      - name: namespace
+        type: string
+        required: false
+        default: default
+        description: Namespace to query (use "all" for all namespaces)
+      - name: labels
+        type: string
+        required: false
+        description: Label selector (e.g., "app=nginx")
+    returns: list[PodInfo]
+
+  - name: get_pod_logs
+    description: Fetch logs from a pod
+    params:
+      - name: pod
+        type: string
+        required: true
+      - name: namespace
+        type: string
+        required: false
+        default: default
+      - name: lines
+        type: integer
+        required: false
+        default: 100
+      - name: container
+        type: string
+        required: false
+    returns: string
+
+  - name: describe_pod
+    description: Get detailed pod information
+    params:
+      - name: pod
+        type: string
+        required: true
+      - name: namespace
+        type: string
+        required: false
+        default: default
+    returns: PodDetails
+
+  - name: get_deployments
+    description: List deployments in a namespace
+    params:
+      - name: namespace
+        type: string
+        required: false
+        default: default
+    returns: list[DeploymentInfo]
+
+  - name: scale_deployment
+    description: Scale a deployment
+    requires_approval: true
+    params:
+      - name: name
+        type: string
+        required: true
+      - name: replicas
+        type: integer
+        required: true
+      - name: namespace
+        type: string
+        required: false
+        default: default
+    returns: ScaleResult
+
+  - name: rollback_deployment
+    description: Rollback to previous revision
+    requires_approval: true
+    params:
+      - name: name
+        type: string
+        required: true
+      - name: namespace
+        type: string
+        required: false
+        default: default
+    returns: RollbackResult
+
+  - name: get_events
+    description: Get recent Kubernetes events
+    params:
+      - name: namespace
+        type: string
+        required: false
+        default: default
+      - name: minutes
+        type: integer
+        required: false
+        default: 15
+    returns: list[EventInfo]
+
+  - name: exec_command
+    description: Execute command in a pod
+    requires_approval: true
+    params:
+      - name: pod
+        type: string
+        required: true
+      - name: command
+        type: array
+        items:
+          type: string
+        required: true
+      - name: namespace
+        type: string
+        required: false
+        default: default
+      - name: container
+        type: string
+        required: false
+    returns: ExecResult
+
+dependencies:
+  - kubernetes>=28.0.0

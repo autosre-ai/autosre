@@ -1,0 +1,98 @@
+name: slack
+version: 1.0.0
+description: Slack integration for messaging and incident management
+author: OpenSRE
+category: communication
+
+dependencies:
+  - slack_sdk>=3.0.0
+  - aiohttp>=3.8.0
+  - pydantic>=2.0.0
+
+config:
+  required:
+    - SLACK_BOT_TOKEN
+  optional:
+    - SLACK_SIGNING_SECRET
+    - SLACK_RATE_LIMIT_TIER
+
+actions:
+  - name: send_message
+    description: Post a message to a channel
+    parameters:
+      - name: channel
+        type: string
+        required: true
+      - name: text
+        type: string
+        required: true
+      - name: blocks
+        type: array
+        required: false
+
+  - name: send_thread_reply
+    description: Reply in a thread
+    parameters:
+      - name: channel
+        type: string
+        required: true
+      - name: thread_ts
+        type: string
+        required: true
+      - name: text
+        type: string
+        required: true
+
+  - name: add_reaction
+    description: Add emoji reaction to a message
+    parameters:
+      - name: channel
+        type: string
+        required: true
+      - name: timestamp
+        type: string
+        required: true
+      - name: emoji
+        type: string
+        required: true
+
+  - name: upload_file
+    description: Upload a file to a channel
+    parameters:
+      - name: channel
+        type: string
+        required: true
+      - name: file_path
+        type: string
+        required: true
+      - name: title
+        type: string
+        required: false
+
+  - name: get_channel_history
+    description: Fetch recent messages from a channel
+    parameters:
+      - name: channel
+        type: string
+        required: true
+      - name: limit
+        type: integer
+        required: false
+        default: 100
+
+  - name: create_incident_channel
+    description: Create a new incident channel
+    parameters:
+      - name: name
+        type: string
+        required: true
+      - name: users
+        type: array
+        required: false
+
+  - name: archive_channel
+    description: Archive a channel
+    parameters:
+      - name: channel
+        type: string
+        required: true

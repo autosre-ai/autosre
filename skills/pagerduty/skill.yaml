@@ -1,0 +1,76 @@
+name: pagerduty
+version: 1.0.0
+description: PagerDuty integration for incident management
+author: OpenSRE
+category: incident-management
+
+dependencies:
+  - aiohttp>=3.8.0
+  - pydantic>=2.0.0
+
+config:
+  required:
+    - PAGERDUTY_API_KEY
+    - PAGERDUTY_FROM_EMAIL
+  optional:
+    - PAGERDUTY_BASE_URL
+
+actions:
+  - name: list_incidents
+    description: Get incidents by status
+    parameters:
+      - name: status
+        type: string
+        required: false
+        enum: [triggered, acknowledged, resolved]
+
+  - name: get_incident
+    description: Get incident details
+    parameters:
+      - name: incident_id
+        type: string
+        required: true
+
+  - name: acknowledge_incident
+    description: Acknowledge an incident
+    parameters:
+      - name: incident_id
+        type: string
+        required: true
+
+  - name: resolve_incident
+    description: Resolve an incident
+    parameters:
+      - name: incident_id
+        type: string
+        required: true
+
+  - name: add_note
+    description: Add note to incident
+    parameters:
+      - name: incident_id
+        type: string
+        required: true
+      - name: note
+        type: string
+        required: true
+
+  - name: get_oncall
+    description: Get current on-call responders
+    parameters:
+      - name: schedule_id
+        type: string
+        required: true
+
+  - name: create_incident
+    description: Trigger a new incident
+    parameters:
+      - name: service_id
+        type: string
+        required: true
+      - name: title
+        type: string
+        required: true
+      - name: body
+        type: string
+        required: false

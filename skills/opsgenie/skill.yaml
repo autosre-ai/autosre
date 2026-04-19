@@ -1,0 +1,90 @@
+name: opsgenie
+version: 1.0.0
+description: OpsGenie integration for alert and incident management
+author: OpenSRE
+
+config:
+  api_key:
+    type: string
+    required: true
+    secret: true
+    description: OpsGenie API key
+  api_url:
+    type: string
+    required: false
+    default: https://api.opsgenie.com
+    description: OpsGenie API URL
+  timeout:
+    type: integer
+    required: false
+    default: 30
+
+actions:
+  - name: list_alerts
+    description: List alerts
+    params:
+      - name: query
+        type: string
+        required: false
+        description: OQL query
+      - name: status
+        type: string
+        required: false
+        enum: [open, acked, closed]
+    returns: list[Alert]
+
+  - name: get_alert
+    description: Get alert details
+    params:
+      - name: alert_id
+        type: string
+        required: true
+    returns: Alert
+
+  - name: acknowledge_alert
+    description: Acknowledge an alert
+    params:
+      - name: alert_id
+        type: string
+        required: true
+      - name: note
+        type: string
+        required: false
+    returns: bool
+
+  - name: close_alert
+    description: Close an alert
+    params:
+      - name: alert_id
+        type: string
+        required: true
+      - name: note
+        type: string
+        required: false
+    returns: bool
+
+  - name: create_alert
+    description: Create a new alert
+    params:
+      - name: message
+        type: string
+        required: true
+      - name: priority
+        type: string
+        required: false
+        enum: [P1, P2, P3, P4, P5]
+      - name: tags
+        type: array
+        required: false
+    returns: Alert
+
+  - name: get_oncall
+    description: Get on-call schedule
+    params:
+      - name: schedule_id
+        type: string
+        required: true
+    returns: OnCallSchedule
+
+dependencies:
+  - httpx>=0.24.0

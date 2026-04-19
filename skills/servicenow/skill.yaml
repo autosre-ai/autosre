@@ -1,0 +1,107 @@
+name: servicenow
+version: 1.0.0
+description: ServiceNow integration for incident and change management
+author: OpenSRE
+
+config:
+  instance:
+    type: string
+    required: true
+    description: ServiceNow instance name (e.g., mycompany.service-now.com)
+  username:
+    type: string
+    required: true
+    description: ServiceNow username
+  password:
+    type: string
+    required: true
+    secret: true
+    description: ServiceNow password
+  timeout:
+    type: integer
+    required: false
+    default: 30
+
+actions:
+  - name: get_incidents
+    description: Query incidents
+    params:
+      - name: query
+        type: string
+        required: false
+        description: Encoded query string
+      - name: state
+        type: string
+        required: false
+        enum: [new, in_progress, on_hold, resolved, closed]
+      - name: limit
+        type: integer
+        required: false
+        default: 100
+    returns: list[Incident]
+
+  - name: get_incident
+    description: Get incident details
+    params:
+      - name: sys_id
+        type: string
+        required: true
+    returns: Incident
+
+  - name: create_incident
+    description: Create a new incident
+    params:
+      - name: short_description
+        type: string
+        required: true
+      - name: description
+        type: string
+        required: false
+      - name: urgency
+        type: integer
+        required: false
+        enum: [1, 2, 3]
+      - name: impact
+        type: integer
+        required: false
+        enum: [1, 2, 3]
+      - name: assignment_group
+        type: string
+        required: false
+    returns: Incident
+
+  - name: update_incident
+    description: Update an incident
+    params:
+      - name: sys_id
+        type: string
+        required: true
+      - name: fields
+        type: object
+        required: true
+    returns: Incident
+
+  - name: add_work_note
+    description: Add work note to incident
+    params:
+      - name: sys_id
+        type: string
+        required: true
+      - name: note
+        type: string
+        required: true
+    returns: bool
+
+  - name: get_change_requests
+    description: Query change requests
+    params:
+      - name: query
+        type: string
+        required: false
+      - name: state
+        type: string
+        required: false
+    returns: list[ChangeRequest]
+
+dependencies:
+  - httpx>=0.24.0

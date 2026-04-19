@@ -1,0 +1,108 @@
+name: terraform
+version: 1.0.0
+description: Terraform Cloud/Enterprise workspace management
+author: OpenSRE
+
+config:
+  url:
+    type: string
+    required: false
+    default: https://app.terraform.io
+    description: Terraform Cloud/Enterprise URL
+  token:
+    type: string
+    required: true
+    secret: true
+    description: Terraform API token
+  organization:
+    type: string
+    required: true
+    description: Terraform organization name
+  timeout:
+    type: integer
+    required: false
+    default: 60
+
+actions:
+  - name: list_workspaces
+    description: List workspaces
+    params:
+      - name: search
+        type: string
+        required: false
+    returns: list[Workspace]
+
+  - name: get_workspace
+    description: Get workspace details
+    params:
+      - name: name
+        type: string
+        required: true
+    returns: Workspace
+
+  - name: get_runs
+    description: List runs for a workspace
+    params:
+      - name: workspace_name
+        type: string
+        required: true
+      - name: status
+        type: string
+        required: false
+    returns: list[Run]
+
+  - name: get_run
+    description: Get run details
+    params:
+      - name: run_id
+        type: string
+        required: true
+    returns: Run
+
+  - name: apply_run
+    description: Apply a confirmed run
+    requires_approval: true
+    params:
+      - name: run_id
+        type: string
+        required: true
+      - name: comment
+        type: string
+        required: false
+    returns: bool
+
+  - name: cancel_run
+    description: Cancel a pending run
+    requires_approval: true
+    params:
+      - name: run_id
+        type: string
+        required: true
+      - name: comment
+        type: string
+        required: false
+    returns: bool
+
+  - name: lock_workspace
+    description: Lock a workspace
+    requires_approval: true
+    params:
+      - name: workspace_name
+        type: string
+        required: true
+      - name: reason
+        type: string
+        required: false
+    returns: bool
+
+  - name: unlock_workspace
+    description: Unlock a workspace
+    requires_approval: true
+    params:
+      - name: workspace_name
+        type: string
+        required: true
+    returns: bool
+
+dependencies:
+  - httpx>=0.24.0

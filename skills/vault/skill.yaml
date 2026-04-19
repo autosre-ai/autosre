@@ -1,0 +1,77 @@
+name: vault
+version: 1.0.0
+description: HashiCorp Vault secrets management
+author: OpenSRE
+
+config:
+  url:
+    type: string
+    required: true
+    description: Vault server URL
+  token:
+    type: string
+    required: false
+    secret: true
+    description: Vault token (optional if using other auth)
+  namespace:
+    type: string
+    required: false
+    description: Vault namespace (Enterprise only)
+  auth_method:
+    type: string
+    required: false
+    enum: [token, kubernetes, aws, approle]
+    default: token
+  role_id:
+    type: string
+    required: false
+    description: AppRole role ID
+  secret_id:
+    type: string
+    required: false
+    secret: true
+    description: AppRole secret ID
+  timeout:
+    type: integer
+    required: false
+    default: 30
+
+actions:
+  - name: read_secret
+    description: Read a secret from Vault
+    params:
+      - name: path
+        type: string
+        required: true
+        description: Secret path (e.g., "secret/data/myapp")
+      - name: version
+        type: integer
+        required: false
+    returns: Secret
+
+  - name: list_secrets
+    description: List secrets at a path
+    params:
+      - name: path
+        type: string
+        required: true
+    returns: list[string]
+
+  - name: get_health
+    description: Get Vault health status
+    returns: HealthStatus
+
+  - name: get_seal_status
+    description: Get Vault seal status
+    returns: SealStatus
+
+  - name: list_auth_methods
+    description: List enabled auth methods
+    returns: list[AuthMethod]
+
+  - name: renew_token
+    description: Renew the current token
+    returns: TokenInfo
+
+dependencies:
+  - httpx>=0.24.0

@@ -1,0 +1,72 @@
+name: aws
+version: "1.0.0"
+description: "AWS Cloud Provider Skill - EC2, ECS, Lambda, CloudWatch, RDS, S3"
+author: "OpenSRE"
+
+dependencies:
+  - boto3>=1.34
+  - aioboto3>=12.0
+
+config:
+  access_key:
+    type: string
+    description: "AWS Access Key ID (optional if using default credential chain)"
+    required: false
+    secret: true
+  secret_key:
+    type: string
+    description: "AWS Secret Access Key (optional if using default credential chain)"
+    required: false
+    secret: true
+  session_token:
+    type: string
+    description: "AWS Session Token for temporary credentials"
+    required: false
+    secret: true
+  region:
+    type: string
+    description: "Default AWS region"
+    default: "us-east-1"
+  profile:
+    type: string
+    description: "AWS profile name from ~/.aws/credentials"
+    required: false
+  assume_role_arn:
+    type: string
+    description: "ARN of role to assume"
+    required: false
+  external_id:
+    type: string
+    description: "External ID for cross-account role assumption"
+    required: false
+  endpoint_url:
+    type: string
+    description: "Custom endpoint URL (for LocalStack, etc.)"
+    required: false
+  max_retries:
+    type: integer
+    description: "Maximum retry attempts for AWS API calls"
+    default: 3
+  retry_delay:
+    type: float
+    description: "Base delay between retries (seconds)"
+    default: 1.0
+
+methods:
+  # EC2
+  - ec2_list_instances
+  - ec2_get_instance
+  - ec2_start_instance
+  - ec2_stop_instance
+  # ECS
+  - ecs_list_services
+  - ecs_update_service
+  # Lambda
+  - lambda_invoke
+  # CloudWatch
+  - cloudwatch_get_metrics
+  - cloudwatch_get_alarms
+  # RDS
+  - rds_describe_instances
+  # S3
+  - s3_list_buckets

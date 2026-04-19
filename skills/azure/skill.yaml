@@ -1,0 +1,68 @@
+name: azure
+version: "1.0.0"
+description: "Azure Cloud Provider Skill - VMs, AKS, Monitor, App Insights"
+author: "OpenSRE"
+
+dependencies:
+  - azure-identity>=1.15
+  - azure-mgmt-compute>=30.0
+  - azure-mgmt-containerservice>=28.0
+  - azure-mgmt-monitor>=6.0
+  - azure-mgmt-resource>=23.0
+  - azure-monitor-query>=1.2
+
+config:
+  tenant_id:
+    type: string
+    description: "Azure AD tenant ID"
+    required: false
+  client_id:
+    type: string
+    description: "Azure AD application (client) ID"
+    required: false
+  client_secret:
+    type: string
+    description: "Azure AD client secret"
+    required: false
+    secret: true
+  subscription_id:
+    type: string
+    description: "Azure subscription ID"
+    required: false
+  use_cli_auth:
+    type: boolean
+    description: "Use Azure CLI authentication"
+    default: false
+  use_managed_identity:
+    type: boolean
+    description: "Use managed identity authentication"
+    default: false
+  resource_group:
+    type: string
+    description: "Default resource group"
+    required: false
+  max_retries:
+    type: integer
+    description: "Maximum retry attempts for Azure API calls"
+    default: 3
+  retry_delay:
+    type: float
+    description: "Base delay between retries (seconds)"
+    default: 1.0
+  timeout:
+    type: integer
+    description: "Default timeout for API calls (seconds)"
+    default: 60
+
+methods:
+  # Virtual Machines
+  - vm_list
+  - vm_start
+  - vm_stop
+  # AKS
+  - aks_list_clusters
+  - aks_get_credentials
+  # Monitor
+  - monitor_query
+  # App Insights
+  - app_insights_query

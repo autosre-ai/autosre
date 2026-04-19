@@ -1,0 +1,87 @@
+name: jenkins
+version: 1.0.0
+description: Jenkins CI/CD integration
+author: OpenSRE
+
+config:
+  url:
+    type: string
+    required: true
+    description: Jenkins URL
+  username:
+    type: string
+    required: true
+  api_token:
+    type: string
+    required: true
+    secret: true
+  timeout:
+    type: integer
+    required: false
+    default: 30
+
+actions:
+  - name: get_jobs
+    description: List Jenkins jobs
+    params:
+      - name: folder
+        type: string
+        required: false
+    returns: list[Job]
+
+  - name: get_job
+    description: Get job details
+    params:
+      - name: name
+        type: string
+        required: true
+    returns: Job
+
+  - name: trigger_build
+    description: Trigger a job build
+    requires_approval: true
+    params:
+      - name: name
+        type: string
+        required: true
+      - name: parameters
+        type: object
+        required: false
+    returns: Build
+
+  - name: get_build
+    description: Get build details
+    params:
+      - name: job_name
+        type: string
+        required: true
+      - name: build_number
+        type: integer
+        required: true
+    returns: Build
+
+  - name: get_build_log
+    description: Get build console output
+    params:
+      - name: job_name
+        type: string
+        required: true
+      - name: build_number
+        type: integer
+        required: true
+    returns: string
+
+  - name: stop_build
+    description: Stop a running build
+    requires_approval: true
+    params:
+      - name: job_name
+        type: string
+        required: true
+      - name: build_number
+        type: integer
+        required: true
+    returns: bool
+
+dependencies:
+  - httpx>=0.24.0

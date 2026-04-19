@@ -1,0 +1,89 @@
+name: github
+version: 1.0.0
+description: GitHub integration for issues, PRs, and workflows
+author: OpenSRE
+category: development
+
+dependencies:
+  - aiohttp>=3.8.0
+  - pydantic>=2.0.0
+
+config:
+  required:
+    - GITHUB_TOKEN
+  optional:
+    - GITHUB_API_URL
+
+actions:
+  - name: create_issue
+    description: Create a new issue
+    parameters:
+      - name: repo
+        type: string
+        required: true
+        description: Repository in owner/repo format
+      - name: title
+        type: string
+        required: true
+      - name: body
+        type: string
+        required: false
+      - name: labels
+        type: array
+        required: false
+
+  - name: close_issue
+    description: Close an issue
+    parameters:
+      - name: repo
+        type: string
+        required: true
+      - name: issue_number
+        type: integer
+        required: true
+
+  - name: create_pr_comment
+    description: Comment on a PR
+    parameters:
+      - name: repo
+        type: string
+        required: true
+      - name: pr_number
+        type: integer
+        required: true
+      - name: body
+        type: string
+        required: true
+
+  - name: get_workflow_runs
+    description: List workflow runs
+    parameters:
+      - name: repo
+        type: string
+        required: true
+      - name: workflow
+        type: string
+        required: true
+
+  - name: trigger_workflow
+    description: Dispatch a workflow
+    parameters:
+      - name: repo
+        type: string
+        required: true
+      - name: workflow
+        type: string
+        required: true
+      - name: inputs
+        type: object
+        required: false
+
+  - name: get_commit
+    description: Get commit details
+    parameters:
+      - name: repo
+        type: string
+        required: true
+      - name: sha
+        type: string
+        required: true

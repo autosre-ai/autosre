@@ -1,0 +1,49 @@
+name: telegram
+version: 1.0.0
+description: Telegram integration for messaging
+author: OpenSRE
+category: communication
+
+dependencies:
+  - aiohttp>=3.8.0
+  - pydantic>=2.0.0
+
+config:
+  required:
+    - TELEGRAM_BOT_TOKEN
+  optional:
+    - TELEGRAM_API_URL
+
+actions:
+  - name: send_message
+    description: Send a text message
+    parameters:
+      - name: chat_id
+        type: string
+        required: true
+      - name: text
+        type: string
+        required: true
+
+  - name: send_photo
+    description: Send an image
+    parameters:
+      - name: chat_id
+        type: string
+        required: true
+      - name: photo_url
+        type: string
+        required: true
+      - name: caption
+        type: string
+        required: false
+
+  - name: send_document
+    description: Send a file
+    parameters:
+      - name: chat_id
+        type: string
+        required: true
+      - name: file_path
+        type: string
+        required: true

@@ -1,0 +1,75 @@
+name: splunk
+version: 1.0.0
+description: Query Splunk for logs and metrics
+author: OpenSRE
+
+config:
+  host:
+    type: string
+    required: true
+    description: Splunk host (e.g., splunk.example.com)
+  port:
+    type: integer
+    required: false
+    default: 8089
+    description: Splunk management port
+  username:
+    type: string
+    required: true
+  password:
+    type: string
+    required: true
+    secret: true
+  verify_ssl:
+    type: boolean
+    required: false
+    default: true
+  timeout:
+    type: integer
+    required: false
+    default: 60
+
+actions:
+  - name: search
+    description: Execute a Splunk search
+    params:
+      - name: query
+        type: string
+        required: true
+        description: SPL search query
+      - name: earliest_time
+        type: string
+        required: false
+        default: "-1h"
+      - name: latest_time
+        type: string
+        required: false
+        default: "now"
+      - name: max_results
+        type: integer
+        required: false
+        default: 100
+    returns: list[SearchResult]
+
+  - name: get_saved_searches
+    description: List saved searches
+    returns: list[SavedSearch]
+
+  - name: run_saved_search
+    description: Execute a saved search
+    params:
+      - name: name
+        type: string
+        required: true
+    returns: list[SearchResult]
+
+  - name: get_alerts
+    description: Get triggered alerts
+    params:
+      - name: severity
+        type: string
+        required: false
+    returns: list[Alert]
+
+dependencies:
+  - httpx>=0.24.0

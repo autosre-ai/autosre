@@ -1,0 +1,67 @@
+name: gcp
+version: "1.0.0"
+description: "GCP Cloud Provider Skill - Compute, GKE, Cloud Run, Monitoring, Logging, BigQuery"
+author: "OpenSRE"
+
+dependencies:
+  - google-cloud-compute>=1.14
+  - google-cloud-container>=2.32
+  - google-cloud-run>=0.10
+  - google-cloud-monitoring>=2.19
+  - google-cloud-logging>=3.9
+  - google-cloud-bigquery>=3.14
+  - google-auth>=2.25
+
+config:
+  credentials_file:
+    type: string
+    description: "Path to service account JSON file"
+    required: false
+    secret: false
+  credentials_json:
+    type: string
+    description: "Service account JSON as string (alternative to file)"
+    required: false
+    secret: true
+  project:
+    type: string
+    description: "Default GCP project ID"
+    required: false
+  region:
+    type: string
+    description: "Default GCP region"
+    default: "us-central1"
+  zone:
+    type: string
+    description: "Default GCP zone"
+    default: "us-central1-a"
+  max_retries:
+    type: integer
+    description: "Maximum retry attempts for GCP API calls"
+    default: 3
+  retry_delay:
+    type: float
+    description: "Base delay between retries (seconds)"
+    default: 1.0
+  timeout:
+    type: integer
+    description: "Default timeout for API calls (seconds)"
+    default: 60
+
+methods:
+  # Compute Engine
+  - gce_list_instances
+  - gce_start_instance
+  - gce_stop_instance
+  # GKE
+  - gke_list_clusters
+  - gke_get_cluster
+  # Cloud Run
+  - cloud_run_list_services
+  - cloud_run_update_traffic
+  # Monitoring
+  - monitoring_query
+  # Logging
+  - logging_query
+  # BigQuery
+  - bigquery_query

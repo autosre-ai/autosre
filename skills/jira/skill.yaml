@@ -1,0 +1,78 @@
+name: jira
+version: 1.0.0
+description: Jira integration for issue tracking
+author: OpenSRE
+category: project-management
+
+dependencies:
+  - aiohttp>=3.8.0
+  - pydantic>=2.0.0
+
+config:
+  required:
+    - JIRA_URL
+    - JIRA_EMAIL
+    - JIRA_API_TOKEN
+  optional:
+    - JIRA_RATE_LIMIT
+
+actions:
+  - name: create_issue
+    description: Create a new issue
+    parameters:
+      - name: project
+        type: string
+        required: true
+      - name: type
+        type: string
+        required: true
+      - name: summary
+        type: string
+        required: true
+      - name: description
+        type: string
+        required: false
+
+  - name: update_issue
+    description: Update issue fields
+    parameters:
+      - name: issue_key
+        type: string
+        required: true
+      - name: fields
+        type: object
+        required: true
+
+  - name: add_comment
+    description: Add comment to an issue
+    parameters:
+      - name: issue_key
+        type: string
+        required: true
+      - name: comment
+        type: string
+        required: true
+
+  - name: transition_issue
+    description: Change issue status
+    parameters:
+      - name: issue_key
+        type: string
+        required: true
+      - name: transition
+        type: string
+        required: true
+
+  - name: search_issues
+    description: Search issues with JQL
+    parameters:
+      - name: jql
+        type: string
+        required: true
+
+  - name: get_issue
+    description: Get issue details
+    parameters:
+      - name: issue_key
+        type: string
+        required: true

@@ -1,0 +1,117 @@
+name: datadog
+version: 1.0.0
+description: Query Datadog for metrics, monitors, events, and incidents
+author: OpenSRE
+
+config:
+  api_key:
+    type: string
+    required: true
+    secret: true
+    description: Datadog API key
+  app_key:
+    type: string
+    required: true
+    secret: true
+    description: Datadog Application key
+  site:
+    type: string
+    required: false
+    default: datadoghq.com
+    description: Datadog site (datadoghq.com, datadoghq.eu, us3.datadoghq.com, etc.)
+  timeout:
+    type: integer
+    required: false
+    default: 30
+    description: Request timeout in seconds
+
+actions:
+  - name: query_metrics
+    description: Query metrics using Datadog Query Language
+    params:
+      - name: query
+        type: string
+        required: true
+        description: "Datadog metrics query (e.g., avg:system.cpu.user{*})"
+      - name: from_ts
+        type: integer
+        required: false
+        description: Start timestamp (UNIX seconds)
+      - name: to_ts
+        type: integer
+        required: false
+        description: End timestamp (UNIX seconds)
+    returns: list[MetricSeries]
+
+  - name: get_monitors
+    description: List monitors and their status
+    params:
+      - name: tags
+        type: array
+        required: false
+        description: Filter by tags
+      - name: monitor_states
+        type: array
+        required: false
+        description: Filter by state (Alert, Warn, No Data, OK)
+    returns: list[Monitor]
+
+  - name: mute_monitor
+    description: Mute a monitor
+    requires_approval: true
+    params:
+      - name: monitor_id
+        type: integer
+        required: true
+      - name: end
+        type: integer
+        required: false
+        description: UNIX timestamp when mute ends
+      - name: scope
+        type: string
+        required: false
+        description: Scope to mute
+    returns: bool
+
+  - name: get_events
+    description: Query events
+    params:
+      - name: start
+        type: integer
+        required: true
+        description: Start timestamp
+      - name: end
+        type: integer
+        required: true
+        description: End timestamp
+      - name: tags
+        type: string
+        required: false
+    returns: list[Event]
+
+  - name: get_incidents
+    description: List Datadog Incidents
+    params:
+      - name: status
+        type: string
+        required: false
+        enum: [active, stable, resolved]
+    returns: list[Incident]
+
+  - name: create_incident
+    description: Create a new incident
+    params:
+      - name: title
+        type: string
+        required: true
+      - name: severity
+        type: string
+        required: true
+        enum: [SEV-1, SEV-2, SEV-3, SEV-4, SEV-5]
+      - name: customer_impact_scope
+        type: string
+        required: false
+    returns: Incident
+
+dependencies:
+  - httpx>=0.24.0

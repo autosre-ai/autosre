@@ -1,0 +1,51 @@
+name: argocd
+version: 1.0.0
+description: ArgoCD integration for GitOps management
+author: OpenSRE
+category: deployment
+
+dependencies:
+  - aiohttp>=3.8.0
+  - pydantic>=2.0.0
+
+config:
+  required:
+    - ARGOCD_SERVER
+    - ARGOCD_TOKEN
+  optional:
+    - ARGOCD_INSECURE
+
+actions:
+  - name: list_applications
+    description: List all applications
+
+  - name: get_application
+    description: Get application details
+    parameters:
+      - name: name
+        type: string
+        required: true
+
+  - name: sync_application
+    description: Trigger application sync
+    parameters:
+      - name: name
+        type: string
+        required: true
+
+  - name: rollback_application
+    description: Rollback to a specific revision
+    parameters:
+      - name: name
+        type: string
+        required: true
+      - name: revision
+        type: integer
+        required: true
+
+  - name: get_application_health
+    description: Get application health status
+    parameters:
+      - name: name
+        type: string
+        required: true

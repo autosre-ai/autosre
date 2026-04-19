@@ -1,0 +1,90 @@
+name: dynatrace
+version: 1.0.0
+description: Query Dynatrace for problems, metrics, and monitored entities
+author: OpenSRE
+
+config:
+  url:
+    type: string
+    required: true
+    description: Dynatrace environment URL (e.g., https://abc12345.live.dynatrace.com)
+  api_token:
+    type: string
+    required: true
+    secret: true
+    description: Dynatrace API token
+  timeout:
+    type: integer
+    required: false
+    default: 30
+    description: Request timeout in seconds
+
+actions:
+  - name: get_problems
+    description: Get active problems from Dynatrace
+    params:
+      - name: status
+        type: string
+        required: false
+        enum: [OPEN, CLOSED]
+        default: OPEN
+      - name: impact_level
+        type: string
+        required: false
+        enum: [APPLICATION, SERVICE, INFRASTRUCTURE]
+      - name: severity_level
+        type: string
+        required: false
+        enum: [AVAILABILITY, ERROR, PERFORMANCE, RESOURCE_CONTENTION, CUSTOM_ALERT]
+    returns: list[Problem]
+
+  - name: get_problem_details
+    description: Get detailed problem information
+    params:
+      - name: problem_id
+        type: string
+        required: true
+        description: Problem ID
+    returns: ProblemDetails
+
+  - name: get_metrics
+    description: Query metrics from Dynatrace
+    params:
+      - name: metric_key
+        type: string
+        required: true
+        description: "Metric key (e.g., builtin:host.cpu.usage)"
+      - name: entity
+        type: string
+        required: false
+        description: Entity selector
+      - name: time_range
+        type: string
+        required: false
+        default: now-1h
+        description: Time range (e.g., now-1h, now-24h)
+      - name: resolution
+        type: string
+        required: false
+        description: Resolution (e.g., 1m, 5m, 1h)
+    returns: MetricData
+
+  - name: get_entities
+    description: List monitored entities
+    params:
+      - name: type
+        type: string
+        required: true
+        description: "Entity type (HOST, SERVICE, PROCESS_GROUP, APPLICATION)"
+      - name: filter
+        type: string
+        required: false
+        description: Entity selector filter
+      - name: limit
+        type: integer
+        required: false
+        default: 100
+    returns: list[Entity]
+
+dependencies:
+  - httpx>=0.24.0

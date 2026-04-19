@@ -1,0 +1,75 @@
+name: http
+version: 1.0.0
+description: Generic HTTP client for API calls and health checks
+author: OpenSRE
+
+config:
+  base_url:
+    type: string
+    required: false
+    description: Base URL for requests
+  timeout:
+    type: integer
+    required: false
+    default: 30
+    description: Request timeout in seconds
+  headers:
+    type: object
+    required: false
+    description: Default headers for all requests
+  verify_ssl:
+    type: boolean
+    required: false
+    default: true
+    description: Verify SSL certificates
+
+actions:
+  - name: get
+    description: Make HTTP GET request
+    params:
+      - name: url
+        type: string
+        required: true
+        description: URL or path to request
+      - name: headers
+        type: object
+        required: false
+      - name: params
+        type: object
+        required: false
+        description: Query parameters
+    returns: HTTPResponse
+
+  - name: post
+    description: Make HTTP POST request
+    params:
+      - name: url
+        type: string
+        required: true
+      - name: body
+        type: any
+        required: true
+        description: Request body (JSON object or string)
+      - name: headers
+        type: object
+        required: false
+    returns: HTTPResponse
+
+  - name: health_check
+    description: Check endpoint health
+    params:
+      - name: url
+        type: string
+        required: true
+      - name: expected_status
+        type: integer
+        required: false
+        default: 200
+      - name: timeout
+        type: integer
+        required: false
+        default: 5
+    returns: HealthStatus
+
+dependencies:
+  - httpx>=0.24.0

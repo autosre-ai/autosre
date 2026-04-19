@@ -1,0 +1,115 @@
+name: prometheus
+version: 1.0.0
+description: Query Prometheus metrics, manage alerts, and monitor scrape targets
+author: OpenSRE
+
+config:
+  url:
+    type: string
+    required: true
+    description: Prometheus server URL (e.g., http://prometheus:9090)
+  auth:
+    type: object
+    required: false
+    description: Authentication configuration
+    properties:
+      type:
+        type: string
+        enum: [basic, bearer, none]
+        default: none
+      username:
+        type: string
+      password:
+        type: string
+      token:
+        type: string
+  timeout:
+    type: integer
+    required: false
+    default: 30
+    description: Request timeout in seconds
+  alertmanager_url:
+    type: string
+    required: false
+    description: Alertmanager URL for silence management
+
+actions:
+  - name: query
+    description: Execute instant PromQL query
+    params:
+      - name: promql
+        type: string
+        required: true
+        description: PromQL expression to execute
+      - name: time_range
+        type: string
+        required: false
+        default: "5m"
+        description: Time range for rate/increase functions
+    returns: list[MetricResult]
+
+  - name: query_range
+    description: Execute range PromQL query for time series
+    params:
+      - name: promql
+        type: string
+        required: true
+      - name: start
+        type: datetime
+        required: false
+        description: Start time (default 1h ago)
+      - name: end
+        type: datetime
+        required: false
+        description: End time (default now)
+      - name: step
+        type: string
+        required: false
+        default: "15s"
+    returns: list[MetricResult]
+
+  - name: get_alerts
+    description: List active alerts from Prometheus
+    params: []
+    returns: list[AlertResult]
+
+  - name: get_alert_rules
+    description: List configured alerting rules
+    params: []
+    returns: list[AlertRule]
+
+  - name: silence_alert
+    description: Create silence for an alert (requires Alertmanager)
+    requires_approval: true
+    params:
+      - name: alert_name
+        type: string
+        required: true
+        description: Name of the alert to silence
+      - name: duration
+        type: string
+        required: true
+        description: "Duration string (e.g., '2h', '30m')"
+      - name: comment
+        type: string
+        required: false
+        description: Reason for the silence
+    returns: SilenceResult
+
+  - name: delete_silence
+    description: Remove an active silence
+    requires_approval: true
+    params:
+      - name: silence_id
+        type: string
+        required: true
+    returns: bool
+
+  - name: get_targets
+    description: List scrape targets and their health status
+    params: []
+    returns: list[TargetInfo]
+
+dependencies:
+  - prometheus-api-client>=0.5.0
+  - httpx>=0.24.0
