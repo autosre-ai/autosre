@@ -1,6 +1,7 @@
 """Tests for Vault skill."""
 
 import pytest
+
 from skills.vault.actions import VaultSkill
 
 
@@ -22,7 +23,7 @@ class TestVaultSkillInit:
             "timeout": 60,
         }
         skill = VaultSkill(config)
-        
+
         assert skill.url == "https://vault.test.com"
         assert skill.token == "secret_token"
         assert skill.namespace == "admin"
@@ -36,5 +37,5 @@ class TestVaultSkillInit:
             "secret_id": "secret456",
         }
         skill = VaultSkill(config)
-        
+
         assert skill.auth_method == "approle"

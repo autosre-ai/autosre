@@ -1,13 +1,14 @@
 """Pydantic models for Telegram skill."""
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
 class TelegramError(Exception):
     """Telegram API error."""
-    
+
     def __init__(self, error_code: int, description: str):
         self.error_code = error_code
         self.description = description
@@ -16,13 +17,13 @@ class TelegramError(Exception):
 
 class TelegramUser(BaseModel):
     """Telegram user info."""
-    
+
     id: int
     is_bot: bool = False
     first_name: str
     last_name: Optional[str] = None
     username: Optional[str] = None
-    
+
     @property
     def full_name(self) -> str:
         if self.last_name:
@@ -32,16 +33,16 @@ class TelegramUser(BaseModel):
 
 class TelegramChat(BaseModel):
     """Telegram chat info."""
-    
+
     id: int
     type: str = Field(description="private, group, supergroup, or channel")
     title: Optional[str] = None
     username: Optional[str] = None
-    
+
     @property
     def is_group(self) -> bool:
         return self.type in ("group", "supergroup")
-    
+
     @property
     def is_channel(self) -> bool:
         return self.type == "channel"
@@ -49,14 +50,14 @@ class TelegramChat(BaseModel):
 
 class TelegramMessage(BaseModel):
     """Telegram message."""
-    
+
     message_id: int
     chat: TelegramChat
     date: datetime
     text: Optional[str] = None
     caption: Optional[str] = None
     from_user: Optional[TelegramUser] = None
-    
+
     @property
     def content(self) -> str:
         return self.text or self.caption or ""
@@ -64,7 +65,7 @@ class TelegramMessage(BaseModel):
 
 class TelegramFile(BaseModel):
     """Telegram file info."""
-    
+
     file_id: str
     file_unique_id: str
     file_size: Optional[int] = None
@@ -73,7 +74,7 @@ class TelegramFile(BaseModel):
 
 class TelegramPhoto(BaseModel):
     """Telegram photo sizes."""
-    
+
     file_id: str
     file_unique_id: str
     width: int
@@ -83,7 +84,7 @@ class TelegramPhoto(BaseModel):
 
 class TelegramDocument(BaseModel):
     """Telegram document."""
-    
+
     file_id: str
     file_unique_id: str
     file_name: Optional[str] = None

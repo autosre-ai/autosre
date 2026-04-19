@@ -2,12 +2,13 @@
 
 from datetime import datetime
 from typing import Any, Optional
+
 from pydantic import BaseModel, Field
 
 
 class JiraError(Exception):
     """Jira API error."""
-    
+
     def __init__(self, status: int, message: str, errors: Optional[dict[str, Any]] = None):
         self.status = status
         self.message = message
@@ -17,7 +18,7 @@ class JiraError(Exception):
 
 class JiraUser(BaseModel):
     """Jira user info."""
-    
+
     account_id: str
     display_name: str
     email_address: Optional[str] = None
@@ -27,7 +28,7 @@ class JiraUser(BaseModel):
 
 class JiraStatus(BaseModel):
     """Issue status."""
-    
+
     id: str
     name: str
     category: Optional[str] = None
@@ -35,7 +36,7 @@ class JiraStatus(BaseModel):
 
 class JiraIssueType(BaseModel):
     """Issue type."""
-    
+
     id: str
     name: str
     subtask: bool = False
@@ -44,7 +45,7 @@ class JiraIssueType(BaseModel):
 
 class JiraProject(BaseModel):
     """Jira project."""
-    
+
     id: str
     key: str
     name: str
@@ -52,7 +53,7 @@ class JiraProject(BaseModel):
 
 class JiraIssue(BaseModel):
     """Jira issue."""
-    
+
     id: str
     key: str
     summary: str
@@ -67,7 +68,7 @@ class JiraIssue(BaseModel):
     created: datetime
     updated: datetime
     resolved: Optional[datetime] = None
-    
+
     @property
     def url(self) -> str:
         """Generate issue URL (requires base URL)."""
@@ -76,7 +77,7 @@ class JiraIssue(BaseModel):
 
 class JiraComment(BaseModel):
     """Issue comment."""
-    
+
     id: str
     body: str
     author: JiraUser
@@ -86,7 +87,7 @@ class JiraComment(BaseModel):
 
 class JiraTransition(BaseModel):
     """Issue transition."""
-    
+
     id: str
     name: str
     to_status: JiraStatus
@@ -94,12 +95,12 @@ class JiraTransition(BaseModel):
 
 class JiraSearchResult(BaseModel):
     """JQL search result."""
-    
+
     issues: list[JiraIssue]
     total: int
     start_at: int = 0
     max_results: int = 50
-    
+
     @property
     def has_more(self) -> bool:
         return self.start_at + len(self.issues) < self.total

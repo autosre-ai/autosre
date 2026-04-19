@@ -5,29 +5,29 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
-from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.errors import SlackApiError
+from slack_sdk.web.async_client import AsyncWebClient
 
 from .models import (
-    SlackMessage,
     SlackChannel,
-    SlackReaction,
+    SlackError,
     SlackFile,
     SlackHistory,
     SlackHistoryMessage,
-    SlackError,
+    SlackMessage,
+    SlackReaction,
 )
 
 
 class RateLimiter:
     """Simple rate limiter for Slack API."""
-    
+
     def __init__(self, calls_per_minute: int = 50):
         self.calls_per_minute = calls_per_minute
         self.interval = 60.0 / calls_per_minute
         self.last_call = 0.0
         self._lock = asyncio.Lock()
-    
+
     async def acquire(self):
         async with self._lock:
             now = asyncio.get_event_loop().time()
@@ -39,15 +39,15 @@ class RateLimiter:
 
 class SlackSkill:
     """Slack integration skill."""
-    
+
     def __init__(self, token: Optional[str] = None):
         self.token = token or os.environ.get("SLACK_BOT_TOKEN")
         if not self.token:
             raise SlackError("missing_token", "SLACK_BOT_TOKEN not configured")
-        
+
         self.client = AsyncWebClient(token=self.token)
         self.rate_limiter = RateLimiter()
-    
+
     async def _api_call(self, method: str, **kwargs) -> dict[str, Any]:
         """Make rate-limited API call."""
         await self.rate_limiter.acquire()
@@ -57,7 +57,7 @@ class SlackSkill:
             return response.data
         except SlackApiError as e:
             raise SlackError(e.response["error"], str(e)) from e
-    
+
     async def send_message(
         self,
         channel: str,
@@ -68,7 +68,7 @@ class SlackSkill:
         unfurl_media: bool = True,
     ) -> SlackMessage:
         """Post a message to a channel.
-        
+
         Args:
             channel: Channel ID or name (e.g., "#general" or "C123ABC")
             text: Message text (fallback for blocks)
@@ -76,7 +76,7 @@ class SlackSkill:
             thread_ts: Thread timestamp to reply in
             unfurl_links: Enable link previews
             unfurl_media: Enable media previews
-            
+
         Returns:
             SlackMessage with channel and timestamp
         """
@@ -95,7 +95,7 @@ class SlackSkill:
             ts=data["ts"],
             message=data.get("message"),
         )
-    
+
     async def send_thread_reply(
         self,
         channel: str,
@@ -104,13 +104,13 @@ class SlackSkill:
         blocks: Optional[list[dict[str, Any]]] = None,
     ) -> SlackMessage:
         """Reply in a thread.
-        
+
         Args:
             channel: Channel ID
             thread_ts: Parent message timestamp
             text: Reply text
             blocks: Optional Block Kit blocks
-            
+
         Returns:
             SlackMessage with reply timestamp
         """
@@ -120,7 +120,7 @@ class SlackSkill:
             blocks=blocks,
             thread_ts=thread_ts,
         )
-    
+
     async def add_reaction(
         self,
         channel: str,
@@ -128,18 +128,18 @@ class SlackSkill:
         emoji: str,
     ) -> SlackReaction:
         """Add an emoji reaction to a message.
-        
+
         Args:
             channel: Channel ID
             timestamp: Message timestamp
             emoji: Emoji name (without colons, e.g., "thumbsup")
-            
+
         Returns:
             SlackReaction confirmation
         """
         # Remove colons if present
         emoji = emoji.strip(":")
-        
+
         data = await self._api_call(
             "reactions_add",
             channel=channel,
@@ -152,7 +152,7 @@ class SlackSkill:
             timestamp=timestamp,
             emoji=emoji,
         )
-    
+
     async def upload_file(
         self,
         channel: str,
@@ -161,20 +161,20 @@ class SlackSkill:
         initial_comment: Optional[str] = None,
     ) -> SlackFile:
         """Upload a file to a channel.
-        
+
         Args:
             channel: Channel ID
             file_path: Local path to file
             title: File title
             initial_comment: Message to post with file
-            
+
         Returns:
             SlackFile with file info
         """
         path = Path(file_path)
         if not path.exists():
             raise SlackError("file_not_found", f"File not found: {file_path}")
-        
+
         data = await self._api_call(
             "files_upload_v2",
             channel=channel,
@@ -182,7 +182,7 @@ class SlackSkill:
             title=title or path.name,
             initial_comment=initial_comment,
         )
-        
+
         file_info = data.get("file", {})
         return SlackFile(
             ok=data["ok"],
@@ -193,7 +193,7 @@ class SlackSkill:
             size=file_info.get("size"),
             mimetype=file_info.get("mimetype"),
         )
-    
+
     async def get_channel_history(
         self,
         channel: str,
@@ -202,13 +202,13 @@ class SlackSkill:
         latest: Optional[str] = None,
     ) -> SlackHistory:
         """Fetch recent messages from a channel.
-        
+
         Args:
             channel: Channel ID
             limit: Maximum messages to return (1-1000)
             oldest: Start of time range (timestamp)
             latest: End of time range (timestamp)
-            
+
         Returns:
             SlackHistory with messages
         """
@@ -217,9 +217,9 @@ class SlackSkill:
             kwargs["oldest"] = oldest
         if latest:
             kwargs["latest"] = latest
-        
+
         data = await self._api_call("conversations_history", **kwargs)
-        
+
         messages = [
             SlackHistoryMessage(
                 ts=m["ts"],
@@ -232,14 +232,14 @@ class SlackSkill:
             )
             for m in data.get("messages", [])
         ]
-        
+
         return SlackHistory(
             ok=data["ok"],
             messages=messages,
             has_more=data.get("has_more", False),
             response_metadata=data.get("response_metadata"),
         )
-    
+
     async def create_incident_channel(
         self,
         name: str,
@@ -248,13 +248,13 @@ class SlackSkill:
         purpose: Optional[str] = None,
     ) -> SlackChannel:
         """Create a new incident channel.
-        
+
         Args:
             name: Channel name (will be prefixed with # automatically)
             users: List of user IDs to invite
             topic: Channel topic
             purpose: Channel purpose/description
-            
+
         Returns:
             SlackChannel with channel info
         """
@@ -264,10 +264,10 @@ class SlackSkill:
             name=name,
             is_private=False,
         )
-        
+
         channel_data = data["channel"]
         channel_id = channel_data["id"]
-        
+
         # Set topic if provided
         if topic:
             await self._api_call(
@@ -275,7 +275,7 @@ class SlackSkill:
                 channel=channel_id,
                 topic=topic,
             )
-        
+
         # Set purpose if provided
         if purpose:
             await self._api_call(
@@ -283,7 +283,7 @@ class SlackSkill:
                 channel=channel_id,
                 purpose=purpose,
             )
-        
+
         # Invite users if provided
         if users:
             await self._api_call(
@@ -291,7 +291,7 @@ class SlackSkill:
                 channel=channel_id,
                 users=",".join(users),
             )
-        
+
         return SlackChannel(
             id=channel_id,
             name=channel_data["name"],
@@ -301,31 +301,31 @@ class SlackSkill:
             topic=topic,
             purpose=purpose,
         )
-    
+
     async def archive_channel(self, channel: str) -> bool:
         """Archive a channel.
-        
+
         Args:
             channel: Channel ID to archive
-            
+
         Returns:
             True if successful
         """
         data = await self._api_call("conversations_archive", channel=channel)
         return data.get("ok", False)
-    
+
     async def get_channel_info(self, channel: str) -> SlackChannel:
         """Get channel information.
-        
+
         Args:
             channel: Channel ID
-            
+
         Returns:
             SlackChannel with details
         """
         data = await self._api_call("conversations_info", channel=channel)
         ch = data["channel"]
-        
+
         return SlackChannel(
             id=ch["id"],
             name=ch["name"],

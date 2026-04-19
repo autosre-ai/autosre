@@ -1,11 +1,11 @@
 """Tests for AWS Skill."""
 
-import pytest
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import sys
-from pathlib import Path
+import pytest
 
 # Add skills directory to path for imports
 skills_dir = Path(__file__).parent.parent.parent.parent
@@ -14,11 +14,6 @@ if str(skills_dir) not in sys.path:
 
 from skills.aws.skill import (
     AWSSkill,
-    EC2Instance,
-    ECSService,
-    CloudWatchAlarm,
-    RDSInstance,
-    S3Bucket,
 )
 
 
@@ -34,7 +29,7 @@ def aws_skill():
 
 class TestEC2Operations:
     """Tests for EC2 operations."""
-    
+
     @pytest.mark.asyncio
     async def test_ec2_list_instances(self, aws_skill):
         """Test listing EC2 instances."""
@@ -55,22 +50,22 @@ class TestEC2Operations:
                 }]
             }]
         }
-        
+
         with patch.object(aws_skill, '_get_client') as mock_client:
             mock_ec2 = AsyncMock()
             mock_paginator = MagicMock()
             mock_paginator.paginate.return_value = [mock_response].__iter__()
             mock_ec2.get_paginator.return_value = mock_paginator
             mock_client.return_value.__aenter__.return_value = mock_ec2
-            
+
             instances = await aws_skill.ec2_list_instances()
-            
+
             assert len(instances) == 1
             assert instances[0].instance_id == 'i-1234567890abcdef0'
             assert instances[0].name == 'web-server-1'
             assert instances[0].state == 'running'
             assert instances[0].tags['Environment'] == 'prod'
-    
+
     @pytest.mark.asyncio
     async def test_ec2_get_instance(self, aws_skill):
         """Test getting a specific EC2 instance."""
@@ -85,20 +80,20 @@ class TestEC2Operations:
                 }]
             }]
         }
-        
+
         with patch.object(aws_skill, '_get_client') as mock_client:
             mock_ec2 = AsyncMock()
             mock_ec2.describe_instances.return_value = mock_response
             mock_client.return_value.__aenter__.return_value = mock_ec2
-            
+
             instance = await aws_skill.ec2_get_instance('i-1234567890abcdef0')
-            
+
             assert instance is not None
             assert instance.instance_id == 'i-1234567890abcdef0'
             mock_ec2.describe_instances.assert_called_once_with(
                 InstanceIds=['i-1234567890abcdef0']
             )
-    
+
     @pytest.mark.asyncio
     async def test_ec2_start_instance(self, aws_skill):
         """Test starting an EC2 instance."""
@@ -109,18 +104,18 @@ class TestEC2Operations:
                 'CurrentState': {'Name': 'pending'}
             }]
         }
-        
+
         with patch.object(aws_skill, '_get_client') as mock_client:
             mock_ec2 = AsyncMock()
             mock_ec2.start_instances.return_value = mock_response
             mock_client.return_value.__aenter__.return_value = mock_ec2
-            
+
             result = await aws_skill.ec2_start_instance('i-1234567890abcdef0')
-            
+
             assert result['success'] is True
             assert result['previous_state'] == 'stopped'
             assert result['current_state'] == 'pending'
-    
+
     @pytest.mark.asyncio
     async def test_ec2_stop_instance(self, aws_skill):
         """Test stopping an EC2 instance."""
@@ -131,14 +126,14 @@ class TestEC2Operations:
                 'CurrentState': {'Name': 'stopping'}
             }]
         }
-        
+
         with patch.object(aws_skill, '_get_client') as mock_client:
             mock_ec2 = AsyncMock()
             mock_ec2.stop_instances.return_value = mock_response
             mock_client.return_value.__aenter__.return_value = mock_ec2
-            
+
             result = await aws_skill.ec2_stop_instance('i-1234567890abcdef0')
-            
+
             assert result['success'] is True
             assert result['previous_state'] == 'running'
             assert result['current_state'] == 'stopping'
@@ -146,7 +141,7 @@ class TestEC2Operations:
 
 class TestECSOperations:
     """Tests for ECS operations."""
-    
+
     @pytest.mark.asyncio
     async def test_ecs_list_services(self, aws_skill):
         """Test listing ECS services."""
@@ -163,7 +158,7 @@ class TestECSOperations:
                 'launchType': 'FARGATE'
             }]
         }
-        
+
         with patch.object(aws_skill, '_get_client') as mock_client:
             mock_ecs = AsyncMock()
             mock_paginator = MagicMock()
@@ -171,13 +166,13 @@ class TestECSOperations:
             mock_ecs.get_paginator.return_value = mock_paginator
             mock_ecs.describe_services.return_value = mock_describe_response
             mock_client.return_value.__aenter__.return_value = mock_ecs
-            
+
             services = await aws_skill.ecs_list_services('my-cluster')
-            
+
             assert len(services) == 1
             assert services[0].service_name == 'my-service'
             assert services[0].running_count == 2
-    
+
     @pytest.mark.asyncio
     async def test_ecs_update_service(self, aws_skill):
         """Test updating ECS service."""
@@ -190,52 +185,52 @@ class TestECSOperations:
                 'status': 'ACTIVE'
             }
         }
-        
+
         with patch.object(aws_skill, '_get_client') as mock_client:
             mock_ecs = AsyncMock()
             mock_ecs.update_service.return_value = mock_response
             mock_client.return_value.__aenter__.return_value = mock_ecs
-            
+
             result = await aws_skill.ecs_update_service(
                 'my-cluster', 'my-service', desired_count=5
             )
-            
+
             assert result['success'] is True
             assert result['desired_count'] == 5
 
 
 class TestLambdaOperations:
     """Tests for Lambda operations."""
-    
+
     @pytest.mark.asyncio
     async def test_lambda_invoke(self, aws_skill):
         """Test invoking a Lambda function."""
         mock_payload = AsyncMock()
         mock_payload.read.return_value = b'{"result": "success"}'
-        
+
         mock_response = {
             'StatusCode': 200,
             'ExecutedVersion': '$LATEST',
             'Payload': mock_payload
         }
-        
+
         with patch.object(aws_skill, '_get_client') as mock_client:
             mock_lambda = AsyncMock()
             mock_lambda.invoke.return_value = mock_response
             mock_client.return_value.__aenter__.return_value = mock_lambda
-            
+
             result = await aws_skill.lambda_invoke(
                 'my-function',
                 payload={'key': 'value'}
             )
-            
+
             assert result['success'] is True
             assert result['response'] == {'result': 'success'}
 
 
 class TestCloudWatchOperations:
     """Tests for CloudWatch operations."""
-    
+
     @pytest.mark.asyncio
     async def test_cloudwatch_get_metrics(self, aws_skill):
         """Test getting CloudWatch metrics."""
@@ -248,21 +243,21 @@ class TestCloudWatchOperations:
                 }
             ]
         }
-        
+
         with patch.object(aws_skill, '_get_client') as mock_client:
             mock_cw = AsyncMock()
             mock_cw.get_metric_statistics.return_value = mock_response
             mock_client.return_value.__aenter__.return_value = mock_cw
-            
+
             metrics = await aws_skill.cloudwatch_get_metrics(
                 namespace='AWS/EC2',
                 metric_name='CPUUtilization',
                 dimensions={'InstanceId': 'i-1234567890abcdef0'}
             )
-            
+
             assert len(metrics) == 1
             assert metrics[0]['value'] == 45.5
-    
+
     @pytest.mark.asyncio
     async def test_cloudwatch_get_alarms(self, aws_skill):
         """Test listing CloudWatch alarms."""
@@ -278,16 +273,16 @@ class TestCloudWatchOperations:
                 'AlarmDescription': 'CPU is too high'
             }]
         }
-        
+
         with patch.object(aws_skill, '_get_client') as mock_client:
             mock_cw = AsyncMock()
             mock_paginator = MagicMock()
             mock_paginator.paginate.return_value = [mock_response].__iter__()
             mock_cw.get_paginator.return_value = mock_paginator
             mock_client.return_value.__aenter__.return_value = mock_cw
-            
+
             alarms = await aws_skill.cloudwatch_get_alarms(state='ALARM')
-            
+
             assert len(alarms) == 1
             assert alarms[0].name == 'high-cpu'
             assert alarms[0].state == 'ALARM'
@@ -295,7 +290,7 @@ class TestCloudWatchOperations:
 
 class TestRDSOperations:
     """Tests for RDS operations."""
-    
+
     @pytest.mark.asyncio
     async def test_rds_describe_instances(self, aws_skill):
         """Test describing RDS instances."""
@@ -314,16 +309,16 @@ class TestRDSOperations:
                 'MultiAZ': False
             }]
         }
-        
+
         with patch.object(aws_skill, '_get_client') as mock_client:
             mock_rds = AsyncMock()
             mock_paginator = MagicMock()
             mock_paginator.paginate.return_value = [mock_response].__iter__()
             mock_rds.get_paginator.return_value = mock_paginator
             mock_client.return_value.__aenter__.return_value = mock_rds
-            
+
             instances = await aws_skill.rds_describe_instances()
-            
+
             assert len(instances) == 1
             assert instances[0].db_instance_id == 'my-database'
             assert instances[0].engine == 'postgres'
@@ -331,7 +326,7 @@ class TestRDSOperations:
 
 class TestS3Operations:
     """Tests for S3 operations."""
-    
+
     @pytest.mark.asyncio
     async def test_s3_list_buckets(self, aws_skill):
         """Test listing S3 buckets."""
@@ -343,21 +338,21 @@ class TestS3Operations:
                 }
             ]
         }
-        
+
         with patch.object(aws_skill, '_get_client') as mock_client:
             mock_s3 = AsyncMock()
             mock_s3.list_buckets.return_value = mock_response
             mock_client.return_value.__aenter__.return_value = mock_s3
-            
+
             buckets = await aws_skill.s3_list_buckets()
-            
+
             assert len(buckets) == 1
             assert buckets[0].name == 'my-bucket'
 
 
 class TestHealthCheck:
     """Tests for health check."""
-    
+
     @pytest.mark.asyncio
     async def test_health_check_success(self, aws_skill):
         """Test successful health check."""
@@ -366,13 +361,13 @@ class TestHealthCheck:
             'Arn': 'arn:aws:iam::123456789012:user/test',
             'UserId': 'AIDAXXXXXXXXXXXXXXXXX'
         }
-        
+
         with patch.object(aws_skill, '_get_client') as mock_client:
             mock_sts = AsyncMock()
             mock_sts.get_caller_identity.return_value = mock_response
             mock_client.return_value.__aenter__.return_value = mock_sts
-            
+
             result = await aws_skill.health_check()
-            
+
             assert result['status'] == 'connected'
             assert result['account'] == '123456789012'

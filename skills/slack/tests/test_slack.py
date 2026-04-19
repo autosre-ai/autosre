@@ -1,9 +1,10 @@
 """Tests for Slack skill."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from skills.slack import SlackSkill, SlackMessage, SlackChannel, SlackError
+import pytest
+
+from skills.slack import SlackChannel, SlackError, SlackMessage, SlackSkill
 
 
 @pytest.fixture
@@ -33,9 +34,9 @@ async def test_send_message(skill, mock_client):
             "message": {"text": "Hello"}
         }
     ))
-    
+
     result = await skill.send_message(channel="#general", text="Hello")
-    
+
     assert isinstance(result, SlackMessage)
     assert result.ok is True
     assert result.channel == "C123"
@@ -52,10 +53,10 @@ async def test_send_message_with_blocks(skill, mock_client):
             "ts": "1234567890.123456",
         }
     ))
-    
+
     blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": "*Bold*"}}]
-    result = await skill.send_message(channel="C123", text="Fallback", blocks=blocks)
-    
+    await skill.send_message(channel="C123", text="Fallback", blocks=blocks)
+
     mock_client.chat_postMessage.assert_called_once()
     call_kwargs = mock_client.chat_postMessage.call_args.kwargs
     assert call_kwargs["blocks"] == blocks
@@ -71,13 +72,13 @@ async def test_send_thread_reply(skill, mock_client):
             "ts": "1234567890.999999",
         }
     ))
-    
+
     result = await skill.send_thread_reply(
         channel="C123",
         thread_ts="1234567890.123456",
         text="Thread reply"
     )
-    
+
     assert result.ok is True
     call_kwargs = mock_client.chat_postMessage.call_args.kwargs
     assert call_kwargs["thread_ts"] == "1234567890.123456"
@@ -89,13 +90,13 @@ async def test_add_reaction(skill, mock_client):
     mock_client.reactions_add = AsyncMock(return_value=MagicMock(
         data={"ok": True}
     ))
-    
+
     result = await skill.add_reaction(
         channel="C123",
         timestamp="1234567890.123456",
         emoji=":thumbsup:"  # Should strip colons
     )
-    
+
     assert result.ok is True
     assert result.emoji == "thumbsup"
 
@@ -115,13 +116,13 @@ async def test_create_incident_channel(skill, mock_client):
     ))
     mock_client.conversations_setTopic = AsyncMock(return_value=MagicMock(data={"ok": True}))
     mock_client.conversations_invite = AsyncMock(return_value=MagicMock(data={"ok": True}))
-    
+
     result = await skill.create_incident_channel(
         name="inc-2024-001",
         users=["U123", "U456"],
         topic="Database outage"
     )
-    
+
     assert isinstance(result, SlackChannel)
     assert result.id == "C456"
     assert result.name == "inc-2024-001"
@@ -140,9 +141,9 @@ async def test_get_channel_history(skill, mock_client):
             "has_more": False,
         }
     ))
-    
+
     result = await skill.get_channel_history(channel="C123", limit=10)
-    
+
     assert result.ok is True
     assert len(result.messages) == 2
     assert result.messages[0].text == "Hello"
@@ -154,9 +155,9 @@ async def test_archive_channel(skill, mock_client):
     mock_client.conversations_archive = AsyncMock(return_value=MagicMock(
         data={"ok": True}
     ))
-    
+
     result = await skill.archive_channel(channel="C123")
-    
+
     assert result is True
 
 

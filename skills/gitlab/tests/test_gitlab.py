@@ -1,6 +1,7 @@
 """Tests for GitLab skill."""
 
 import pytest
+
 from skills.gitlab.actions import GitLabSkill
 
 
@@ -21,7 +22,7 @@ class TestGitLabSkillInit:
             "timeout": 60,
         }
         skill = GitLabSkill(config)
-        
+
         assert skill.url == "https://gitlab.test.com"
         assert skill.token == "secret_token"
         assert skill.timeout == 60

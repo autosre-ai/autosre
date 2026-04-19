@@ -4,14 +4,14 @@ Dynatrace Skill Actions
 Query Dynatrace for problems, metrics, and monitored entities.
 """
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
-import logging
 
 import httpx
 
-from opensre_core.skills import Skill, ActionResult, action
+from opensre_core.skills import ActionResult, Skill, action
 
 logger = logging.getLogger(__name__)
 
@@ -76,31 +76,31 @@ class Entity:
 
 class DynatraceSkill(Skill):
     """Skill for querying Dynatrace."""
-    
+
     name = "dynatrace"
     version = "1.0.0"
     description = "Query Dynatrace for problems, metrics, and entities"
-    
+
     def __init__(self, config: dict[str, Any] | None = None):
         super().__init__(config)
         self.url = self.config.get("url", "").rstrip("/")
         self.api_token = self.config.get("api_token", "")
         self.timeout = self.config.get("timeout", 30)
         self._client: httpx.AsyncClient | None = None
-        
+
         # Register actions
         self.register_action("get_problems", self.get_problems, "Get active problems")
         self.register_action("get_problem_details", self.get_problem_details, "Get problem details")
         self.register_action("get_metrics", self.get_metrics, "Query metrics")
         self.register_action("get_entities", self.get_entities, "List entities")
-    
+
     def _get_headers(self) -> dict[str, str]:
         """Get API request headers."""
         return {
             "Authorization": f"Api-Token {self.api_token}",
             "Accept": "application/json",
         }
-    
+
     async def initialize(self) -> None:
         """Initialize HTTP client."""
         self._client = httpx.AsyncClient(
@@ -108,14 +108,14 @@ class DynatraceSkill(Skill):
             headers=self._get_headers(),
         )
         await super().initialize()
-    
+
     async def shutdown(self) -> None:
         """Close HTTP client."""
         if self._client:
             await self._client.aclose()
             self._client = None
         await super().shutdown()
-    
+
     @property
     def client(self) -> httpx.AsyncClient:
         """Get HTTP client."""
@@ -125,14 +125,14 @@ class DynatraceSkill(Skill):
                 headers=self._get_headers(),
             )
         return self._client
-    
+
     async def health_check(self) -> ActionResult[dict[str, Any]]:
         """Check Dynatrace API connection."""
         if not self.url:
             return ActionResult.fail("Dynatrace URL not configured")
         if not self.api_token:
             return ActionResult.fail("Dynatrace API token not configured")
-        
+
         try:
             response = await self.client.get(
                 f"{self.url}/api/v1/time",
@@ -144,7 +144,7 @@ class DynatraceSkill(Skill):
             })
         except Exception as e:
             return ActionResult.fail(f"Connection failed: {e}")
-    
+
     @action(description="Get active problems")
     async def get_problems(
         self,
@@ -153,30 +153,30 @@ class DynatraceSkill(Skill):
         severity_level: str | None = None,
     ) -> ActionResult[list[Problem]]:
         """Get problems from Dynatrace.
-        
+
         Args:
             status: Problem status (OPEN or CLOSED)
             impact_level: Filter by impact level
             severity_level: Filter by severity level
-            
+
         Returns:
             List of problems
         """
         try:
             params: dict[str, str] = {"problemSelector": f"status(\"{status}\")"}
-            
+
             if impact_level:
                 params["problemSelector"] += f",impactLevel(\"{impact_level}\")"
             if severity_level:
                 params["problemSelector"] += f",severityLevel(\"{severity_level}\")"
-            
+
             response = await self.client.get(
                 f"{self.url}/api/v2/problems",
                 params=params,
             )
             response.raise_for_status()
             data = response.json()
-            
+
             problems = []
             for p in data.get("problems", []):
                 problems.append(Problem(
@@ -193,23 +193,23 @@ class DynatraceSkill(Skill):
                     start_time=self._parse_timestamp(p.get("startTime")),
                     end_time=self._parse_timestamp(p.get("endTime")),
                 ))
-            
+
             return ActionResult.ok(problems, total=len(problems))
-            
+
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 401:
                 return ActionResult.fail("Authentication failed - check API token")
             return ActionResult.fail(f"API error: {e.response.status_code}")
         except Exception as e:
             return ActionResult.fail(f"Failed to get problems: {e}")
-    
+
     @action(description="Get problem details")
     async def get_problem_details(self, problem_id: str) -> ActionResult[ProblemDetails]:
         """Get detailed problem information.
-        
+
         Args:
             problem_id: Problem ID
-            
+
         Returns:
             Detailed problem info
         """
@@ -219,7 +219,7 @@ class DynatraceSkill(Skill):
             )
             response.raise_for_status()
             data = response.json()
-            
+
             # Parse basic problem info
             problem = Problem(
                 problem_id=data.get("problemId", ""),
@@ -235,7 +235,7 @@ class DynatraceSkill(Skill):
                 start_time=self._parse_timestamp(data.get("startTime")),
                 end_time=self._parse_timestamp(data.get("endTime")),
             )
-            
+
             # Parse root cause
             root_cause = None
             rc = data.get("rootCauseEntity")
@@ -245,13 +245,13 @@ class DynatraceSkill(Skill):
                     "name": rc.get("name", ""),
                     "type": rc.get("entityId", {}).get("type", ""),
                 }
-            
+
             # Parse impacted entities
             impacted = [
                 {"id": e.get("entityId", {}).get("id", ""), "name": e.get("name", "")}
                 for e in data.get("impactedEntities", [])
             ]
-            
+
             # Parse evidence
             evidence = []
             for ev in data.get("evidenceDetails", {}).get("details", []):
@@ -260,21 +260,21 @@ class DynatraceSkill(Skill):
                     "entity": ev.get("entity", {}).get("name", ""),
                     "data": ev.get("data", {}),
                 })
-            
+
             return ActionResult.ok(ProblemDetails(
                 problem=problem,
                 root_cause_entity=root_cause,
                 impacted_entities=impacted,
                 evidence_details=evidence,
             ))
-            
+
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 return ActionResult.fail(f"Problem not found: {problem_id}")
             return ActionResult.fail(f"API error: {e.response.status_code}")
         except Exception as e:
             return ActionResult.fail(f"Failed to get problem details: {e}")
-    
+
     @action(description="Query metrics")
     async def get_metrics(
         self,
@@ -284,13 +284,13 @@ class DynatraceSkill(Skill):
         resolution: str | None = None,
     ) -> ActionResult[MetricData]:
         """Query metrics from Dynatrace.
-        
+
         Args:
             metric_key: Metric key (e.g., builtin:host.cpu.usage)
             entity: Entity selector (optional)
             time_range: Time range (e.g., now-1h, now-24h)
             resolution: Resolution (e.g., 1m, 5m)
-            
+
         Returns:
             Metric data
         """
@@ -299,63 +299,63 @@ class DynatraceSkill(Skill):
                 "metricSelector": metric_key,
                 "from": time_range,
             }
-            
+
             if entity:
                 params["entitySelector"] = entity
             if resolution:
                 params["resolution"] = resolution
-            
+
             response = await self.client.get(
                 f"{self.url}/api/v2/metrics/query",
                 params=params,
             )
             response.raise_for_status()
             data = response.json()
-            
+
             # Parse metric results
             series_list = []
             for result in data.get("result", []):
                 metric_id = result.get("metricId", metric_key)
-                
+
                 for series_data in result.get("data", []):
                     dimensions = series_data.get("dimensions", [])
                     dimension_map = {}
                     for i, dim in enumerate(result.get("dimensionMap", {}).values()):
                         if i < len(dimensions):
                             dimension_map[dim] = dimensions[i]
-                    
+
                     timestamps = series_data.get("timestamps", [])
                     values = series_data.get("values", [])
-                    
+
                     data_points = []
-                    for ts, val in zip(timestamps, values):
+                    for ts, val in zip(timestamps, values, strict=False):
                         data_points.append(MetricDataPoint(
                             timestamp=self._parse_timestamp(ts),
                             value=val,
                         ))
-                    
+
                     series_list.append(MetricSeries(
                         metric_id=metric_id,
                         dimensions=dimension_map,
                         data_points=data_points,
                     ))
-            
+
             # Get unit from first result
             unit = ""
             if data.get("result"):
                 unit = data["result"][0].get("unit", "")
-            
+
             return ActionResult.ok(MetricData(
                 metric_key=metric_key,
                 unit=unit,
                 series=series_list,
             ))
-            
+
         except httpx.HTTPStatusError as e:
             return ActionResult.fail(f"API error: {e.response.status_code}")
         except Exception as e:
             return ActionResult.fail(f"Failed to query metrics: {e}")
-    
+
     @action(description="List entities")
     async def get_entities(
         self,
@@ -364,12 +364,12 @@ class DynatraceSkill(Skill):
         limit: int = 100,
     ) -> ActionResult[list[Entity]]:
         """List monitored entities.
-        
+
         Args:
             type: Entity type (HOST, SERVICE, PROCESS_GROUP, APPLICATION)
             filter: Entity selector filter
             limit: Maximum entities to return
-            
+
         Returns:
             List of entities
         """
@@ -377,20 +377,20 @@ class DynatraceSkill(Skill):
             entity_selector = f"type(\"{type}\")"
             if filter:
                 entity_selector += f",{filter}"
-            
+
             params = {
                 "entitySelector": entity_selector,
                 "pageSize": min(limit, 500),
                 "fields": "+properties,+tags,+managementZones",
             }
-            
+
             response = await self.client.get(
                 f"{self.url}/api/v2/entities",
                 params=params,
             )
             response.raise_for_status()
             data = response.json()
-            
+
             entities = []
             for e in data.get("entities", [])[:limit]:
                 entities.append(Entity(
@@ -401,14 +401,14 @@ class DynatraceSkill(Skill):
                     tags=[t.get("key", "") for t in e.get("tags", [])],
                     management_zones=[mz.get("name", "") for mz in e.get("managementZones", [])],
                 ))
-            
+
             return ActionResult.ok(entities, total=len(entities))
-            
+
         except httpx.HTTPStatusError as e:
             return ActionResult.fail(f"API error: {e.response.status_code}")
         except Exception as e:
             return ActionResult.fail(f"Failed to get entities: {e}")
-    
+
     def _parse_timestamp(self, ts: int | None) -> datetime | None:
         """Parse Dynatrace timestamp (milliseconds)."""
         if ts is None:

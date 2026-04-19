@@ -2,11 +2,11 @@
 
 from .actions import JiraSkill
 from .models import (
-    JiraIssue,
     JiraComment,
-    JiraTransition,
-    JiraSearchResult,
     JiraError,
+    JiraIssue,
+    JiraSearchResult,
+    JiraTransition,
 )
 
 __all__ = [

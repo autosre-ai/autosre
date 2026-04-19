@@ -2,11 +2,11 @@
 
 from .actions import GitHubSkill
 from .models import (
-    GitHubIssue,
     GitHubComment,
     GitHubCommit,
-    GitHubWorkflowRun,
     GitHubError,
+    GitHubIssue,
+    GitHubWorkflowRun,
 )
 
 __all__ = [

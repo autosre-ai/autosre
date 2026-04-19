@@ -4,15 +4,15 @@ GitLab Skill for OpenSRE
 Pipeline, issue, and merge request management.
 """
 
-from dataclasses import dataclass, field
+import logging
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-import logging
 from urllib.parse import quote_plus
 
 import httpx
 
-from opensre_core.skills import Skill, ActionResult
+from opensre_core.skills import ActionResult, Skill
 
 logger = logging.getLogger(__name__)
 

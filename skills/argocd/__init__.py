@@ -3,10 +3,10 @@
 from .actions import ArgoCDSkill
 from .models import (
     Application,
-    ApplicationList,
     ApplicationHealth,
-    SyncResult,
+    ApplicationList,
     ArgoCDError,
+    SyncResult,
 )
 
 __all__ = [

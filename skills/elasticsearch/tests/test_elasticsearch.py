@@ -1,7 +1,7 @@
 """Tests for Elasticsearch skill."""
 
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 
 from skills.elasticsearch.actions import ElasticsearchSkill
 
@@ -27,7 +27,7 @@ class TestElasticsearchSkillInit:
             "timeout": 60,
         }
         skill = ElasticsearchSkill(config)
-        
+
         assert len(skill.hosts) == 2
         assert skill.api_key == "test-api-key"
         assert skill.timeout == 60

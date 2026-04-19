@@ -4,14 +4,13 @@ Elasticsearch Skill for OpenSRE
 Query logs and metrics from Elasticsearch.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any
 import logging
+from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
-from opensre_core.skills import Skill, ActionResult
+from opensre_core.skills import ActionResult, Skill
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +75,7 @@ class ElasticsearchSkill(Skill):
         """Initialize HTTP client."""
         headers: dict[str, str] = {"Content-Type": "application/json"}
         auth = None
-        
+
         if self.api_key:
             headers["Authorization"] = f"ApiKey {self.api_key}"
         elif self.username and self.password:

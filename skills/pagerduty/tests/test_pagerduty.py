@@ -1,10 +1,16 @@
 """Tests for PagerDuty skill."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime
 
-from skills.pagerduty import PagerDutySkill, Incident, IncidentList, OnCall, PagerDutyError
+import pytest
+
+from skills.pagerduty import (
+    Incident,
+    IncidentList,
+    OnCall,
+    PagerDutyError,
+    PagerDutySkill,
+)
 
 
 @pytest.fixture
@@ -45,10 +51,10 @@ async def test_list_incidents(skill):
         "total": 1,
         "more": False,
     }
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)):
         result = await skill.list_incidents(status="triggered")
-    
+
     assert isinstance(result, IncidentList)
     assert len(result.incidents) == 1
     assert result.incidents[0].id == "P123"
@@ -70,10 +76,10 @@ async def test_get_incident(skill):
             "html_url": "https://example.pagerduty.com/incidents/P123",
         }
     }
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)):
         result = await skill.get_incident("P123")
-    
+
     assert isinstance(result, Incident)
     assert result.id == "P123"
     assert result.is_acknowledged
@@ -94,15 +100,15 @@ async def test_acknowledge_incident(skill):
             "html_url": "https://example.pagerduty.com/incidents/P123",
         }
     }
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)) as mock_req:
         result = await skill.acknowledge_incident("P123")
-        
+
         mock_req.assert_called_once()
         call_args = mock_req.call_args
         assert call_args[0][0] == "PUT"
         assert "acknowledged" in str(call_args)
-    
+
     assert result.status == "acknowledged"
 
 
@@ -122,10 +128,10 @@ async def test_resolve_incident(skill):
             "html_url": "https://example.pagerduty.com/incidents/P123",
         }
     }
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)):
         result = await skill.resolve_incident("P123")
-    
+
     assert result.is_resolved
     assert result.resolved_at is not None
 
@@ -151,10 +157,10 @@ async def test_get_oncall(skill):
             }
         ]
     }
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)):
         result = await skill.get_oncall("SCHED123")
-    
+
     assert len(result) == 1
     assert isinstance(result[0], OnCall)
     assert result[0].user.name == "John Doe"
@@ -176,18 +182,18 @@ async def test_create_incident(skill):
             "html_url": "https://example.pagerduty.com/incidents/P456",
         }
     }
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)) as mock_req:
         result = await skill.create_incident(
             service_id="S123",
             title="New Incident",
             body="Detailed description",
         )
-        
+
         mock_req.assert_called_once()
         call_args = mock_req.call_args
         assert call_args[0][0] == "POST"
-    
+
     assert result.id == "P456"
     assert result.is_triggered
 

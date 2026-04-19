@@ -1,7 +1,7 @@
 """Tests for Splunk skill."""
 
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 
 from skills.splunk.actions import SplunkSkill
 
@@ -30,7 +30,7 @@ class TestSplunkSkillInit:
             "timeout": 120,
         }
         skill = SplunkSkill(config)
-        
+
         assert skill.host == "splunk.test.com"
         assert skill.port == 8089
         assert skill.username == "api_user"

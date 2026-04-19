@@ -1,10 +1,16 @@
 """Tests for GitHub skill."""
 
-import pytest
 from unittest.mock import AsyncMock, patch
-from datetime import datetime
 
-from skills.github import GitHubSkill, GitHubIssue, GitHubComment, GitHubCommit, GitHubWorkflowRun, GitHubError
+import pytest
+
+from skills.github import (
+    GitHubComment,
+    GitHubCommit,
+    GitHubError,
+    GitHubIssue,
+    GitHubSkill,
+)
 
 
 @pytest.fixture
@@ -46,7 +52,7 @@ def make_issue(number: int = 1, title: str = "Test Issue") -> dict:
 async def test_create_issue(skill):
     """Test creating an issue."""
     mock_response = make_issue(number=42, title="New Issue")
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)):
         result = await skill.create_issue(
             repo="org/repo",
@@ -54,7 +60,7 @@ async def test_create_issue(skill):
             body="Issue description",
             labels=["bug"]
         )
-    
+
     assert isinstance(result, GitHubIssue)
     assert result.number == 42
     assert result.title == "New Issue"
@@ -67,10 +73,10 @@ async def test_close_issue(skill):
     mock_response = make_issue(number=42)
     mock_response["state"] = "closed"
     mock_response["closed_at"] = "2024-01-02T00:00:00Z"
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)):
         result = await skill.close_issue(repo="org/repo", issue_number=42)
-    
+
     assert not result.is_open
     assert result.closed_at is not None
 
@@ -85,14 +91,14 @@ async def test_create_pr_comment(skill):
         "html_url": "https://github.com/org/repo/issues/42#comment-123456",
         "created_at": "2024-01-01T00:00:00Z",
     }
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)):
         result = await skill.create_pr_comment(
             repo="org/repo",
             pr_number=42,
             body="LGTM!"
         )
-    
+
     assert isinstance(result, GitHubComment)
     assert result.body == "LGTM!"
 
@@ -128,10 +134,10 @@ async def test_get_workflow_runs(skill):
             },
         ]
     }
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)):
         result = await skill.get_workflow_runs(repo="org/repo", workflow="ci.yml")
-    
+
     assert result.total_count == 2
     assert len(result.workflow_runs) == 2
     assert result.workflow_runs[0].is_successful
@@ -147,12 +153,12 @@ async def test_trigger_workflow(skill):
             ref="main",
             inputs={"environment": "staging"}
         )
-        
+
         mock_req.assert_called_once()
         call_args = mock_req.call_args
         assert call_args[0][0] == "POST"
         assert "deploy.yml" in call_args[0][1]
-    
+
     assert result is True
 
 
@@ -177,10 +183,10 @@ async def test_get_commit(skill):
         "html_url": "https://github.com/org/repo/commit/abc123",
         "stats": {"additions": 10, "deletions": 5, "total": 15},
     }
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)):
         result = await skill.get_commit(repo="org/repo", sha="abc123")
-    
+
     assert isinstance(result, GitHubCommit)
     assert result.short_sha == "abc123d"
     assert result.message == "Fix bug"

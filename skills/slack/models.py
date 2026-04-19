@@ -2,12 +2,13 @@
 
 from datetime import datetime
 from typing import Any, Optional
+
 from pydantic import BaseModel, Field
 
 
 class SlackError(Exception):
     """Slack API error."""
-    
+
     def __init__(self, error: str, message: str = ""):
         self.error = error
         self.message = message
@@ -16,16 +17,16 @@ class SlackError(Exception):
 
 class SlackMessage(BaseModel):
     """Slack message response."""
-    
+
     ok: bool
     channel: str
     ts: str = Field(description="Message timestamp (unique ID)")
     message: Optional[dict[str, Any]] = None
-    
+
     @property
     def timestamp(self) -> str:
         return self.ts
-    
+
     @property
     def permalink(self) -> Optional[str]:
         return self.message.get("permalink") if self.message else None
@@ -33,7 +34,7 @@ class SlackMessage(BaseModel):
 
 class SlackChannel(BaseModel):
     """Slack channel info."""
-    
+
     id: str
     name: str
     is_private: bool = False
@@ -47,7 +48,7 @@ class SlackChannel(BaseModel):
 
 class SlackReaction(BaseModel):
     """Slack reaction response."""
-    
+
     ok: bool
     channel: str
     timestamp: str
@@ -56,7 +57,7 @@ class SlackReaction(BaseModel):
 
 class SlackFile(BaseModel):
     """Slack file upload response."""
-    
+
     ok: bool
     file_id: str
     title: str
@@ -68,7 +69,7 @@ class SlackFile(BaseModel):
 
 class SlackHistoryMessage(BaseModel):
     """Single message from channel history."""
-    
+
     ts: str
     text: str
     user: Optional[str] = None
@@ -80,7 +81,7 @@ class SlackHistoryMessage(BaseModel):
 
 class SlackHistory(BaseModel):
     """Channel history response."""
-    
+
     ok: bool
     messages: list[SlackHistoryMessage]
     has_more: bool = False

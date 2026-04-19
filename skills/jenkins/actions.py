@@ -4,14 +4,13 @@ Jenkins Skill for OpenSRE
 CI/CD integration with Jenkins.
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any
 import logging
+from dataclasses import dataclass
+from typing import Any
 
 import httpx
 
-from opensre_core.skills import Skill, ActionResult
+from opensre_core.skills import ActionResult, Skill
 
 logger = logging.getLogger(__name__)
 
@@ -162,12 +161,12 @@ class JenkinsSkill(Skill):
                 )
             else:
                 response = await self._client.post(f"/job/{name}/build")
-            
+
             response.raise_for_status()
-            
+
             # Get the queue location from header
             queue_url = response.headers.get("Location")
-            
+
             return ActionResult.ok(Build(
                 number=0,  # Will be assigned by Jenkins
                 url=queue_url or "",

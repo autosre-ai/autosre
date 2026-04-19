@@ -4,14 +4,14 @@ Vault Skill for OpenSRE
 HashiCorp Vault secrets management.
 """
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
-import logging
 
 import httpx
 
-from opensre_core.skills import Skill, ActionResult
+from opensre_core.skills import ActionResult, Skill
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ class VaultSkill(Skill):
     async def initialize(self) -> None:
         """Initialize HTTP client and authenticate."""
         headers: dict[str, str] = {}
-        
+
         if self.token:
             headers["X-Vault-Token"] = self.token
         if self.namespace:

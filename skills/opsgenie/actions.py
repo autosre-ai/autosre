@@ -4,14 +4,14 @@ OpsGenie Skill for OpenSRE
 Alert and incident management via OpsGenie API.
 """
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
-import logging
 
 import httpx
 
-from opensre_core.skills import Skill, ActionResult
+from opensre_core.skills import ActionResult, Skill
 
 logger = logging.getLogger(__name__)
 

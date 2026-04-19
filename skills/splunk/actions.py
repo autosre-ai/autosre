@@ -4,15 +4,15 @@ Splunk Skill for OpenSRE
 Query logs and metrics from Splunk.
 """
 
+import asyncio
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
-import asyncio
-import logging
 
 import httpx
 
-from opensre_core.skills import Skill, ActionResult
+from opensre_core.skills import ActionResult, Skill
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ class SplunkSkill(Skill):
             verify=self.verify_ssl,
             timeout=self.timeout,
         )
-        
+
         # Authenticate to get session key
         try:
             response = await self._client.post(
@@ -96,7 +96,7 @@ class SplunkSkill(Skill):
                 self._client.headers["Authorization"] = f"Splunk {self._session_key}"
         except Exception as e:
             logger.error(f"Failed to authenticate with Splunk: {e}")
-        
+
         self._initialized = True
 
     async def shutdown(self) -> None:
@@ -159,7 +159,7 @@ class SplunkSkill(Skill):
                 status_data = status_response.json()
                 entry = status_data.get("entry", [{}])[0]
                 content = entry.get("content", {})
-                
+
                 if content.get("isDone"):
                     break
                 await asyncio.sleep(1)
@@ -261,10 +261,10 @@ class SplunkSkill(Skill):
             for entry in data.get("entry", []):
                 content = entry.get("content", {})
                 alert_severity = content.get("severity", "unknown")
-                
+
                 if severity and alert_severity != severity:
                     continue
-                    
+
                 alerts.append(Alert(
                     name=entry.get("name", ""),
                     severity=alert_severity,

@@ -2,12 +2,13 @@
 
 from datetime import datetime
 from typing import Any, Optional
+
 from pydantic import BaseModel, Field
 
 
 class GitHubError(Exception):
     """GitHub API error."""
-    
+
     def __init__(self, status: int, message: str, documentation_url: Optional[str] = None):
         self.status = status
         self.message = message
@@ -17,7 +18,7 @@ class GitHubError(Exception):
 
 class GitHubUser(BaseModel):
     """GitHub user info."""
-    
+
     id: int
     login: str
     avatar_url: Optional[str] = None
@@ -26,7 +27,7 @@ class GitHubUser(BaseModel):
 
 class GitHubLabel(BaseModel):
     """GitHub issue label."""
-    
+
     id: int
     name: str
     color: str
@@ -35,7 +36,7 @@ class GitHubLabel(BaseModel):
 
 class GitHubIssue(BaseModel):
     """GitHub issue."""
-    
+
     id: int
     number: int
     title: str
@@ -48,7 +49,7 @@ class GitHubIssue(BaseModel):
     created_at: datetime
     updated_at: datetime
     closed_at: Optional[datetime] = None
-    
+
     @property
     def is_open(self) -> bool:
         return self.state == "open"
@@ -56,7 +57,7 @@ class GitHubIssue(BaseModel):
 
 class GitHubComment(BaseModel):
     """GitHub comment."""
-    
+
     id: int
     body: str
     user: GitHubUser
@@ -67,7 +68,7 @@ class GitHubComment(BaseModel):
 
 class GitHubCommitAuthor(BaseModel):
     """Commit author info."""
-    
+
     name: str
     email: str
     date: datetime
@@ -75,7 +76,7 @@ class GitHubCommitAuthor(BaseModel):
 
 class GitHubCommit(BaseModel):
     """GitHub commit."""
-    
+
     sha: str
     message: str
     author: GitHubCommitAuthor
@@ -83,7 +84,7 @@ class GitHubCommit(BaseModel):
     html_url: str
     stats: Optional[dict[str, int]] = None
     files: Optional[list[dict[str, Any]]] = None
-    
+
     @property
     def short_sha(self) -> str:
         return self.sha[:7]
@@ -91,7 +92,7 @@ class GitHubCommit(BaseModel):
 
 class GitHubWorkflowRun(BaseModel):
     """GitHub Actions workflow run."""
-    
+
     id: int
     name: str
     head_branch: str
@@ -102,11 +103,11 @@ class GitHubWorkflowRun(BaseModel):
     created_at: datetime
     updated_at: datetime
     run_attempt: int = 1
-    
+
     @property
     def is_completed(self) -> bool:
         return self.status == "completed"
-    
+
     @property
     def is_successful(self) -> bool:
         return self.conclusion == "success"
@@ -114,6 +115,6 @@ class GitHubWorkflowRun(BaseModel):
 
 class GitHubWorkflowRunList(BaseModel):
     """List of workflow runs."""
-    
+
     total_count: int
     workflow_runs: list[GitHubWorkflowRun]

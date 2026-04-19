@@ -13,17 +13,13 @@ from datetime import datetime, timedelta, timezone
 from functools import partial
 from typing import Any
 
+from google.api_core import exceptions as gcp_exceptions
 from google.auth import default as google_default_auth
 from google.auth.exceptions import GoogleAuthError
-from google.oauth2 import service_account
-from google.cloud import compute_v1
-from google.cloud import container_v1
-from google.cloud.run_v2 import ServicesClient, Service, TrafficTarget
-from google.cloud import monitoring_v3
+from google.cloud import bigquery, compute_v1, container_v1, monitoring_v3
 from google.cloud import logging as cloud_logging
-from google.cloud import bigquery
-from google.api_core import exceptions as gcp_exceptions
-from google.api_core.retry import Retry
+from google.cloud.run_v2 import ServicesClient, TrafficTarget
+from google.oauth2 import service_account
 
 try:
     from opensre.core.exceptions import SkillExecutionError
@@ -109,7 +105,7 @@ class BigQueryResult:
 class GCPSkill:
     """
     GCP Cloud Provider Skill.
-    
+
     Provides async methods for interacting with GCP services:
     - Compute Engine: List, start, stop instances
     - GKE: List clusters, get cluster details
@@ -118,11 +114,11 @@ class GCPSkill:
     - Logging: Query logs
     - BigQuery: Execute SQL queries
     """
-    
+
     def __init__(self, config: dict[str, Any] | None = None):
         """
         Initialize GCP Skill.
-        
+
         Args:
             config: Configuration dict with credentials and settings.
                    If not provided, uses application default credentials.
@@ -135,10 +131,10 @@ class GCPSkill:
         self._max_retries = self.config.get('max_retries', 3)
         self._retry_delay = self.config.get('retry_delay', 1.0)
         self._timeout = self.config.get('timeout', 60)
-        
+
         # Initialize credentials
         self._init_credentials()
-    
+
     def _init_credentials(self):
         """Initialize GCP credentials."""
         try:
@@ -151,7 +147,7 @@ class GCPSkill:
                     with open(self.config['credentials_file']) as f:
                         creds_data = json.load(f)
                         self._project = creds_data.get('project_id')
-                        
+
             elif self.config.get('credentials_json'):
                 creds_data = json.loads(self.config['credentials_json'])
                 self._credentials = service_account.Credentials.from_service_account_info(
@@ -164,15 +160,15 @@ class GCPSkill:
                 self._credentials, project = google_default_auth()
                 if not self._project:
                     self._project = project
-                    
+
         except GoogleAuthError as e:
             logger.warning(f"Failed to initialize GCP credentials: {e}")
-    
+
     async def _run_sync(self, func, *args, **kwargs):
         """Run a synchronous function in a thread pool."""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, partial(func, *args, **kwargs))
-    
+
     async def _retry_with_backoff(
         self,
         operation: str,
@@ -183,7 +179,7 @@ class GCPSkill:
     ) -> Any:
         """
         Execute an operation with exponential backoff retry.
-        
+
         Args:
             operation: Name of the operation (for logging)
             func: Callable to execute
@@ -191,7 +187,7 @@ class GCPSkill:
         """
         retries = max_retries or self._max_retries
         last_error = None
-        
+
         for attempt in range(retries + 1):
             try:
                 return await self._run_sync(func, *args, **kwargs)
@@ -213,7 +209,7 @@ class GCPSkill:
                     method=operation,
                     reason=f"Invalid argument: {e}"
                 )
-            except (gcp_exceptions.ServiceUnavailable, 
+            except (gcp_exceptions.ServiceUnavailable,
                     gcp_exceptions.DeadlineExceeded,
                     gcp_exceptions.ResourceExhausted) as e:
                 last_error = e
@@ -233,17 +229,17 @@ class GCPSkill:
                         f"retrying in {delay}s: {e}"
                     )
                     await asyncio.sleep(delay)
-        
+
         raise SkillExecutionError(
             skill_name='gcp',
             method=operation,
             reason=f"Failed after {retries + 1} attempts: {last_error}"
         )
-    
+
     # =========================================================================
     # Compute Engine Operations
     # =========================================================================
-    
+
     async def gce_list_instances(
         self,
         project: str | None = None,
@@ -251,28 +247,28 @@ class GCPSkill:
     ) -> list[GCEInstance]:
         """
         List GCE VM instances.
-        
+
         Args:
             project: GCP project ID (defaults to configured project)
             zone: GCP zone (defaults to configured zone, or all zones if '-')
-        
+
         Returns:
             List of GCEInstance dataclass objects
         """
         project = project or self._project
         zone = zone or self._zone
-        
+
         if not project:
             raise SkillExecutionError(
                 skill_name='gcp',
                 method='gce_list_instances',
                 reason='No project specified'
             )
-        
+
         def _list():
             client = compute_v1.InstancesClient(credentials=self._credentials)
             instances = []
-            
+
             if zone == '-':
                 # List all zones
                 request = compute_v1.AggregatedListInstancesRequest(project=project)
@@ -284,24 +280,24 @@ class GCPSkill:
                 request = compute_v1.ListInstancesRequest(project=project, zone=zone)
                 for instance in client.list(request=request):
                     instances.append(self._parse_gce_instance(instance, zone))
-            
+
             return instances
-        
+
         return await self._retry_with_backoff('gce_list_instances', _list)
-    
+
     def _parse_gce_instance(self, instance, zone: str) -> GCEInstance:
         """Parse a GCE instance proto to dataclass."""
         # Extract IPs
         internal_ip = None
         external_ip = None
-        
+
         for interface in instance.network_interfaces:
             if interface.network_i_p:
                 internal_ip = interface.network_i_p
             for access_config in interface.access_configs:
                 if access_config.nat_i_p:
                     external_ip = access_config.nat_i_p
-        
+
         return GCEInstance(
             name=instance.name,
             zone=zone,
@@ -313,7 +309,7 @@ class GCPSkill:
             labels=dict(instance.labels) if instance.labels else {},
             network_tags=list(instance.tags.items) if instance.tags else []
         )
-    
+
     async def gce_start_instance(
         self,
         project: str | None = None,
@@ -322,36 +318,36 @@ class GCPSkill:
     ) -> dict[str, Any]:
         """
         Start a GCE VM instance.
-        
+
         Args:
             project: GCP project ID
             zone: GCP zone
             instance: Instance name
-        
+
         Returns:
             Dict with operation result
         """
         project = project or self._project
         zone = zone or self._zone
-        
+
         if not project or not instance:
             raise SkillExecutionError(
                 skill_name='gcp',
                 method='gce_start_instance',
                 reason='Project and instance name required'
             )
-        
+
         def _start():
             client = compute_v1.InstancesClient(credentials=self._credentials)
             operation = client.start(project=project, zone=zone, instance=instance)
-            
+
             # Wait for operation to complete
             operation_client = compute_v1.ZoneOperationsClient(credentials=self._credentials)
             while operation.status != compute_v1.Operation.Status.DONE:
                 operation = operation_client.get(
                     project=project, zone=zone, operation=operation.name
                 )
-            
+
             return {
                 'instance': instance,
                 'zone': zone,
@@ -359,9 +355,9 @@ class GCPSkill:
                 'status': 'DONE' if operation.status == compute_v1.Operation.Status.DONE else 'PENDING',
                 'success': operation.error is None
             }
-        
+
         return await self._retry_with_backoff('gce_start_instance', _start)
-    
+
     async def gce_stop_instance(
         self,
         project: str | None = None,
@@ -370,36 +366,36 @@ class GCPSkill:
     ) -> dict[str, Any]:
         """
         Stop a GCE VM instance.
-        
+
         Args:
             project: GCP project ID
             zone: GCP zone
             instance: Instance name
-        
+
         Returns:
             Dict with operation result
         """
         project = project or self._project
         zone = zone or self._zone
-        
+
         if not project or not instance:
             raise SkillExecutionError(
                 skill_name='gcp',
                 method='gce_stop_instance',
                 reason='Project and instance name required'
             )
-        
+
         def _stop():
             client = compute_v1.InstancesClient(credentials=self._credentials)
             operation = client.stop(project=project, zone=zone, instance=instance)
-            
+
             # Wait for operation to complete
             operation_client = compute_v1.ZoneOperationsClient(credentials=self._credentials)
             while operation.status != compute_v1.Operation.Status.DONE:
                 operation = operation_client.get(
                     project=project, zone=zone, operation=operation.name
                 )
-            
+
             return {
                 'instance': instance,
                 'zone': zone,
@@ -407,13 +403,13 @@ class GCPSkill:
                 'status': 'DONE' if operation.status == compute_v1.Operation.Status.DONE else 'PENDING',
                 'success': operation.error is None
             }
-        
+
         return await self._retry_with_backoff('gce_stop_instance', _stop)
-    
+
     # =========================================================================
     # GKE Operations
     # =========================================================================
-    
+
     async def gke_list_clusters(
         self,
         project: str | None = None,
@@ -421,36 +417,36 @@ class GCPSkill:
     ) -> list[GKECluster]:
         """
         List GKE clusters.
-        
+
         Args:
             project: GCP project ID
             location: Region/zone, or '-' for all locations
-        
+
         Returns:
             List of GKECluster dataclass objects
         """
         project = project or self._project
-        
+
         if not project:
             raise SkillExecutionError(
                 skill_name='gcp',
                 method='gke_list_clusters',
                 reason='No project specified'
             )
-        
+
         def _list():
             client = container_v1.ClusterManagerClient(credentials=self._credentials)
             parent = f"projects/{project}/locations/{location}"
-            
+
             response = client.list_clusters(parent=parent)
             clusters = []
-            
+
             for cluster in response.clusters:
                 node_count = sum(
-                    pool.initial_node_count or 0 
+                    pool.initial_node_count or 0
                     for pool in cluster.node_pools
                 )
-                
+
                 clusters.append(GKECluster(
                     name=cluster.name,
                     location=cluster.location,
@@ -468,11 +464,11 @@ class GCPSkill:
                         for pool in cluster.node_pools
                     ]
                 ))
-            
+
             return clusters
-        
+
         return await self._retry_with_backoff('gke_list_clusters', _list)
-    
+
     async def gke_get_cluster(
         self,
         project: str | None = None,
@@ -481,39 +477,39 @@ class GCPSkill:
     ) -> GKECluster | None:
         """
         Get details of a specific GKE cluster.
-        
+
         Args:
             project: GCP project ID
             location: Cluster location (region or zone)
             cluster: Cluster name
-        
+
         Returns:
             GKECluster dataclass or None if not found
         """
         project = project or self._project
         location = location or self._region
-        
+
         if not project or not cluster:
             raise SkillExecutionError(
                 skill_name='gcp',
                 method='gke_get_cluster',
                 reason='Project and cluster name required'
             )
-        
+
         def _get():
             client = container_v1.ClusterManagerClient(credentials=self._credentials)
             name = f"projects/{project}/locations/{location}/clusters/{cluster}"
-            
+
             try:
                 c = client.get_cluster(name=name)
             except gcp_exceptions.NotFound:
                 return None
-            
+
             node_count = sum(
-                pool.initial_node_count or 0 
+                pool.initial_node_count or 0
                 for pool in c.node_pools
             )
-            
+
             return GKECluster(
                 name=c.name,
                 location=c.location,
@@ -536,13 +532,13 @@ class GCPSkill:
                     for pool in c.node_pools
                 ]
             )
-        
+
         return await self._retry_with_backoff('gke_get_cluster', _get)
-    
+
     # =========================================================================
     # Cloud Run Operations
     # =========================================================================
-    
+
     async def cloud_run_list_services(
         self,
         project: str | None = None,
@@ -550,28 +546,28 @@ class GCPSkill:
     ) -> list[CloudRunService]:
         """
         List Cloud Run services.
-        
+
         Args:
             project: GCP project ID
             region: Region (defaults to configured region)
-        
+
         Returns:
             List of CloudRunService dataclass objects
         """
         project = project or self._project
         region = region or self._region
-        
+
         if not project:
             raise SkillExecutionError(
                 skill_name='gcp',
                 method='cloud_run_list_services',
                 reason='No project specified'
             )
-        
+
         def _list():
             client = ServicesClient(credentials=self._credentials)
             parent = f"projects/{project}/locations/{region}"
-            
+
             services = []
             for service in client.list_services(parent=parent):
                 traffic = []
@@ -582,7 +578,7 @@ class GCPSkill:
                             'percent': t.percent,
                             'type': t.type_.name if t.type_ else None
                         })
-                
+
                 conditions = []
                 if service.conditions:
                     for c in service.conditions:
@@ -591,7 +587,7 @@ class GCPSkill:
                             'state': c.state.name if c.state else None,
                             'message': c.message
                         })
-                
+
                 services.append(CloudRunService(
                     name=service.name.split('/')[-1],
                     region=region,
@@ -600,11 +596,11 @@ class GCPSkill:
                     traffic=traffic,
                     conditions=conditions
                 ))
-            
+
             return services
-        
+
         return await self._retry_with_backoff('cloud_run_list_services', _list)
-    
+
     async def cloud_run_update_traffic(
         self,
         project: str | None = None,
@@ -614,27 +610,27 @@ class GCPSkill:
     ) -> dict[str, Any]:
         """
         Update traffic split for a Cloud Run service.
-        
+
         Args:
             project: GCP project ID
             region: Region
             service: Service name
             revisions: Dict mapping revision names to traffic percentages
                       e.g., {"my-service-00001": 90, "my-service-00002": 10}
-        
+
         Returns:
             Dict with update result
         """
         project = project or self._project
         region = region or self._region
-        
+
         if not project or not service or not revisions:
             raise SkillExecutionError(
                 skill_name='gcp',
                 method='cloud_run_update_traffic',
                 reason='Project, service, and revisions required'
             )
-        
+
         # Validate percentages sum to 100
         total = sum(revisions.values())
         if total != 100:
@@ -643,11 +639,11 @@ class GCPSkill:
                 method='cloud_run_update_traffic',
                 reason=f'Traffic percentages must sum to 100, got {total}'
             )
-        
+
         def _update():
             client = ServicesClient(credentials=self._credentials)
             name = f"projects/{project}/locations/{region}/services/{service}"
-            
+
             # Build traffic targets
             traffic_targets = []
             for revision, percent in revisions.items():
@@ -655,15 +651,15 @@ class GCPSkill:
                     revision=revision,
                     percent=percent
                 ))
-            
+
             # Get current service and update traffic
             current_service = client.get_service(name=name)
             current_service.traffic = traffic_targets
-            
+
             # Update the service
             operation = client.update_service(service=current_service)
             result = operation.result()  # Wait for completion
-            
+
             return {
                 'service': service,
                 'region': region,
@@ -673,13 +669,13 @@ class GCPSkill:
                 ],
                 'success': True
             }
-        
+
         return await self._retry_with_backoff('cloud_run_update_traffic', _update)
-    
+
     # =========================================================================
     # Monitoring Operations
     # =========================================================================
-    
+
     async def monitoring_query(
         self,
         project: str | None = None,
@@ -689,39 +685,39 @@ class GCPSkill:
     ) -> list[MetricDataPoint]:
         """
         Run a Monitoring Query Language (MQL) query.
-        
+
         Args:
             project: GCP project ID
             query: MQL query string
             start_time: Start of time range (default: 1 hour ago)
             end_time: End of time range (default: now)
-        
+
         Returns:
             List of MetricDataPoint dataclass objects
         """
         project = project or self._project
-        
+
         if not project or not query:
             raise SkillExecutionError(
                 skill_name='gcp',
                 method='monitoring_query',
                 reason='Project and query required'
             )
-        
+
         def _query():
             client = monitoring_v3.QueryServiceClient(credentials=self._credentials)
-            
+
             now = datetime.now(timezone.utc)
-            interval = monitoring_v3.TimeInterval(
+            monitoring_v3.TimeInterval(
                 start_time=(start_time or (now - timedelta(hours=1))),
                 end_time=(end_time or now)
             )
-            
+
             request = monitoring_v3.QueryTimeSeriesRequest(
                 name=f"projects/{project}",
                 query=query
             )
-            
+
             results = []
             for time_series in client.query_time_series(request=request):
                 for point in time_series.point_data:
@@ -731,15 +727,15 @@ class GCPSkill:
                             value=value.double_value or value.int64_value or 0,
                             labels=dict(time_series.label_values) if hasattr(time_series, 'label_values') else {}
                         ))
-            
+
             return results
-        
+
         return await self._retry_with_backoff('monitoring_query', _query)
-    
+
     # =========================================================================
     # Logging Operations
     # =========================================================================
-    
+
     async def logging_query(
         self,
         project: str | None = None,
@@ -749,28 +745,28 @@ class GCPSkill:
     ) -> list[LogEntry]:
         """
         Query Cloud Logging logs.
-        
+
         Args:
             project: GCP project ID
             filter: Log filter string (e.g., 'severity>=ERROR')
             limit: Maximum number of entries to return
             order_by: Sort order ('timestamp desc' or 'timestamp asc')
-        
+
         Returns:
             List of LogEntry dataclass objects
         """
         project = project or self._project
-        
+
         if not project:
             raise SkillExecutionError(
                 skill_name='gcp',
                 method='logging_query',
                 reason='No project specified'
             )
-        
+
         def _query():
             client = cloud_logging.Client(project=project, credentials=self._credentials)
-            
+
             entries = []
             for entry in client.list_entries(
                 filter_=filter,
@@ -783,7 +779,7 @@ class GCPSkill:
                     message = json.dumps(entry.payload)
                 else:
                     message = str(entry.payload)
-                
+
                 entries.append(LogEntry(
                     timestamp=entry.timestamp,
                     severity=entry.severity or 'DEFAULT',
@@ -794,15 +790,15 @@ class GCPSkill:
                     },
                     labels=dict(entry.labels) if entry.labels else {}
                 ))
-            
+
             return entries
-        
+
         return await self._retry_with_backoff('logging_query', _query)
-    
+
     # =========================================================================
     # BigQuery Operations
     # =========================================================================
-    
+
     async def bigquery_query(
         self,
         project: str | None = None,
@@ -812,72 +808,72 @@ class GCPSkill:
     ) -> BigQueryResult:
         """
         Execute a BigQuery SQL query.
-        
+
         Args:
             project: GCP project ID
             sql: SQL query string
             timeout: Query timeout in seconds
             max_results: Maximum number of rows to return
-        
+
         Returns:
             BigQueryResult dataclass with rows and schema
         """
         project = project or self._project
-        
+
         if not project or not sql:
             raise SkillExecutionError(
                 skill_name='gcp',
                 method='bigquery_query',
                 reason='Project and SQL query required'
             )
-        
+
         def _query():
             client = bigquery.Client(project=project, credentials=self._credentials)
-            
+
             job_config = bigquery.QueryJobConfig()
             job = client.query(sql, job_config=job_config)
-            
+
             # Wait for results
             result = job.result(timeout=timeout or self._timeout)
-            
+
             # Convert to list of dicts
             rows = []
             for row in result:
                 rows.append(dict(row.items()))
                 if len(rows) >= max_results:
                     break
-            
+
             # Get schema
             schema = [
                 {'name': field.name, 'type': field.field_type}
                 for field in result.schema
             ]
-            
+
             return BigQueryResult(
                 total_rows=result.total_rows,
                 rows=rows,
                 schema=schema,
                 job_id=job.job_id
             )
-        
+
         return await self._retry_with_backoff('bigquery_query', _query)
-    
+
     # =========================================================================
     # Health Check
     # =========================================================================
-    
+
     async def health_check(self) -> dict[str, Any]:
         """
         Check GCP connectivity by attempting to list projects.
-        
+
         Returns:
             Dict with connection status and identity info
         """
         def _check():
             from google.cloud import resourcemanager_v3
-            
+
             client = resourcemanager_v3.ProjectsClient(credentials=self._credentials)
-            
+
             # Try to get the current project
             if self._project:
                 try:
@@ -894,13 +890,13 @@ class GCPSkill:
                         'error': str(e),
                         'project': self._project
                     }
-            
+
             return {
                 'status': 'connected',
                 'project': None,
                 'note': 'No project configured'
             }
-        
+
         try:
             return await self._run_sync(_check)
         except Exception as e:

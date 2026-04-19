@@ -2,11 +2,11 @@
 
 from .actions import SlackSkill
 from .models import (
-    SlackMessage,
     SlackChannel,
-    SlackReaction,
-    SlackFile,
     SlackError,
+    SlackFile,
+    SlackMessage,
+    SlackReaction,
 )
 
 __all__ = [

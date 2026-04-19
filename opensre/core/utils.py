@@ -27,18 +27,18 @@ def save_yaml(path: Path | str, data: dict[str, Any]) -> None:
 
 def resolve_env_vars(value: str) -> str:
     """Resolve environment variables in a string.
-    
+
     Supports ${VAR} and ${VAR:-default} syntax.
     """
     pattern = r'\$\{([^}]+)\}'
-    
+
     def replacer(match: re.Match) -> str:
         expr = match.group(1)
         if ":-" in expr:
             var_name, default = expr.split(":-", 1)
             return os.environ.get(var_name, default)
         return os.environ.get(expr, match.group(0))
-    
+
     return re.sub(pattern, replacer, value)
 
 
@@ -55,11 +55,11 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]
 
 def resolve_template(template: str, context: dict[str, Any]) -> str:
     """Resolve a template string with context variables.
-    
+
     Supports {{ variable }} and {{ variable.nested }} syntax.
     """
     pattern = r'\{\{\s*([^}]+)\s*\}\}'
-    
+
     def replacer(match: re.Match) -> str:
         expr = match.group(1).strip()
         parts = expr.split(".")
@@ -72,7 +72,7 @@ def resolve_template(template: str, context: dict[str, Any]) -> str:
             if value is None:
                 return match.group(0)
         return str(value)
-    
+
     return re.sub(pattern, replacer, template)
 
 

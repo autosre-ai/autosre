@@ -1,6 +1,7 @@
 """Tests for Jenkins skill."""
 
 import pytest
+
 from skills.jenkins.actions import JenkinsSkill
 
 
@@ -23,7 +24,7 @@ class TestJenkinsSkillInit:
             "timeout": 60,
         }
         skill = JenkinsSkill(config)
-        
+
         assert skill.url == "https://jenkins.test.com"
         assert skill.username == "api_user"
         assert skill.timeout == 60

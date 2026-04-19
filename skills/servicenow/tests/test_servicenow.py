@@ -1,9 +1,10 @@
 """Tests for ServiceNow skill."""
 
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from skills.servicenow.actions import ServiceNowSkill, Incident
+import pytest
+
+from skills.servicenow.actions import ServiceNowSkill
 
 
 @pytest.fixture
@@ -36,7 +37,7 @@ class TestServiceNowSkillInit:
             "timeout": 60,
         }
         skill = ServiceNowSkill(config)
-        
+
         assert skill.instance == "mycompany.service-now.com"
         assert skill.username == "api_user"
         assert skill.timeout == 60
@@ -68,9 +69,9 @@ class TestGetIncidents:
 
         with patch.object(initialized_skill._client, "get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
-            
+
             result = await initialized_skill.get_incidents()
-            
+
             assert result.success
             assert len(result.data) == 1
             assert result.data[0].number == "INC0001234"

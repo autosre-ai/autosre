@@ -1,9 +1,10 @@
 """Tests for OpsGenie skill."""
 
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from skills.opsgenie.actions import OpsGenieSkill, Alert
+import pytest
+
+from skills.opsgenie.actions import OpsGenieSkill
 
 
 @pytest.fixture
@@ -34,7 +35,7 @@ class TestOpsGenieSkillInit:
             "timeout": 60,
         }
         skill = OpsGenieSkill(config)
-        
+
         assert skill.api_key == "test-key"
         assert skill.api_url == "https://api.eu.opsgenie.com"
         assert skill.timeout == 60
@@ -64,9 +65,9 @@ class TestListAlerts:
 
         with patch.object(initialized_skill._client, "get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
-            
+
             result = await initialized_skill.list_alerts()
-            
+
             assert result.success
             assert len(result.data) == 1
             assert result.data[0].message == "High CPU usage"

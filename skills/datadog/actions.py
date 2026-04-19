@@ -4,15 +4,15 @@ Datadog Skill for OpenSRE
 Query metrics, monitors, events, and manage incidents.
 """
 
+import logging
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
-import time
-import logging
 
 import httpx
 
-from opensre_core.skills import Skill, ActionResult
+from opensre_core.skills import ActionResult, Skill
 
 logger = logging.getLogger(__name__)
 

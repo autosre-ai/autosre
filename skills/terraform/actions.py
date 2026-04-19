@@ -4,14 +4,14 @@ Terraform Skill for OpenSRE
 Terraform Cloud/Enterprise workspace and run management.
 """
 
-from dataclasses import dataclass, field
+import logging
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-import logging
 
 import httpx
 
-from opensre_core.skills import Skill, ActionResult
+from opensre_core.skills import ActionResult, Skill
 
 logger = logging.getLogger(__name__)
 

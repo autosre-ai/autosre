@@ -1,10 +1,10 @@
 """Tests for Datadog skill."""
 
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
-import time
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from skills.datadog.actions import DatadogSkill, MetricSeries, Monitor, Event, Incident
+import pytest
+
+from skills.datadog.actions import DatadogSkill
 
 
 @pytest.fixture
@@ -37,7 +37,7 @@ class TestDatadogSkillInit:
             "timeout": 60,
         }
         skill = DatadogSkill(config)
-        
+
         assert skill.api_key == "test-api"
         assert skill.app_key == "test-app"
         assert skill.site == "datadoghq.eu"
@@ -46,7 +46,7 @@ class TestDatadogSkillInit:
 
     def test_init_defaults(self):
         skill = DatadogSkill({})
-        
+
         assert skill.site == "datadoghq.com"
         assert skill.timeout == 30
 
@@ -72,9 +72,9 @@ class TestQueryMetrics:
 
         with patch.object(initialized_skill._client, "get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
-            
+
             result = await initialized_skill.query_metrics("avg:system.cpu.user{*}")
-            
+
             assert result.success
             assert len(result.data) == 1
             assert result.data[0].metric == "system.cpu.user"
@@ -83,7 +83,7 @@ class TestQueryMetrics:
     @pytest.mark.asyncio
     async def test_query_metrics_not_initialized(self, datadog_skill):
         result = await datadog_skill.query_metrics("avg:system.cpu.user{*}")
-        
+
         assert not result.success
         assert "not initialized" in result.error.lower()
 
@@ -110,9 +110,9 @@ class TestGetMonitors:
 
         with patch.object(initialized_skill._client, "get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
-            
+
             result = await initialized_skill.get_monitors()
-            
+
             assert result.success
             assert len(result.data) == 1
             assert result.data[0].name == "High CPU"

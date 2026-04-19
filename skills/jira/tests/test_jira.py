@@ -1,10 +1,10 @@
 """Tests for Jira skill."""
 
-import pytest
 from unittest.mock import AsyncMock, patch
-from datetime import datetime
 
-from skills.jira import JiraSkill, JiraIssue, JiraSearchResult, JiraComment, JiraError
+import pytest
+
+from skills.jira import JiraComment, JiraError, JiraIssue, JiraSearchResult, JiraSkill
 
 
 @pytest.fixture
@@ -41,7 +41,7 @@ async def test_create_issue(skill):
     """Test creating an issue."""
     mock_create = {"id": "10001", "key": "OPS-123"}
     mock_get = make_issue_response()
-    
+
     with patch.object(skill, "_request", AsyncMock(side_effect=[mock_create, mock_get])):
         result = await skill.create_issue(
             project="OPS",
@@ -49,7 +49,7 @@ async def test_create_issue(skill):
             summary="Test Issue",
             description="Test description"
         )
-    
+
     assert isinstance(result, JiraIssue)
     assert result.key == "OPS-123"
 
@@ -58,13 +58,13 @@ async def test_create_issue(skill):
 async def test_update_issue(skill):
     """Test updating an issue."""
     mock_get = make_issue_response(summary="Updated Summary")
-    
+
     with patch.object(skill, "_request", AsyncMock(side_effect=[{}, mock_get])):
         result = await skill.update_issue(
             issue_key="OPS-123",
             fields={"summary": "Updated Summary"}
         )
-    
+
     assert result.summary == "Updated Summary"
 
 
@@ -82,13 +82,13 @@ async def test_add_comment(skill):
         },
         "created": "2024-01-01T00:00:00.000+0000",
     }
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)):
         result = await skill.add_comment(
             issue_key="OPS-123",
             comment="Test comment"
         )
-    
+
     assert isinstance(result, JiraComment)
     assert result.id == "10001"
 
@@ -104,13 +104,13 @@ async def test_transition_issue(skill):
     }
     mock_get = make_issue_response()
     mock_get["fields"]["status"] = {"id": "3", "name": "Done", "statusCategory": {"name": "Done"}}
-    
+
     with patch.object(skill, "_request", AsyncMock(side_effect=[mock_transitions, {}, mock_get])):
         result = await skill.transition_issue(
             issue_key="OPS-123",
             transition="Done"
         )
-    
+
     assert result.status.name == "Done"
 
 
@@ -122,7 +122,7 @@ async def test_transition_issue_not_found(skill):
             {"id": "21", "name": "Done", "to": {"id": "3", "name": "Done"}},
         ]
     }
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_transitions)):
         with pytest.raises(JiraError) as exc_info:
             await skill.transition_issue(
@@ -141,10 +141,10 @@ async def test_search_issues(skill):
         "startAt": 0,
         "maxResults": 50,
     }
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)):
         result = await skill.search_issues(jql="project = OPS")
-    
+
     assert isinstance(result, JiraSearchResult)
     assert len(result.issues) == 2
     assert result.total == 2
@@ -154,10 +154,10 @@ async def test_search_issues(skill):
 async def test_get_issue(skill):
     """Test getting issue details."""
     mock_response = make_issue_response()
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)):
         result = await skill.get_issue("OPS-123")
-    
+
     assert isinstance(result, JiraIssue)
     assert result.key == "OPS-123"
     assert result.project.key == "OPS"

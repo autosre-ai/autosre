@@ -4,14 +4,14 @@ ServiceNow Skill for OpenSRE
 Incident and change management via ServiceNow API.
 """
 
-from dataclasses import dataclass, field
+import logging
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-import logging
 
 import httpx
 
-from opensre_core.skills import Skill, ActionResult
+from opensre_core.skills import ActionResult, Skill
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +132,7 @@ class ServiceNowSkill(Skill):
 
         try:
             params: dict[str, Any] = {"sysparm_limit": limit}
-            
+
             queries = []
             if query:
                 queries.append(query)
@@ -143,7 +143,7 @@ class ServiceNowSkill(Skill):
                 }
                 if state in state_map:
                     queries.append(f"state={state_map[state]}")
-            
+
             if queries:
                 params["sysparm_query"] = "^".join(queries)
 
@@ -261,13 +261,13 @@ class ServiceNowSkill(Skill):
 
         try:
             params: dict[str, Any] = {"sysparm_limit": 100}
-            
+
             queries = []
             if query:
                 queries.append(query)
             if state:
                 queries.append(f"state={state}")
-            
+
             if queries:
                 params["sysparm_query"] = "^".join(queries)
 

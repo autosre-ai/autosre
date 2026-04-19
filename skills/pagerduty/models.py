@@ -2,12 +2,13 @@
 
 from datetime import datetime
 from typing import Any, Optional
+
 from pydantic import BaseModel, Field
 
 
 class PagerDutyError(Exception):
     """PagerDuty API error."""
-    
+
     def __init__(self, code: int, message: str, errors: Optional[list[str]] = None):
         self.code = code
         self.message = message
@@ -17,7 +18,7 @@ class PagerDutyError(Exception):
 
 class Service(BaseModel):
     """PagerDuty service."""
-    
+
     id: str
     name: str
     description: Optional[str] = None
@@ -26,7 +27,7 @@ class Service(BaseModel):
 
 class OnCallUser(BaseModel):
     """On-call user info."""
-    
+
     id: str
     name: str
     email: str
@@ -35,7 +36,7 @@ class OnCallUser(BaseModel):
 
 class OnCall(BaseModel):
     """On-call schedule entry."""
-    
+
     user: OnCallUser
     schedule_id: str
     schedule_name: Optional[str] = None
@@ -46,7 +47,7 @@ class OnCall(BaseModel):
 
 class Incident(BaseModel):
     """PagerDuty incident."""
-    
+
     id: str
     incident_number: int
     title: str
@@ -60,15 +61,15 @@ class Incident(BaseModel):
     description: Optional[str] = None
     assignments: list[dict[str, Any]] = Field(default_factory=list)
     acknowledgements: list[dict[str, Any]] = Field(default_factory=list)
-    
+
     @property
     def is_triggered(self) -> bool:
         return self.status == "triggered"
-    
+
     @property
     def is_acknowledged(self) -> bool:
         return self.status == "acknowledged"
-    
+
     @property
     def is_resolved(self) -> bool:
         return self.status == "resolved"
@@ -76,7 +77,7 @@ class Incident(BaseModel):
 
 class IncidentList(BaseModel):
     """List of incidents with pagination."""
-    
+
     incidents: list[Incident]
     total: int
     offset: int = 0
@@ -86,7 +87,7 @@ class IncidentList(BaseModel):
 
 class IncidentNote(BaseModel):
     """Note on an incident."""
-    
+
     id: str
     content: str
     created_at: datetime

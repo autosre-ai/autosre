@@ -1,6 +1,7 @@
 """Tests for Terraform skill."""
 
 import pytest
+
 from skills.terraform.actions import TerraformSkill
 
 
@@ -23,7 +24,7 @@ class TestTerraformSkillInit:
             "timeout": 120,
         }
         skill = TerraformSkill(config)
-        
+
         assert skill.url == "https://tfe.example.com"
         assert skill.organization == "test-org"
         assert skill.timeout == 120

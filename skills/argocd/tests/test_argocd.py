@@ -1,9 +1,17 @@
 """Tests for ArgoCD skill."""
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
-from skills.argocd import ArgoCDSkill, Application, ApplicationList, ApplicationHealth, SyncResult, ArgoCDError
+import pytest
+
+from skills.argocd import (
+    Application,
+    ApplicationHealth,
+    ApplicationList,
+    ArgoCDError,
+    ArgoCDSkill,
+    SyncResult,
+)
 
 
 @pytest.fixture
@@ -63,10 +71,10 @@ async def test_list_applications(skill):
     mock_response = {
         "items": [make_application("app1"), make_application("app2")]
     }
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)):
         result = await skill.list_applications()
-    
+
     assert isinstance(result, ApplicationList)
     assert result.count == 2
     assert result.items[0].name == "app1"
@@ -76,10 +84,10 @@ async def test_list_applications(skill):
 async def test_get_application(skill):
     """Test getting application details."""
     mock_response = make_application("my-app")
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)):
         result = await skill.get_application("my-app")
-    
+
     assert isinstance(result, Application)
     assert result.name == "my-app"
     assert result.is_healthy
@@ -101,15 +109,15 @@ async def test_sync_application(skill):
             },
         },
     }
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)) as mock_req:
         result = await skill.sync_application("my-app")
-        
+
         mock_req.assert_called_once()
         call_args = mock_req.call_args
         assert call_args[0][0] == "POST"
         assert "sync" in call_args[0][1]
-    
+
     assert isinstance(result, SyncResult)
     assert result.is_running
 
@@ -128,15 +136,15 @@ async def test_rollback_application(skill):
             },
         },
     }
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)) as mock_req:
         result = await skill.rollback_application("my-app", revision=5)
-        
+
         mock_req.assert_called_once()
         call_args = mock_req.call_args
         assert call_args[0][0] == "POST"
         assert "rollback" in call_args[0][1]
-    
+
     assert result.is_successful
 
 
@@ -144,10 +152,10 @@ async def test_rollback_application(skill):
 async def test_get_application_health(skill):
     """Test getting health status."""
     mock_response = make_application()
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)):
         result = await skill.get_application_health("my-app")
-    
+
     assert isinstance(result, ApplicationHealth)
     assert result.is_healthy
     assert len(result.resources) == 2
@@ -162,10 +170,10 @@ async def test_application_degraded(skill):
     mock_response["status"]["health"]["message"] = "Pod crash looping"
     mock_response["status"]["resources"][0]["health"]["status"] = "Degraded"
     mock_response["status"]["resources"][0]["health"]["message"] = "CrashLoopBackOff"
-    
+
     with patch.object(skill, "_request", AsyncMock(return_value=mock_response)):
         result = await skill.get_application_health("my-app")
-    
+
     assert result.is_degraded
     assert result.message == "Pod crash looping"
 

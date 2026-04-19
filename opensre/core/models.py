@@ -26,8 +26,8 @@ class SkillMetadata(BaseModel):
     dependencies: list[str] = Field(default_factory=list)
     methods: list[str] = Field(default_factory=list)
     config_schema: dict[str, Any] = Field(default_factory=dict)
-    
-    
+
+
 class SkillInfo(BaseModel):
     """Information about a loaded skill."""
     name: str
@@ -54,7 +54,7 @@ class TriggerDefinition(BaseModel):
 
 class StepDefinition(BaseModel):
     """Definition of a single step in an agent.
-    
+
     Supports two formats:
     1. User-friendly: name, action (skill.method), params
     2. Verbose: id, skill, method, args
@@ -63,13 +63,13 @@ class StepDefinition(BaseModel):
     name: str | None = None
     action: str | None = None
     params: dict[str, Any] = Field(default_factory=dict)
-    
+
     # Verbose format (for backwards compat)
     id: str | None = None
     skill: str | None = None
     method: str | None = None
     args: dict[str, Any] = Field(default_factory=dict)
-    
+
     # Common fields
     condition: str | None = None
     retry: int = 0
@@ -78,14 +78,14 @@ class StepDefinition(BaseModel):
     timeout: float | None = None
     on_error: str = "fail"  # fail, continue, skip
     output: str | None = None  # Variable name to store result
-    
+
     @model_validator(mode='after')
     def normalize_fields(self):
         """Normalize between user-friendly and verbose formats."""
         # Handle retries alias
         if self.retries is not None and self.retry == 0:
             self.retry = self.retries
-            
+
         # If user-friendly format, parse action into skill.method
         if self.action and not self.skill:
             parts = self.action.split('.', 1)
@@ -95,25 +95,25 @@ class StepDefinition(BaseModel):
             else:
                 self.skill = self.action
                 self.method = "execute"
-        
+
         # Normalize id/name
         if self.name and not self.id:
             self.id = self.name
         elif self.id and not self.name:
             self.name = self.id
-            
+
         # Normalize args/params
         if self.params and not self.args:
             self.args = self.params
         elif self.args and not self.params:
             self.params = self.args
-            
+
         # Ensure we have required fields
         if not self.id:
             raise ValueError("Step must have 'name' or 'id'")
         if not self.skill:
             raise ValueError(f"Step '{self.id}' must have 'action' (skill.method) or 'skill'")
-            
+
         return self
 
 
@@ -127,7 +127,7 @@ class AgentDefinition(BaseModel):
     variables: dict[str, Any] = Field(default_factory=dict)
     triggers: list[TriggerDefinition] = Field(default_factory=list)
     steps: list[StepDefinition] = Field(default_factory=list)
-    
+
 
 class StepResult(BaseModel):
     """Result of a step execution."""
