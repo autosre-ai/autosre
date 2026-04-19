@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "opensre.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "opensre.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    llm:
+      provider: {{ .Values.config.llm.provider | quote }}
+      {{- if eq .Values.config.llm.provider "ollama" }}
+      ollama:
+        host: {{ .Values.config.llm.ollamaHost | quote }}
+        model: {{ .Values.config.llm.ollamaModel | quote }}
+      {{- end }}
+    
+    prometheus:
+      url: {{ .Values.config.prometheus.url | quote }}
+    
+    slack:
+      enabled: {{ .Values.config.slack.enabled }}
+      {{- if .Values.config.slack.enabled }}
+      channel: {{ .Values.config.slack.channel | quote }}
+      {{- end }}
+    
+    security:
+      requireApproval: {{ .Values.config.security.requireApproval }}
+      autoApproveLowRisk: {{ .Values.config.security.autoApproveLowRisk }}
+      auditLogging: {{ .Values.config.security.auditLogging }}
+    
+    logLevel: {{ .Values.config.logLevel | quote }}

@@ -1,0 +1,170 @@
+# Default values for opensre.
+# This is a YAML-formatted file.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/srisainath/opensre
+  # Overrides the image tag whose default is the chart appVersion
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+rbac:
+  # Specifies whether RBAC resources should be created
+  create: true
+  # Namespaces to watch (empty = all namespaces)
+  namespaces: []
+
+config:
+  llm:
+    # LLM provider: ollama, anthropic, openai
+    provider: ollama
+    ollamaHost: http://ollama:11434
+    ollamaModel: llama3:8b
+    # For cloud providers, set API keys in secrets section
+    # provider: anthropic
+    # provider: openai
+
+  prometheus:
+    url: http://prometheus:9090
+
+  slack:
+    enabled: false
+    channel: "#incidents"
+    # Bot token should be set in secrets
+
+  security:
+    # Require human approval for remediation actions
+    requireApproval: true
+    # Auto-approve low-risk actions (e.g., pod restart)
+    autoApproveLowRisk: false
+    # Enable audit logging
+    auditLogging: true
+
+  # Log level: debug, info, warn, error
+  logLevel: info
+
+secrets:
+  # Create a secret with API keys or reference existing
+  create: true
+  # Name of the secret to create/reference
+  name: opensre-secrets
+  # Values (will be base64 encoded in the secret)
+  # Leave empty to not include in secret
+  slackBotToken: ""
+  anthropicApiKey: ""
+  openaiApiKey: ""
+
+service:
+  type: ClusterIP
+  port: 8000
+  # nodePort: 30800  # Only used when type is NodePort
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # kubernetes.io/ingress.class: nginx
+    # kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: opensre.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+  #  - secretName: opensre-tls
+  #    hosts:
+  #      - opensre.local
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+# Pod scheduling constraints
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Pod-level security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# Container-level security context
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Liveness and readiness probes
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Prometheus ServiceMonitor (requires Prometheus Operator)
+serviceMonitor:
+  enabled: false
+  # Additional labels for ServiceMonitor
+  labels: {}
+  # Scrape interval
+  interval: 30s
+  # Scrape timeout
+  scrapeTimeout: 10s
+  # Metric relabelings
+  metricRelabelings: []
+  # Relabelings
+  relabelings: []
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod labels
+podLabels: {}
+
+# Extra environment variables
+extraEnv: []
+#  - name: MY_VAR
+#    value: my-value
+
+# Extra volumes
+extraVolumes: []
+
+# Extra volume mounts
+extraVolumeMounts: []

@@ -1,0 +1,60 @@
+# OpenSRE ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensre-config
+  labels:
+    app: opensre
+    app.kubernetes.io/name: opensre
+data:
+  # Logging
+  log_level: "INFO"
+  
+  # LLM configuration
+  llm_provider: "ollama"  # Options: ollama, anthropic, openai
+  ollama_host: "http://ollama:11434"
+  ollama_model: "llama3.1:8b"
+  
+  # Prometheus
+  prometheus_url: "http://prometheus:9090"
+  
+  # Slack (optional)
+  slack_channel: "#incidents"
+  
+  # Security
+  require_approval: "true"
+  auto_approve_low_risk: "false"
+  audit_logging: "true"
+  
+  # OpenSRE configuration file
+  config.yaml: |
+    # OpenSRE Configuration
+    version: "1.0"
+    
+    llm:
+      provider: ollama
+      ollama:
+        host: http://ollama:11434
+        model: llama3.1:8b
+        timeout: 30
+    
+    prometheus:
+      url: http://prometheus:9090
+      timeout: 10
+    
+    kubernetes:
+      # Uses in-cluster config automatically
+      timeout: 10
+    
+    security:
+      require_approval: true
+      auto_approve_low_risk: false
+      audit_logging: true
+    
+    slack:
+      enabled: false
+      channel: "#incidents"
+    
+    logging:
+      level: INFO
+      format: json

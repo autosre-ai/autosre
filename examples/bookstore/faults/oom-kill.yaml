@@ -1,0 +1,55 @@
+# OOM Kill Fault Injection
+# This patches the catalog-service to immediately consume all available memory
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-service-oom
+  namespace: bookstore
+  labels:
+    app: catalog-service
+    tier: api
+    fault: oom-kill
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: catalog-service
+  template:
+    metadata:
+      labels:
+        app: catalog-service
+        tier: api
+        fault: oom-kill
+    spec:
+      containers:
+      - name: catalog
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          import time
+          
+          print("Catalog service (OOM TEST) starting...")
+          print("Allocating memory aggressively...")
+          
+          # Wait a bit so the pod starts
+          time.sleep(5)
+          
+          # Aggressively allocate memory to trigger OOM
+          data = []
+          block_size = 10 * 1024 * 1024  # 10MB blocks
+          
+          while True:
+              data.append('X' * block_size)
+              print(f"[OOM] Allocated {len(data) * 10} MB total")
+              time.sleep(0.5)
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "100Mi"  # Very low limit to trigger OOM quickly
+            cpu: "100m"

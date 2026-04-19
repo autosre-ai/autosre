@@ -1,0 +1,135 @@
+# OpenSRE RBAC Configuration
+---
+# ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: opensre
+  labels:
+    app: opensre
+    app.kubernetes.io/name: opensre
+---
+# ClusterRole - Read access for investigation
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: opensre
+  labels:
+    app: opensre
+    app.kubernetes.io/name: opensre
+rules:
+  # Core resources - read access for investigation
+  - apiGroups: [""]
+    resources: 
+      - pods
+      - pods/log
+      - events
+      - services
+      - endpoints
+      - configmaps
+      - persistentvolumeclaims
+    verbs: ["get", "list", "watch"]
+  
+  # Secrets - limited read for configuration inspection
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+  
+  # Namespaces - read for multi-namespace support
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+  
+  # Nodes - read for resource analysis
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  
+  # Workloads - read access
+  - apiGroups: ["apps"]
+    resources: 
+      - deployments
+      - replicasets
+      - statefulsets
+      - daemonsets
+    verbs: ["get", "list", "watch"]
+  
+  # Batch workloads
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  
+  # Networking
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch"]
+  
+  # Autoscaling
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
+  
+  # Metrics (if metrics-server is available)
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list"]
+  
+  # -----------------------------------------------------------
+  # WRITE ACCESS - For remediation actions (requires approval)
+  # -----------------------------------------------------------
+  
+  # Scale deployments
+  - apiGroups: ["apps"]
+    resources: 
+      - deployments
+      - statefulsets
+    verbs: ["patch", "update"]
+  
+  - apiGroups: ["apps"]
+    resources: 
+      - deployments/scale
+      - statefulsets/scale
+      - replicasets/scale
+    verbs: ["patch", "update"]
+  
+  # Delete pods (for restarts)
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["delete"]
+  
+  # Evict pods (graceful restart)
+  - apiGroups: [""]
+    resources: ["pods/eviction"]
+    verbs: ["create"]
+---
+# ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: opensre
+  labels:
+    app: opensre
+    app.kubernetes.io/name: opensre
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: opensre
+subjects:
+  - kind: ServiceAccount
+    name: opensre
+    namespace: default  # Change to your namespace
+---
+# Optional: Namespace-scoped Role for restricted access
+# Use this instead of ClusterRole if you want to limit OpenSRE to specific namespaces
+# apiVersion: rbac.authorization.k8s.io/v1
+# kind: Role
+# metadata:
+#   name: opensre
+#   namespace: my-namespace
+# rules:
+#   - apiGroups: [""]
+#     resources: ["pods", "pods/log", "events", "services"]
+#     verbs: ["get", "list", "watch"]
+#   - apiGroups: ["apps"]
+#     resources: ["deployments", "replicasets"]
+#     verbs: ["get", "list", "watch", "patch", "update"]

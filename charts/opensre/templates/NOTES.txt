@@ -1,0 +1,55 @@
+🛡️ OpenSRE has been deployed!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Get the application URL:
+{{- if .Values.ingress.enabled }}
+{{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+{{- else if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "opensre.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+        You can watch the status by running:
+  kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "opensre.fullname" . }}
+
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "opensre.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.service.port }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+  kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ include "opensre.fullname" . }} 8000:{{ .Values.service.port }}
+  Then visit: http://localhost:8000
+{{- end }}
+
+2. Check the deployment status:
+  kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "opensre.name" . }},app.kubernetes.io/instance={{ .Release.Name }}"
+
+3. View logs:
+  kubectl logs --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "opensre.name" . }}" -f
+
+4. Run your first investigation:
+  kubectl exec --namespace {{ .Release.Namespace }} -it deploy/{{ include "opensre.fullname" . }} -- opensre investigate "check health of default namespace"
+
+5. Check OpenSRE status:
+  kubectl exec --namespace {{ .Release.Namespace }} -it deploy/{{ include "opensre.fullname" . }} -- opensre status
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Configuration:
+  - LLM Provider: {{ .Values.config.llm.provider }}
+{{- if eq .Values.config.llm.provider "ollama" }}
+  - Ollama Host: {{ .Values.config.llm.ollamaHost }}
+  - Ollama Model: {{ .Values.config.llm.ollamaModel }}
+{{- end }}
+  - Prometheus URL: {{ .Values.config.prometheus.url }}
+  - Slack Integration: {{ .Values.config.slack.enabled }}
+  - Require Approval: {{ .Values.config.security.requireApproval }}
+
+📚 Documentation: https://github.com/srisainath/opensre/docs
+
+⚠️  Security Note: OpenSRE has ClusterRole permissions for investigation and remediation.
+    Review the RBAC configuration to ensure it meets your security requirements.

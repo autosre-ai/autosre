@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bookstore
+  labels:
+    app.kubernetes.io/name: bookstore
+    app.kubernetes.io/part-of: opensre-demo

@@ -1,0 +1,164 @@
+# prometheus-alerting/agent.yaml
+# Production Prometheus alerting integration
+
+name: prometheus-alerting
+description: Auto-investigate Prometheus alerts
+version: 1.0.0
+
+skills:
+  - prometheus
+  - kubernetes
+  - slack
+
+triggers:
+  - type: prometheus_alert
+    match: 'severity=~"critical|warning"'
+
+config:
+  timeout: 300
+  max_concurrent: 5
+  
+  memory:
+    store_incidents: true
+    pattern_matching: true
+
+runbook:
+  phases:
+    - name: gather
+      description: Gather data for investigation
+      parallel: true
+      timeout: 60
+      steps:
+        - name: get_metrics
+          action: prometheus.query_range
+          params:
+            query: '{{ alert.labels.expr | default("up") }}'
+            start: "-1h"
+            step: "1m"
+          store: metrics
+        
+        - name: get_related_alerts
+          action: prometheus.alerts
+          params:
+            match: 'namespace="{{ alert.labels.namespace | default("default") }}"'
+          store: related_alerts
+        
+        - name: get_pods
+          action: kubernetes.get_pods
+          params:
+            namespace: '{{ alert.labels.namespace | default("default") }}'
+            label_selector: 'app={{ alert.labels.service | default(alert.labels.job) }}'
+          store: pods
+        
+        - name: get_events
+          action: kubernetes.get_events
+          params:
+            namespace: '{{ alert.labels.namespace | default("default") }}'
+            limit: 20
+          store: events
+    
+    - name: analyze
+      description: Analyze gathered data
+      steps:
+        - name: find_similar
+          action: memory.find_similar
+          params:
+            alert: "{{ alert }}"
+            observations:
+              metrics: "{{ metrics }}"
+              events: "{{ events }}"
+          store: similar_incidents
+        
+        - name: llm_analysis
+          action: llm.analyze
+          params:
+            system: |
+              You are an SRE analyzing a Prometheus alert.
+              Identify the root cause and recommend remediation.
+            prompt: |
+              ## Alert
+              Name: {{ alert.alertname }}
+              Labels: {{ alert.labels | to_yaml }}
+              Annotations: {{ alert.annotations | to_yaml }}
+              
+              ## Metrics
+              {{ metrics | summarize }}
+              
+              ## Related Alerts
+              {{ related_alerts | length }} other alerts firing
+              
+              ## Kubernetes State
+              {{ pods | length }} pods, {{ pods | selectattr('status', 'ne', 'Running') | list | length }} unhealthy
+              
+              ## Recent Events
+              {{ events | to_yaml }}
+              
+              ## Similar Past Incidents
+              {{ similar_incidents | to_yaml }}
+              
+              Analyze and provide:
+              1. Root cause
+              2. Confidence (0-1)
+              3. Recommended action
+          store: analysis
+    
+    - name: notify
+      description: Post to Slack
+      steps:
+        - name: post_analysis
+          action: slack.post_blocks
+          params:
+            channel: "#alerts"
+            blocks:
+              - type: header
+                text:
+                  type: plain_text
+                  text: "🚨 {{ alert.alertname }}"
+              - type: section
+                fields:
+                  - type: mrkdwn
+                    text: "*Severity:* {{ alert.labels.severity }}"
+                  - type: mrkdwn
+                    text: "*Service:* {{ alert.labels.service | default('N/A') }}"
+              - type: divider
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: |
+                    *🎯 Root Cause* ({{ (analysis.confidence * 100) | round }}%)
+                    {{ analysis.root_cause }}
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: |
+                    *💡 Recommendation*
+                    {{ analysis.recommendation }}
+              - type: actions
+                elements:
+                  - type: button
+                    text:
+                      type: plain_text
+                      text: "✅ Approve"
+                    style: primary
+                    action_id: approve
+                  - type: button
+                    text:
+                      type: plain_text
+                      text: "🔍 Details"
+                    action_id: details
+                  - type: button
+                    text:
+                      type: plain_text
+                      text: "❌ Dismiss"
+                    action_id: dismiss
+
+safety:
+  auto_approve:
+    - prometheus.*
+    - kubernetes.get_*
+    - slack.*
+    - memory.find_similar
+  require_approval:
+    - kubernetes.rollback
+    - kubernetes.scale
+    - kubernetes.delete_*

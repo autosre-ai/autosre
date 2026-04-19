@@ -1,0 +1,82 @@
+# CPU Spike Fault Injection
+# This patches the frontend to simulate high CPU usage
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-cpu-spike
+  namespace: bookstore
+  labels:
+    app: frontend
+    tier: web
+    fault: cpu-spike
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+        tier: web
+        fault: cpu-spike
+    spec:
+      containers:
+      - name: frontend
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import threading
+          import time
+          import math
+          
+          # CPU spike simulator
+          def burn_cpu():
+              print("[cpu-spike] Starting CPU burn thread...")
+              while True:
+                  # Do useless computation
+                  for i in range(1000000):
+                      math.sqrt(i * 3.14159)
+          
+          # Start multiple CPU burn threads
+          for i in range(4):
+              threading.Thread(target=burn_cpu, daemon=True).start()
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path == '/' or self.path == '/health':
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'<h1>Frontend (CPU SPIKE mode)</h1>')
+                  else:
+                      self.send_response(404)
+                      self.end_headers()
+              def log_message(self, format, *args):
+                  print(f"[frontend-cpu] {args[0]}")
+          
+          print("Frontend (CPU SPIKE) starting on port 80...")
+          HTTPServer(('0.0.0.0', 80), Handler).serve_forever()
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"  # Will be throttled hard
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 15

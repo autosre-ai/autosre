@@ -1,0 +1,71 @@
+# agents/basic-agent/agent.yaml
+# A minimal agent that responds to high error rate alerts
+
+name: basic-agent
+description: Basic agent for error rate monitoring
+version: 1.0.0
+
+skills:
+  - prometheus
+  - slack
+
+triggers:
+  - type: prometheus_alert
+    match: 'alertname="HighErrorRate"'
+  - type: manual
+    command: check-errors
+
+config:
+  timeout: 120
+  notify:
+    on_complete: true
+    channel: "#alerts"
+
+runbook: |
+  1. Query error rate metrics for the affected service
+  2. Check recent error rate trend
+  3. Get top error paths
+  4. Post summary to Slack
+
+runbook_structured:
+  phases:
+    - name: gather
+      description: Gather error metrics
+      steps:
+        - name: current_rate
+          action: prometheus.query
+          params:
+            query: 'rate(http_requests_total{status=~"5.."}[5m])'
+          store: error_rate
+        
+        - name: error_trend
+          action: prometheus.query_range
+          params:
+            query: 'rate(http_requests_total{status=~"5.."}[5m])'
+            start: "-30m"
+            step: "1m"
+          store: error_trend
+    
+    - name: notify
+      description: Post summary to Slack
+      steps:
+        - name: post_summary
+          action: slack.post_message
+          params:
+            channel: "#alerts"
+            text: |
+              🚨 *High Error Rate Detected*
+              
+              *Alert:* {{ alert.alertname }}
+              *Service:* {{ alert.labels.service | default('unknown') }}
+              *Current Error Rate:* {{ error_rate.value | default('N/A') }}
+              
+              *Trend (30 min):*
+              {{ error_trend | sparkline }}
+              
+              _Investigate with:_ `opensre investigate "{{ alert.alertname }}"`
+
+safety:
+  auto_approve:
+    - prometheus.*
+    - slack.post_message

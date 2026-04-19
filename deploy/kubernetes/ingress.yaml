@@ -1,0 +1,37 @@
+# OpenSRE Ingress
+# Configure for your ingress controller (nginx, traefik, etc.)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: opensre
+  labels:
+    app: opensre
+    app.kubernetes.io/name: opensre
+  annotations:
+    # For nginx ingress controller
+    # nginx.ingress.kubernetes.io/rewrite-target: /
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    
+    # For cert-manager TLS
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+    
+    # Rate limiting
+    # nginx.ingress.kubernetes.io/limit-rps: "10"
+spec:
+  ingressClassName: nginx  # Change to your ingress class
+  rules:
+    - host: opensre.example.com  # Change to your domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: opensre
+                port:
+                  name: http
+  # TLS configuration (uncomment and configure)
+  # tls:
+  #   - hosts:
+  #       - opensre.example.com
+  #     secretName: opensre-tls

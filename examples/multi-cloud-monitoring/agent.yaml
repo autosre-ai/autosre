@@ -1,0 +1,118 @@
+# multi-cloud-monitoring/agent.yaml
+# Unified multi-cloud monitoring agent
+
+name: multi-cloud-monitor
+description: Monitor AWS, GCP, and Azure from one place
+version: 1.0.0
+
+skills:
+  - aws
+  - gcp
+  - azure
+  - slack
+
+triggers:
+  - type: schedule
+    cron: "0 * * * *"  # Every hour
+  - type: manual
+    command: cloud-health
+
+config:
+  timeout: 300
+
+runbook:
+  phases:
+    - name: gather
+      description: Gather health data from all clouds
+      parallel: true
+      steps:
+        - name: aws_health
+          action: aws.health_check
+          params:
+            services: ["ec2", "rds", "lambda", "ecs"]
+          store: aws_status
+        
+        - name: gcp_health
+          action: gcp.health_check
+          params:
+            services: ["compute", "gke", "cloud-run", "cloud-sql"]
+          store: gcp_status
+        
+        - name: azure_health
+          action: azure.health_check
+          params:
+            services: ["vms", "aks", "sql", "functions"]
+          store: azure_status
+    
+    - name: analyze
+      description: Analyze cross-cloud health
+      steps:
+        - name: aggregate
+          action: compute.aggregate
+          params:
+            sources:
+              - name: AWS
+                data: "{{ aws_status }}"
+              - name: GCP
+                data: "{{ gcp_status }}"
+              - name: Azure
+                data: "{{ azure_status }}"
+          store: health_summary
+        
+        - name: check_issues
+          action: compute.eval
+          params:
+            expr: |
+              {{ health_summary.issues | length > 0 }}
+          store: has_issues
+    
+    - name: notify
+      description: Post status update
+      steps:
+        - name: hourly_status
+          action: slack.post_blocks
+          params:
+            channel: "#cloud-status"
+            blocks:
+              - type: header
+                text:
+                  type: plain_text
+                  text: "☁️ Multi-Cloud Health Status"
+              - type: section
+                fields:
+                  - type: mrkdwn
+                    text: "*AWS:* {{ aws_status.overall }}"
+                  - type: mrkdwn
+                    text: "*GCP:* {{ gcp_status.overall }}"
+                  - type: mrkdwn
+                    text: "*Azure:* {{ azure_status.overall }}"
+              - type: context
+                elements:
+                  - type: mrkdwn
+                    text: "Last checked: {{ now | strftime('%Y-%m-%d %H:%M UTC') }}"
+        
+        - name: alert_issues
+          condition: "{{ has_issues }}"
+          action: slack.post_blocks
+          params:
+            channel: "#cloud-alerts"
+            blocks:
+              - type: header
+                text:
+                  type: plain_text
+                  text: "🚨 Cloud Issues Detected"
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: |
+                    {% for issue in health_summary.issues %}
+                    • *{{ issue.cloud }}*: {{ issue.service }} - {{ issue.description }}
+                    {% endfor %}
+
+safety:
+  auto_approve:
+    - aws.health_check
+    - gcp.health_check
+    - azure.health_check
+    - slack.*
+    - compute.*

@@ -1,0 +1,189 @@
+# kubernetes-remediation/agent.yaml
+# Automatic remediation for Kubernetes issues
+
+name: kubernetes-remediation
+description: Auto-remediate common Kubernetes issues
+version: 1.0.0
+
+skills:
+  - prometheus
+  - kubernetes
+  - slack
+
+triggers:
+  - type: prometheus_alert
+    match: 'alertname=~"PodCrashLooping|PodOOMKilled|DeploymentFailed"'
+
+config:
+  timeout: 300
+  max_concurrent: 3
+  
+  thresholds:
+    crash_count: 5        # Crashes before action
+    memory_increase: 50   # Percent to increase memory
+    max_scale: 10         # Max replicas
+
+runbook:
+  phases:
+    - name: gather
+      description: Gather pod and deployment info
+      steps:
+        - name: get_pod
+          action: kubernetes.describe
+          params:
+            resource_type: pod
+            name: "{{ alert.labels.pod }}"
+            namespace: "{{ alert.labels.namespace }}"
+          store: pod
+        
+        - name: get_logs
+          action: kubernetes.get_logs
+          params:
+            namespace: "{{ alert.labels.namespace }}"
+            pod: "{{ alert.labels.pod }}"
+            tail_lines: 100
+          store: logs
+        
+        - name: get_deployment
+          action: kubernetes.get_deployments
+          params:
+            namespace: "{{ alert.labels.namespace }}"
+            label_selector: "app={{ pod.labels.app }}"
+          store: deployment
+        
+        - name: get_events
+          action: kubernetes.get_events
+          params:
+            namespace: "{{ alert.labels.namespace }}"
+            field_selector: "involvedObject.name={{ alert.labels.pod }}"
+          store: events
+        
+        - name: get_metrics
+          action: prometheus.query_range
+          params:
+            query: 'container_memory_usage_bytes{pod="{{ alert.labels.pod }}"}'
+            start: "-1h"
+            step: "1m"
+          store: memory_usage
+    
+    - name: analyze
+      description: Determine cause and action
+      steps:
+        - name: classify_issue
+          action: llm.analyze
+          params:
+            system: |
+              You are a Kubernetes expert diagnosing pod issues.
+              Classify the problem and recommend a specific action.
+              
+              Actions to choose from:
+              - rollback: If recent deployment caused issue
+              - scale_memory: If OOM and can increase limits
+              - scale_replicas: If resource exhaustion
+              - restart: If transient issue
+              - page: If needs human intervention
+            prompt: |
+              ## Pod Info
+              {{ pod | to_yaml }}
+              
+              ## Logs
+              {{ logs }}
+              
+              ## Events
+              {{ events | to_yaml }}
+              
+              ## Memory Usage
+              {{ memory_usage | summarize }}
+              
+              ## Deployment
+              {{ deployment | to_yaml }}
+              
+              Classify this issue and recommend action.
+          store: analysis
+    
+    - name: remediate
+      description: Execute remediation
+      steps:
+        - name: rollback
+          condition: "{{ analysis.action == 'rollback' }}"
+          action: kubernetes.rollback
+          params:
+            deployment: "{{ deployment.name }}"
+            namespace: "{{ alert.labels.namespace }}"
+          approval_required: true
+          store: action_result
+        
+        - name: scale_memory
+          condition: "{{ analysis.action == 'scale_memory' }}"
+          action: kubernetes.patch
+          params:
+            resource: "deployment/{{ deployment.name }}"
+            namespace: "{{ alert.labels.namespace }}"
+            patch:
+              spec:
+                template:
+                  spec:
+                    containers:
+                      - name: "{{ pod.containers[0].name }}"
+                        resources:
+                          limits:
+                            memory: "{{ (pod.resources.limits.memory | parse_bytes * 1.5) | format_bytes }}"
+          approval_required: true
+          store: action_result
+        
+        - name: scale_replicas
+          condition: "{{ analysis.action == 'scale_replicas' }}"
+          action: kubernetes.scale
+          params:
+            deployment: "{{ deployment.name }}"
+            namespace: "{{ alert.labels.namespace }}"
+            replicas: "{{ [deployment.replicas + 2, config.thresholds.max_scale] | min }}"
+          approval_required: true
+          store: action_result
+        
+        - name: restart
+          condition: "{{ analysis.action == 'restart' }}"
+          action: kubernetes.restart
+          params:
+            deployment: "{{ deployment.name }}"
+            namespace: "{{ alert.labels.namespace }}"
+          approval_required: true
+          store: action_result
+    
+    - name: notify
+      description: Report results
+      always_run: true
+      steps:
+        - name: post_result
+          action: slack.post_blocks
+          params:
+            channel: "#k8s-alerts"
+            blocks:
+              - type: header
+                text:
+                  type: plain_text
+                  text: "🤖 K8s Remediation: {{ alert.labels.pod }}"
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: |
+                    *Issue:* {{ analysis.issue_type }}
+                    *Root Cause:* {{ analysis.root_cause }}
+                    *Action:* {{ analysis.action | title }}
+                    *Status:* {{ action_result.status | default('pending approval') }}
+
+safety:
+  auto_approve:
+    - kubernetes.get_*
+    - kubernetes.describe
+    - prometheus.*
+  require_approval:
+    - kubernetes.rollback
+    - kubernetes.scale
+    - kubernetes.patch
+    - kubernetes.restart
+    - kubernetes.delete_*
+  protected_namespaces:
+    - kube-system
+    - monitoring
+    - istio-system
