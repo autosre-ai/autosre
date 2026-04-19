@@ -2,8 +2,11 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SRE-Agent | AI-Powered Incident Investigation",
-  description: "Autonomous troubleshooting with human-in-the-loop",
+  title: "OpenSRE | AI-Powered Incident Response",
+  description: "Autonomous incident investigation with human-in-the-loop approval",
+  icons: {
+    icon: '/favicon.ico',
+  },
 };
 
 export default function RootLayout({

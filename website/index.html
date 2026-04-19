@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenSRE - AI-Powered Incident Response</title>
+    <meta name="description" content="OpenSRE is an open-source platform that automatically investigates alerts, finds root causes, and remediates issues. Stop debugging at 3 AM.">
+    <meta property="og:title" content="OpenSRE — AI That Debugs at 3 AM So You Don't Have To">
+    <meta property="og:description" content="Open-source incident response powered by AI. Correlates metrics, logs, and events to find root causes in seconds.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://opensre.dev">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0a0a0b;
+            --bg-card: #111113;
+            --bg-card-hover: #1a1a1d;
+            --text-primary: #fafafa;
+            --text-secondary: #a1a1aa;
+            --text-muted: #71717a;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --border: #27272a;
+            --gradient-start: #3b82f6;
+            --gradient-end: #8b5cf6;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Header */
+        header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            background: rgba(10, 10, 11, 0.8);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 64px;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        nav {
+            display: flex;
+            gap: 32px;
+            align-items: center;
+        }
+
+        nav a {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        nav a:hover {
+            color: var(--text-primary);
+            text-decoration: none;
+        }
+
+        .github-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 8px 16px;
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+
+        .github-btn:hover {
+            background: var(--bg-card-hover);
+            text-decoration: none;
+        }
+
+        /* Hero */
+        .hero {
+            padding: 160px 0 100px;
+            text-align: center;
+            position: relative;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(ellipse at center top, rgba(59, 130, 246, 0.15) 0%, transparent 60%);
+            pointer-events: none;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 6px 14px;
+            border-radius: 100px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+
+        .badge span {
+            color: var(--success);
+        }
+
+        h1 {
+            font-size: clamp(2.5rem, 5vw, 4rem);
+            font-weight: 700;
+            line-height: 1.1;
+            margin-bottom: 24px;
+        }
+
+        .hero h1 span {
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero-subtitle {
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin: 0 auto 40px;
+        }
+
+        .hero-cta {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 28px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(59, 130, 246, 0.3);
+            text-decoration: none;
+        }
+
+        .btn-secondary {
+            background: var(--bg-card);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-card-hover);
+            text-decoration: none;
+        }
+
+        /* Demo Terminal */
+        .demo-section {
+            padding: 60px 0;
+        }
+
+        .terminal {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            max-width: 800px;
+            margin: 0 auto;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+        }
+
+        .terminal-header {
+            display: flex;
+            gap: 8px;
+            padding: 12px 16px;
+            background: rgba(0, 0, 0, 0.2);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .terminal-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .terminal-dot.red { background: #ff5f57; }
+        .terminal-dot.yellow { background: #febc2e; }
+        .terminal-dot.green { background: #28c840; }
+
+        .terminal-body {
+            padding: 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            line-height: 1.7;
+        }
+
+        .terminal-line {
+            margin-bottom: 8px;
+        }
+
+        .terminal-alert {
+            color: var(--danger);
+        }
+
+        .terminal-info {
+            color: var(--accent);
+        }
+
+        .terminal-success {
+            color: var(--success);
+        }
+
+        .terminal-muted {
+            color: var(--text-muted);
+        }
+
+        .terminal-buttons {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .terminal-btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .terminal-btn-approve {
+            background: var(--success);
+            color: white;
+        }
+
+        .terminal-btn-dismiss {
+            background: var(--bg-card-hover);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+
+        /* Features */
+        .features {
+            padding: 100px 0;
+        }
+
+        .section-title {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .section-title h2 {
+            font-size: 2.5rem;
+            margin-bottom: 16px;
+        }
+
+        .section-title p {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 24px;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 32px;
+            transition: all 0.2s;
+        }
+
+        .feature-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-4px);
+        }
+
+        .feature-icon {
+            font-size: 2rem;
+            margin-bottom: 16px;
+        }
+
+        .feature-card h3 {
+            font-size: 1.25rem;
+            margin-bottom: 12px;
+        }
+
+        .feature-card p {
+            color: var(--text-secondary);
+        }
+
+        /* How It Works */
+        .how-it-works {
+            padding: 100px 0;
+            background: var(--bg-card);
+        }
+
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 40px;
+            margin-top: 60px;
+        }
+
+        @media (max-width: 768px) {
+            .steps {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .step {
+            text-align: center;
+        }
+
+        .step-number {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.25rem;
+            margin: 0 auto 20px;
+        }
+
+        .step h3 {
+            font-size: 1.25rem;
+            margin-bottom: 12px;
+        }
+
+        .step p {
+            color: var(--text-secondary);
+        }
+
+        .step code {
+            display: block;
+            background: var(--bg-dark);
+            padding: 16px;
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            margin-top: 16px;
+            text-align: left;
+            border: 1px solid var(--border);
+        }
+
+        /* Comparison */
+        .comparison {
+            padding: 100px 0;
+        }
+
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 40px;
+        }
+
+        .comparison-table th,
+        .comparison-table td {
+            padding: 20px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .comparison-table th {
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .comparison-table td {
+            font-size: 1rem;
+        }
+
+        .comparison-table tr:hover td {
+            background: var(--bg-card);
+        }
+
+        .check {
+            color: var(--success);
+            font-size: 1.25rem;
+        }
+
+        .cross {
+            color: var(--text-muted);
+            font-size: 1.25rem;
+        }
+
+        /* Integrations */
+        .integrations {
+            padding: 100px 0;
+            background: var(--bg-card);
+        }
+
+        .integration-logos {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 40px;
+            margin-top: 40px;
+        }
+
+        .integration-logo {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        .integration-logo span {
+            font-size: 2.5rem;
+        }
+
+        /* CTA */
+        .cta {
+            padding: 120px 0;
+            text-align: center;
+        }
+
+        .cta h2 {
+            font-size: 2.5rem;
+            margin-bottom: 16px;
+        }
+
+        .cta p {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            margin-bottom: 40px;
+        }
+
+        .cta-code {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 16px 32px;
+            border-radius: 8px;
+            display: inline-block;
+            font-family: 'JetBrains Mono', monospace;
+            margin-bottom: 40px;
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        /* Footer */
+        footer {
+            padding: 60px 0;
+            border-top: 1px solid var(--border);
+        }
+
+        .footer-content {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 40px;
+        }
+
+        .footer-brand {
+            max-width: 300px;
+        }
+
+        .footer-brand .logo {
+            margin-bottom: 16px;
+        }
+
+        .footer-brand p {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 60px;
+        }
+
+        .footer-column h4 {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+        }
+
+        .footer-column ul {
+            list-style: none;
+        }
+
+        .footer-column li {
+            margin-bottom: 12px;
+        }
+
+        .footer-column a {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .footer-column a:hover {
+            color: var(--text-primary);
+        }
+
+        .footer-bottom {
+            margin-top: 60px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        /* Mobile */
+        @media (max-width: 768px) {
+            nav {
+                display: none;
+            }
+
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .footer-links {
+                flex-direction: column;
+                gap: 32px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container header-content">
+            <div class="logo">OpenSRE</div>
+            <nav>
+                <a href="#features">Features</a>
+                <a href="#how-it-works">How It Works</a>
+                <a href="https://opensre.dev/docs">Docs</a>
+                <a href="https://github.com/srisainath/opensre/discussions">Community</a>
+            </nav>
+            <a href="https://github.com/srisainath/opensre" class="github-btn">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.605-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                Star on GitHub
+            </a>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="container">
+                <div class="badge">
+                    <span>●</span> v0.1.0 Released
+                </div>
+                <h1>Stop Debugging<br><span>at 3 AM</span></h1>
+                <p class="hero-subtitle">
+                    OpenSRE is an AI-powered incident response platform that investigates alerts, finds root causes, and remediates issues — while you sleep.
+                </p>
+                <div class="hero-cta">
+                    <a href="https://opensre.dev/docs/getting-started" class="btn btn-primary">
+                        Get Started Free →
+                    </a>
+                    <a href="#demo" class="btn btn-secondary">
+                        View Demo
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <section class="demo-section" id="demo">
+            <div class="container">
+                <div class="terminal">
+                    <div class="terminal-header">
+                        <div class="terminal-dot red"></div>
+                        <div class="terminal-dot yellow"></div>
+                        <div class="terminal-dot green"></div>
+                    </div>
+                    <div class="terminal-body">
+                        <div class="terminal-line terminal-alert">
+                            🚨 Alert: checkout-service error rate spike (8.3%)
+                        </div>
+                        <div class="terminal-line terminal-muted">───────────────────────────────────────</div>
+                        <div class="terminal-line terminal-info">
+                            🔍 OpenSRE analyzed:
+                        </div>
+                        <div class="terminal-line">
+                            • Deployment v2.4.1 rolled out 12 min ago
+                        </div>
+                        <div class="terminal-line">
+                            • Memory usage trending up before crashes
+                        </div>
+                        <div class="terminal-line">
+                            • 3 pods OOMKilled in last 10 min
+                        </div>
+                        <div class="terminal-line terminal-muted">───────────────────────────────────────</div>
+                        <div class="terminal-line terminal-success">
+                            🎯 Root Cause (94% confidence):
+                        </div>
+                        <div class="terminal-line">
+                            Memory leak introduced in v2.4.1
+                        </div>
+                        <div class="terminal-buttons">
+                            <span class="terminal-btn terminal-btn-approve">✅ Approve Rollback</span>
+                            <span class="terminal-btn terminal-btn-dismiss">❌ Dismiss</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="features" id="features">
+            <div class="container">
+                <div class="section-title">
+                    <h2>Built for SRE Teams</h2>
+                    <p>Everything you need to automate incident response</p>
+                </div>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">🧠</div>
+                        <h3>AI Root Cause Analysis</h3>
+                        <p>Multi-agent system correlates metrics, logs, events, and deployments to find the actual root cause — not just symptoms.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">⚡</div>
+                        <h3>60-Second Investigations</h3>
+                        <p>What used to take 45+ minutes of manual investigation now happens automatically in under 60 seconds.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">👤</div>
+                        <h3>Human-in-the-Loop</h3>
+                        <p>AI suggests actions, humans approve via Slack, AI executes. You're always in control of what happens.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔌</div>
+                        <h3>Pluggable Skills</h3>
+                        <p>Works with Prometheus, Kubernetes, AWS, GCP, Slack, PagerDuty, and more. Or build your own skills.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🏠</div>
+                        <h3>Local LLM Support</h3>
+                        <p>Run with Ollama for complete data privacy. Your infrastructure data never leaves your network.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📖</div>
+                        <h3>Open Source</h3>
+                        <p>Apache 2.0 licensed. Self-host anywhere. No vendor lock-in. Community-driven development.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="how-it-works" id="how-it-works">
+            <div class="container">
+                <div class="section-title">
+                    <h2>How It Works</h2>
+                    <p>Get started in 3 steps</p>
+                </div>
+                <div class="steps">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <h3>Install</h3>
+                        <p>One command to install OpenSRE</p>
+                        <code>pip install opensre</code>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <h3>Configure</h3>
+                        <p>Point to your Prometheus and LLM</p>
+                        <code>export OPENSRE_PROMETHEUS_URL=...<br>export OPENSRE_LLM_PROVIDER=ollama</code>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <h3>Investigate</h3>
+                        <p>Run your first investigation</p>
+                        <code>opensre investigate "high error rate"</code>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="comparison">
+            <div class="container">
+                <div class="section-title">
+                    <h2>OpenSRE vs The Rest</h2>
+                    <p>Why teams choose OpenSRE</p>
+                </div>
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Feature</th>
+                            <th>OpenSRE</th>
+                            <th>Proprietary AIOps</th>
+                            <th>Manual Process</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Time to Root Cause</td>
+                            <td>< 60 seconds</td>
+                            <td>2-5 minutes</td>
+                            <td>30-60 minutes</td>
+                        </tr>
+                        <tr>
+                            <td>Open Source</td>
+                            <td><span class="check">✓</span></td>
+                            <td><span class="cross">✗</span></td>
+                            <td>N/A</td>
+                        </tr>
+                        <tr>
+                            <td>Local LLM Support</td>
+                            <td><span class="check">✓</span></td>
+                            <td><span class="cross">✗</span></td>
+                            <td>N/A</td>
+                        </tr>
+                        <tr>
+                            <td>Your Data Stays Yours</td>
+                            <td><span class="check">✓</span></td>
+                            <td><span class="cross">✗</span></td>
+                            <td><span class="check">✓</span></td>
+                        </tr>
+                        <tr>
+                            <td>Custom Skills/Extensions</td>
+                            <td><span class="check">✓</span></td>
+                            <td>Limited</td>
+                            <td>Manual scripts</td>
+                        </tr>
+                        <tr>
+                            <td>Vendor Lock-in</td>
+                            <td>None</td>
+                            <td>High</td>
+                            <td>None</td>
+                        </tr>
+                        <tr>
+                            <td>3 AM Friendliness</td>
+                            <td>😎</td>
+                            <td>🙂</td>
+                            <td>😴</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="integrations">
+            <div class="container">
+                <div class="section-title">
+                    <h2>Works With Your Stack</h2>
+                    <p>Integrates with the tools you already use</p>
+                </div>
+                <div class="integration-logos">
+                    <div class="integration-logo">
+                        <span>📊</span>
+                        Prometheus
+                    </div>
+                    <div class="integration-logo">
+                        <span>☸️</span>
+                        Kubernetes
+                    </div>
+                    <div class="integration-logo">
+                        <span>💬</span>
+                        Slack
+                    </div>
+                    <div class="integration-logo">
+                        <span>📟</span>
+                        PagerDuty
+                    </div>
+                    <div class="integration-logo">
+                        <span>☁️</span>
+                        AWS
+                    </div>
+                    <div class="integration-logo">
+                        <span>🌐</span>
+                        GCP
+                    </div>
+                    <div class="integration-logo">
+                        <span>🔷</span>
+                        Azure
+                    </div>
+                    <div class="integration-logo">
+                        <span>📈</span>
+                        Datadog
+                    </div>
+                    <div class="integration-logo">
+                        <span>🔄</span>
+                        ArgoCD
+                    </div>
+                    <div class="integration-logo">
+                        <span>🐙</span>
+                        GitHub
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="cta">
+            <div class="container">
+                <h2>Ready to Sleep Better?</h2>
+                <p>Stop debugging at 3 AM. Let OpenSRE handle incident investigation.</p>
+                <div class="cta-code">
+                    pip install opensre
+                </div>
+                <div class="cta-buttons">
+                    <a href="https://opensre.dev/docs/getting-started" class="btn btn-primary">
+                        Get Started Free →
+                    </a>
+                    <a href="https://opensre.dev/docs" class="btn btn-secondary">
+                        Read the Docs
+                    </a>
+                    <a href="https://github.com/srisainath/opensre" class="btn btn-secondary">
+                        ⭐ Star on GitHub
+                    </a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <div class="logo">OpenSRE</div>
+                    <p>AI-powered incident response for SRE teams. Open source, privacy-first, community-driven.</p>
+                </div>
+                <div class="footer-links">
+                    <div class="footer-column">
+                        <h4>Documentation</h4>
+                        <ul>
+                            <li><a href="/docs/getting-started">Getting Started</a></li>
+                            <li><a href="/docs/installation">Installation</a></li>
+                            <li><a href="/docs/cli-reference">CLI Reference</a></li>
+                            <li><a href="/docs/api-reference">API Reference</a></li>
+                        </ul>
+                    </div>
+                    <div class="footer-column">
+                        <h4>Community</h4>
+                        <ul>
+                            <li><a href="https://github.com/srisainath/opensre">GitHub</a></li>
+                            <li><a href="https://discord.gg/opensre">Discord</a></li>
+                            <li><a href="https://twitter.com/opensre_dev">Twitter</a></li>
+                            <li><a href="https://github.com/srisainath/opensre/discussions">Discussions</a></li>
+                        </ul>
+                    </div>
+                    <div class="footer-column">
+                        <h4>Resources</h4>
+                        <ul>
+                            <li><a href="/blog">Blog</a></li>
+                            <li><a href="/docs/skills/overview">Skills</a></li>
+                            <li><a href="/docs/agents/overview">Agents</a></li>
+                            <li><a href="https://github.com/srisainath/opensre/blob/main/CONTRIBUTING.md">Contributing</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>© 2024 OpenSRE. Apache 2.0 License. Made with ❤️ by the SRE community.</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
