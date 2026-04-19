@@ -2,30 +2,30 @@
 Role-Based Access Control (RBAC) Module
 """
 
+from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
-from dataclasses import dataclass
 
 
 class Permission(Enum):
     """Permissions available in OpenSRE."""
-    
+
     # Read permissions
     READ_METRICS = "read:metrics"
     READ_LOGS = "read:logs"
     READ_EVENTS = "read:events"
     READ_INVESTIGATIONS = "read:investigations"
-    
+
     # Execute permissions (tiered by risk)
     EXECUTE_SAFE = "execute:safe"        # Low-risk commands (get, describe, logs)
     EXECUTE_MEDIUM = "execute:medium"    # Medium-risk (scale, cordon, rollout)
     EXECUTE_HIGH = "execute:high"        # High-risk/destructive (delete, apply, patch)
-    
+
     # Management permissions
     APPROVE_ACTIONS = "approve:actions"
     MANAGE_RUNBOOKS = "manage:runbooks"
     MANAGE_USERS = "manage:users"
-    
+
     # Admin
     ADMIN = "admin:all"
 
@@ -38,7 +38,7 @@ ROLE_PERMISSIONS: dict[str, list[Permission]] = {
         Permission.READ_EVENTS,
         Permission.READ_INVESTIGATIONS,
     ],
-    
+
     "operator": [
         Permission.READ_METRICS,
         Permission.READ_LOGS,
@@ -47,7 +47,7 @@ ROLE_PERMISSIONS: dict[str, list[Permission]] = {
         Permission.EXECUTE_SAFE,
         Permission.EXECUTE_MEDIUM,
     ],
-    
+
     "sre": [
         Permission.READ_METRICS,
         Permission.READ_LOGS,
@@ -59,7 +59,7 @@ ROLE_PERMISSIONS: dict[str, list[Permission]] = {
         Permission.APPROVE_ACTIONS,
         Permission.MANAGE_RUNBOOKS,
     ],
-    
+
     "admin": [
         Permission.ADMIN,
     ],
@@ -78,11 +78,11 @@ class RBACContext:
 def check_permission(user_roles: list[str], required: Permission) -> bool:
     """
     Check if a user with the given roles has a specific permission.
-    
+
     Args:
         user_roles: List of role names the user has
         required: The permission to check
-    
+
     Returns:
         True if user has the permission, False otherwise
     """
@@ -123,11 +123,11 @@ def has_admin(roles: list[str]) -> bool:
 def can_execute_command(roles: list[str], risk_level: str) -> bool:
     """
     Check if user can execute a command based on its risk level.
-    
+
     Args:
         roles: User's roles
         risk_level: "low", "medium", or "high"
-    
+
     Returns:
         True if user can execute
     """
@@ -136,54 +136,53 @@ def can_execute_command(roles: list[str], risk_level: str) -> bool:
         "medium": Permission.EXECUTE_MEDIUM,
         "high": Permission.EXECUTE_HIGH,
     }
-    
+
     required = risk_to_permission.get(risk_level.lower())
     if not required:
         return False
-    
+
     return check_permission(roles, required)
 
 
 def require_permission(permission: Permission):
     """
     Decorator to require a specific permission.
-    
+
     Usage:
         @require_permission(Permission.EXECUTE_HIGH)
         async def delete_resource():
             ...
     """
     from functools import wraps
-    
+
     def decorator(func):
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
             user_info = kwargs.get("_current_user")
             if not user_info:
                 raise PermissionError("Authentication required")
-            
+
             roles = user_info.get("roles", [])
             if not check_permission(roles, permission):
                 raise PermissionError(f"Permission denied: {permission.value}")
-            
+
             return await func(*args, **kwargs)
-        
+
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
             user_info = kwargs.get("_current_user")
             if not user_info:
                 raise PermissionError("Authentication required")
-            
+
             roles = user_info.get("roles", [])
             if not check_permission(roles, permission):
                 raise PermissionError(f"Permission denied: {permission.value}")
-            
+
             return func(*args, **kwargs)
-        
-        import asyncio
+
         import inspect
         if inspect.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper
-    
+
     return decorator

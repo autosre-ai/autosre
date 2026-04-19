@@ -19,7 +19,25 @@ Guidelines:
 - Consider common failure modes (resource exhaustion, network issues, config changes, dependency failures)
 - Look for temporal correlations (what changed recently?)
 - Assign confidence levels based on evidence strength
-- If evidence is weak, acknowledge uncertainty
+
+MANDATORY - Confidence Rules (FOLLOW STRICTLY):
+
+1. HEALTHY SYSTEMS = "No issues detected"
+   - If observations show all pods healthy, no errors, no anomalies → Root Cause: "No issues detected" with Confidence: 90%+
+   - A healthy observation IS conclusive evidence that nothing is wrong
+
+2. SPARSE EVIDENCE + ACTUAL PROBLEM = LOW CONFIDENCE
+   - If there IS an anomaly (pod crash, error, spike) but only 1-2 data points → Confidence: 20-40%
+   - You need corroborating evidence to be confident about root cause
+
+3. NEVER INVENT PROBLEMS
+   - If the reported issue contradicts healthy observations, trust the observations
+   - Don't guess at hidden problems - only conclude from evidence you can see
+
+4. COUNT YOUR EVIDENCE
+   - 1 data point = max 30% confidence
+   - 2-3 corroborating points = max 50% confidence
+   - 4+ corroborating points = can exceed 70% confidence
 
 Output Format:
 Root Cause: [One sentence description]
@@ -46,8 +64,15 @@ Issue: {issue}
 Runbook Context:
 {runbook_context}
 
-Provide your root cause analysis following the output format.
-Focus on actionable insights. What is the most likely cause and why?
+STEP 1 - Evidence Assessment:
+Count the observations. Are there any ACTUAL anomalies (errors, crashes, spikes, unhealthy pods)?
+- If NO anomalies found → Root Cause: "No issues detected", Confidence: 90%+
+- If anomalies exist but sparse (1-2 data points) → max Confidence: 30-40%
+
+STEP 2 - Root Cause Analysis:
+If anomalies exist, provide analysis. If not, state the system appears healthy.
+
+Remember: The reported issue may be a false alarm. Trust the observational data over assumptions.
 """
 
 # =============================================================================
