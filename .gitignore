@@ -138,3 +138,4 @@ config.local.yaml
 ui/node_modules/
 ui/.next/
 __pycache__/
+graphify-out/
