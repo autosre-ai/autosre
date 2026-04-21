@@ -1,8 +1,9 @@
 """Tests for chaos-agent."""
 
+from pathlib import Path
+
 import pytest
 import yaml
-from pathlib import Path
 
 
 @pytest.fixture
@@ -56,7 +57,7 @@ class TestEnvironmentSafety:
         assert "staging" in environments["allowed"]
 
     def test_environment_check_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "check_environment"), None)
         assert step is not None
         assert step["on_error"] == "fail"
@@ -78,14 +79,14 @@ class TestExperimentConfiguration:
             assert "duration_seconds" in exp
 
     def test_pod_kill_experiment(self, agent_yaml):
-        exp = next((e for e in agent_yaml["config"]["experiments"] 
+        exp = next((e for e in agent_yaml["config"]["experiments"]
                    if e["name"] == "pod-kill"), None)
         assert exp is not None
         assert exp["type"] == "pod-delete"
         assert exp["target"]["count"] == 1
 
     def test_network_chaos_experiment(self, agent_yaml):
-        exp = next((e for e in agent_yaml["config"]["experiments"] 
+        exp = next((e for e in agent_yaml["config"]["experiments"]
                    if e["name"] == "network-latency"), None)
         assert exp is not None
         assert exp["type"] == "network-chaos"
@@ -111,7 +112,7 @@ class TestSafetyConstraints:
 
     def test_abort_on_alert(self, agent_yaml):
         safety = agent_yaml["config"]["safety"]
-        assert safety["abort_on_alert"] == True
+        assert safety["abort_on_alert"]
 
     def test_alert_names_configured(self, agent_yaml):
         safety = agent_yaml["config"]["safety"]
@@ -119,10 +120,10 @@ class TestSafetyConstraints:
 
     def test_slo_breach_rollback(self, agent_yaml):
         safety = agent_yaml["config"]["safety"]
-        assert safety["rollback_on_slo_breach"] == True
+        assert safety["rollback_on_slo_breach"]
 
     def test_safety_check_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "check_safety_constraints"), None)
         assert step is not None
 
@@ -131,18 +132,18 @@ class TestApprovalWorkflow:
     """Test approval workflow."""
 
     def test_request_approval_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "request_approval"), None)
         assert step is not None
         assert "condition" in step
 
     def test_wait_for_approval_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "wait_for_approval"), None)
         assert step is not None
 
     def test_abort_if_rejected_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "abort_if_rejected"), None)
         assert step is not None
 
@@ -151,13 +152,13 @@ class TestBaselineCollection:
     """Test baseline metrics collection."""
 
     def test_baseline_collection_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "collect_baseline_metrics"), None)
         assert step is not None
         assert step["action"] == "prometheus.query_range"
 
     def test_baseline_calculation_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "calculate_baseline"), None)
         assert step is not None
 
@@ -169,19 +170,19 @@ class TestExperimentExecution:
     """Test experiment execution."""
 
     def test_run_experiment_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "run_experiment"), None)
         assert step is not None
         assert step["action"] == "litmus.run_experiment"
         assert step["retries"] == 0  # No retries for chaos
 
     def test_monitor_during_experiment_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "monitor_during_experiment"), None)
         assert step is not None
 
     def test_rollback_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "rollback_if_needed"), None)
         assert step is not None
         assert "condition" in step
@@ -191,17 +192,17 @@ class TestImpactAnalysis:
     """Test impact analysis."""
 
     def test_collect_experiment_metrics(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "collect_experiment_metrics"), None)
         assert step is not None
 
     def test_analyze_impact_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "analyze_impact"), None)
         assert step is not None
 
     def test_ai_analysis_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "generate_ai_analysis"), None)
         assert step is not None
         assert step["action"] == "llm.analyze"
@@ -211,17 +212,17 @@ class TestNotifications:
     """Test notification steps."""
 
     def test_start_notification(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "notify_experiment_start"), None)
         assert step is not None
 
     def test_complete_notification(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "notify_experiment_complete"), None)
         assert step is not None
 
     def test_slo_breach_page(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "page_on_slo_breach"), None)
         assert step is not None
         assert "condition" in step
@@ -231,12 +232,12 @@ class TestMetrics:
     """Test metrics pushing."""
 
     def test_metrics_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "push_metrics"), None)
         assert step is not None
 
     def test_metrics_include_experiment_data(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "push_metrics"), None)
         params_str = str(step["params"])
         assert "opensre_chaos" in params_str
@@ -254,15 +255,15 @@ class TestIntegration:
             {"status": {"phase": "Running"}},
             {"status": {"phase": "Pending"}}
         ]
-        
+
         min_healthy = 2
         max_affected_percent = 30
         count_to_affect = 1
-        
+
         # Check min healthy
         healthy = len([p for p in pods if p["status"]["phase"] == "Running"])
         assert healthy >= min_healthy
-        
+
         # Check max affected
         total = len(pods)
         max_allowed = total * (max_affected_percent / 100)
@@ -274,15 +275,15 @@ class TestIntegration:
             "error_rate": 0.5,
             "latency_p99": 100
         }
-        
+
         during_experiment = {
             "error_rate": [0.5, 1.0, 2.5, 1.5, 0.6],
             "latency_p99": [100, 150, 300, 200, 110]
         }
-        
+
         error_rate_delta = max(during_experiment["error_rate"]) - baseline["error_rate"]
         latency_delta = max(during_experiment["latency_p99"]) - baseline["latency_p99"]
-        
+
         assert error_rate_delta == 2.0
         assert latency_delta == 200
 
@@ -290,17 +291,17 @@ class TestIntegration:
         """Test recovery time calculation."""
         baseline_error_rate = 0.5
         threshold = baseline_error_rate * 1.1  # 10% tolerance
-        
+
         # Error rates every 10 seconds
         error_rates = [0.5, 2.0, 3.0, 2.5, 1.5, 0.8, 0.6, 0.5, 0.5]
-        
+
         # Find when it returned to threshold
         recovery_index = None
         for i, rate in enumerate(error_rates):
             if rate <= threshold and all(r <= threshold for r in error_rates[i:]):
                 recovery_index = i
                 break
-        
+
         assert recovery_index is not None
         recovery_time_seconds = recovery_index * 10
         assert recovery_time_seconds == 70

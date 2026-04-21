@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 @dataclass
-class TestScenario:
+class Scenario:
     """Definition of a test scenario."""
     name: str
     manifest: str | None  # Path to k8s manifest relative to project root
@@ -33,7 +33,7 @@ EXAMPLES_PATH = Path(__file__).parent.parent.parent / "examples"
 
 
 SCENARIOS = {
-    "memory_hog": TestScenario(
+    "memory_hog": Scenario(
         name="memory_hog",
         manifest="examples/memory-hog.yaml",
         issue="high memory usage in default namespace",
@@ -58,7 +58,7 @@ SCENARIOS = {
         severity="medium",
     ),
     
-    "cpu_hog": TestScenario(
+    "cpu_hog": Scenario(
         name="cpu_hog",
         manifest="examples/cpu-hog.yaml",
         issue="high CPU usage in default namespace",
@@ -84,7 +84,7 @@ SCENARIOS = {
         severity="medium",
     ),
     
-    "crashloop": TestScenario(
+    "crashloop": Scenario(
         name="crashloop",
         manifest="examples/crashloop.yaml",
         issue="pod crashlooping in default namespace",
@@ -111,7 +111,7 @@ SCENARIOS = {
         severity="high",
     ),
     
-    "oom_kill": TestScenario(
+    "oom_kill": Scenario(
         name="oom_kill",
         manifest="examples/oom-pod.yaml",
         issue="OOM killed pod in default namespace",
@@ -137,7 +137,7 @@ SCENARIOS = {
         severity="high",
     ),
     
-    "latency_issue": TestScenario(
+    "latency_issue": Scenario(
         name="latency_issue",
         manifest=None,  # Requires actual service with latency
         issue="high latency on checkout service",
@@ -162,7 +162,7 @@ SCENARIOS = {
         severity="medium",
     ),
     
-    "error_rate": TestScenario(
+    "error_rate": Scenario(
         name="error_rate",
         manifest=None,  # Requires actual service with errors
         issue="5xx errors on api service",
@@ -187,7 +187,7 @@ SCENARIOS = {
         severity="high",
     ),
     
-    "healthy_check": TestScenario(
+    "healthy_check": Scenario(
         name="healthy_check",
         manifest=None,  # Uses existing resources
         issue="check health of default namespace",
@@ -207,7 +207,7 @@ SCENARIOS = {
         severity="low",
     ),
     
-    "network_issue": TestScenario(
+    "network_issue": Scenario(
         name="network_issue",
         manifest=None,
         issue="network connectivity issues between pods",
@@ -232,7 +232,7 @@ SCENARIOS = {
         severity="high",
     ),
     
-    "disk_pressure": TestScenario(
+    "disk_pressure": Scenario(
         name="disk_pressure",
         manifest=None,
         issue="disk pressure on nodes",
@@ -258,7 +258,7 @@ SCENARIOS = {
         severity="high",
     ),
     
-    "pending_pods": TestScenario(
+    "pending_pods": Scenario(
         name="pending_pods",
         manifest=None,
         issue="pods stuck in pending state",
@@ -287,7 +287,7 @@ SCENARIOS = {
 
 
 # Convenience function to get scenarios with manifests only
-def get_deployable_scenarios() -> list[TestScenario]:
+def get_deployable_scenarios() -> list[Scenario]:
     """Get scenarios that have associated manifests to deploy."""
     return [s for s in SCENARIOS.values() if s.manifest is not None]
 
@@ -305,7 +305,7 @@ NETWORK_SCENARIOS = ["latency_issue", "error_rate", "network_issue"]
 HEALTH_SCENARIOS = ["healthy_check"]
 
 
-def get_scenarios_by_category(category: str) -> list[TestScenario]:
+def get_scenarios_by_category(category: str) -> list[Scenario]:
     """Get scenarios by category."""
     categories = {
         "resource": RESOURCE_SCENARIOS,

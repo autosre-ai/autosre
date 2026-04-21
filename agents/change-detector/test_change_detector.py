@@ -1,9 +1,10 @@
 """Tests for change-detector agent."""
 
+from datetime import datetime, timedelta
+from pathlib import Path
+
 import pytest
 import yaml
-from pathlib import Path
-from datetime import datetime, timedelta
 
 
 @pytest.fixture
@@ -58,12 +59,12 @@ class TestKubernetesChangeDetection:
         assert "secrets" in resources
 
     def test_kubernetes_change_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "detect_kubernetes_changes"), None)
         assert step is not None
 
     def test_deployment_changes_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "get_deployment_changes"), None)
         assert step is not None
 
@@ -88,7 +89,7 @@ class TestHighRiskDetection:
         assert priv_pattern is not None
 
     def test_high_risk_detection_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "detect_high_risk_changes"), None)
         assert step is not None
 
@@ -110,13 +111,13 @@ class TestChangeWindowEnforcement:
         assert 14 in allowed
 
     def test_window_check_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "check_change_window"), None)
         assert step is not None
         assert "condition" in step
 
     def test_window_violation_alert(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "alert_change_window_violation"), None)
         assert step is not None
 
@@ -126,17 +127,17 @@ class TestIncidentCorrelation:
 
     def test_correlation_config(self, agent_yaml):
         correlation = agent_yaml["config"]["correlation"]
-        assert correlation["enabled"] == True
+        assert correlation["enabled"]
         assert correlation["lookback_minutes"] == 60
 
     def test_correlation_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "correlate_changes_with_incidents"), None)
         assert step is not None
         assert "condition" in step
 
     def test_correlation_alert(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "alert_incident_correlation"), None)
         assert step is not None
 
@@ -145,7 +146,7 @@ class TestIncidentCorrelation:
         change_time = datetime.now()
         incident_time = change_time + timedelta(minutes=15)
         time_diff = (incident_time - change_time).total_seconds() / 60
-        
+
         # Within 30 minute window
         assert time_diff <= 30
 
@@ -159,7 +160,7 @@ class TestTerraformDrift:
         assert "state_bucket" in terraform
 
     def test_terraform_drift_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "check_terraform_drift"), None)
         assert step is not None
         assert "condition" in step
@@ -175,7 +176,7 @@ class TestGitChanges:
         assert len(git["repositories"]) > 0
 
     def test_git_commits_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "get_git_commits"), None)
         assert step is not None
 
@@ -184,13 +185,13 @@ class TestAlertConditions:
     """Test alert conditions."""
 
     def test_changes_notification_condition(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "notify_changes"), None)
         assert step is not None
         assert "condition" in step
 
     def test_high_risk_alert_condition(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "alert_high_risk"), None)
         assert step is not None
         assert "condition" in step
@@ -200,12 +201,12 @@ class TestMetrics:
     """Test metrics pushing."""
 
     def test_metrics_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "push_metrics"), None)
         assert step is not None
 
     def test_metrics_include_totals(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "push_metrics"), None)
         params_str = str(step["params"])
         assert "opensre_changes_total" in params_str
@@ -222,31 +223,31 @@ class TestIntegration:
         git_changes = [
             {"type": "commit", "resource": "infrastructure/prod", "timestamp": "2024-01-15T09:55:00Z"}
         ]
-        
+
         all_changes = k8s_changes + git_changes
         assert len(all_changes) == 2
 
     def test_high_risk_pattern_matching(self):
         """Test high-risk pattern matching."""
         import re
-        
+
         patterns = [
             {"pattern": r"replicas.*0", "description": "Scale to zero"},
             {"pattern": r"image.*:latest", "description": "Latest tag"}
         ]
-        
+
         changes = [
             {"diff": "replicas: 3 -> 0"},
             {"diff": "image: nginx:1.24 -> nginx:latest"},
             {"diff": "env: FOO=bar -> FOO=baz"}
         ]
-        
+
         matches = []
         for change in changes:
             for pattern in patterns:
                 if re.search(pattern["pattern"], change["diff"]):
                     matches.append({"change": change, "risk": pattern["description"]})
-        
+
         assert len(matches) == 2
 
 

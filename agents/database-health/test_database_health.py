@@ -1,9 +1,10 @@
 """Tests for database-health agent."""
 
-import pytest
-import yaml
 from pathlib import Path
 from unittest.mock import MagicMock
+
+import pytest
+import yaml
 
 
 @pytest.fixture
@@ -61,7 +62,7 @@ class TestAgentConfiguration:
     def test_triggers_configured(self, agent_yaml):
         """Test triggers are properly configured."""
         triggers = agent_yaml["triggers"]
-        
+
         # Check schedule trigger
         schedule = next((t for t in triggers if t["type"] == "schedule"), None)
         assert schedule is not None
@@ -79,7 +80,7 @@ class TestAgentConfiguration:
         config = agent_yaml["config"]
         assert "databases" in config
         assert len(config["databases"]) > 0
-        
+
         for db in config["databases"]:
             assert "name" in db
             assert "type" in db
@@ -100,7 +101,7 @@ class TestConnectionPoolMonitoring:
         active = 45
         idle = 25
         max_conn = 100
-        
+
         usage = (active + idle) / max_conn * 100
         assert usage == 70.0
 
@@ -116,7 +117,7 @@ class TestConnectionPoolMonitoring:
 
     def test_connection_check_step(self, agent_yaml):
         """Test connection check step exists."""
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "check_connection_pools"), None)
         assert step is not None
         assert step["action"] == "prometheus.query"
@@ -127,7 +128,7 @@ class TestReplicationMonitoring:
 
     def test_replication_lag_check(self, agent_yaml):
         """Test replication lag check step."""
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "check_replication_lag"), None)
         assert step is not None
 
@@ -139,7 +140,7 @@ class TestReplicationMonitoring:
 
     def test_lag_alert_step(self, agent_yaml):
         """Test replication lag alert step."""
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "alert_replication_lag"), None)
         assert step is not None
         assert "condition" in step
@@ -150,13 +151,13 @@ class TestDeadlockDetection:
 
     def test_deadlock_check_step(self, agent_yaml):
         """Test deadlock check step exists."""
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "check_deadlocks"), None)
         assert step is not None
 
     def test_deadlock_alert(self, agent_yaml):
         """Test deadlock alert step."""
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "alert_deadlocks"), None)
         assert step is not None
 
@@ -166,7 +167,7 @@ class TestLongRunningQueries:
 
     def test_long_query_check(self, agent_yaml):
         """Test long-running query check step."""
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "check_long_running_queries"), None)
         assert step is not None
         assert step["action"] == "postgres.query"
@@ -178,7 +179,7 @@ class TestLongRunningQueries:
 
     def test_long_query_alert(self, agent_yaml):
         """Test long-running query alert."""
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "alert_long_queries"), None)
         assert step is not None
         assert "condition" in step
@@ -189,7 +190,7 @@ class TestCacheHealth:
 
     def test_cache_check_step(self, agent_yaml):
         """Test cache health check step."""
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "check_cache_health"), None)
         assert step is not None
 
@@ -200,7 +201,7 @@ class TestCacheHealth:
 
     def test_cache_alert(self, agent_yaml):
         """Test cache alert step."""
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "alert_cache_issues"), None)
         assert step is not None
 
@@ -210,7 +211,7 @@ class TestAlertConditions:
 
     def test_critical_pool_alert_condition(self, agent_yaml):
         """Test critical pool alert has condition."""
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "alert_critical_pool"), None)
         assert step is not None
         assert "condition" in step
@@ -218,7 +219,7 @@ class TestAlertConditions:
 
     def test_pagerduty_condition(self, agent_yaml):
         """Test PagerDuty page condition."""
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "page_critical_issues"), None)
         assert step is not None
         assert "condition" in step
@@ -229,16 +230,16 @@ class TestMetrics:
 
     def test_metrics_step_exists(self, agent_yaml):
         """Test metrics pushing step exists."""
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "push_metrics"), None)
         assert step is not None
 
     def test_metrics_include_all_checks(self, agent_yaml):
         """Test metrics include all health checks."""
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "push_metrics"), None)
         params_str = str(step["params"])
-        
+
         assert "connection_pool" in params_str
         assert "replication_lag" in params_str
         assert "deadlocks" in params_str
@@ -252,12 +253,12 @@ class TestIntegration:
         # Get connection metrics
         conn_metrics = mock_prometheus.query()
         pool_usage = (conn_metrics["postgres_active"] + conn_metrics["postgres_idle"]) / conn_metrics["postgres_max"] * 100
-        
+
         assert pool_usage == 70.0
-        
+
         # Check replication
         assert conn_metrics["postgres_lag"] == 2.5
-        
+
         # Check cache
         assert conn_metrics["redis_hit_ratio"] == 0.95
 
@@ -269,11 +270,11 @@ class TestIntegration:
             "deadlocks": {"status": "healthy", "value": 0},
             "cache": {"status": "healthy", "value": 0.95}
         }
-        
+
         # Count issues
         warnings = sum(1 for c in checks.values() if c["status"] == "warning")
         criticals = sum(1 for c in checks.values() if c["status"] == "critical")
-        
+
         assert warnings == 1
         assert criticals == 0
 

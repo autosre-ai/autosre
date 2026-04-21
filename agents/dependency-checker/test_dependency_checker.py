@@ -1,8 +1,9 @@
 """Tests for dependency-checker agent."""
 
+from pathlib import Path
+
 import pytest
 import yaml
-from pathlib import Path
 
 
 @pytest.fixture
@@ -61,7 +62,7 @@ class TestInternalDependencies:
         assert len(critical_deps) > 0
 
     def test_internal_check_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "check_internal_services"), None)
         assert step is not None
         assert step["action"] == "http.batch_check"
@@ -83,7 +84,7 @@ class TestExternalDependencies:
         assert stripe.get("expected_status") == 401
 
     def test_external_check_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "check_external_services"), None)
         assert step is not None
 
@@ -99,7 +100,7 @@ class TestDNSResolution:
             assert "host" in d
 
     def test_dns_check_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "check_dns_resolution"), None)
         assert step is not None
         assert step["action"] == "dns.resolve_batch"
@@ -114,12 +115,12 @@ class TestConsecutiveFailures:
         assert criteria["consecutive_failures_page"] == 5
 
     def test_failure_count_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "check_consecutive_failures"), None)
         assert step is not None
 
     def test_update_failure_counts_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "update_failure_counts"), None)
         assert step is not None
 
@@ -127,17 +128,17 @@ class TestConsecutiveFailures:
         """Test consecutive failure counting logic."""
         previous = {"service-a": 2, "service-b": 0}
         current_issues = [{"name": "service-a"}, {"name": "service-c"}]
-        
+
         new_counts = {}
         for issue in current_issues:
             name = issue["name"]
             new_counts[name] = previous.get(name, 0) + 1
-        
+
         # Reset healthy services
         for name in previous:
             if name not in [i["name"] for i in current_issues]:
                 new_counts[name] = 0
-        
+
         assert new_counts["service-a"] == 3  # Incremented
         assert new_counts["service-b"] == 0  # Reset (healthy)
         assert new_counts["service-c"] == 1  # New failure
@@ -147,18 +148,18 @@ class TestAlertConditions:
     """Test alert conditions."""
 
     def test_degraded_alert_condition(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "notify_degraded"), None)
         assert step is not None
         assert "condition" in step
 
     def test_unhealthy_alert_condition(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "notify_unhealthy"), None)
         assert step is not None
 
     def test_critical_page_condition(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "page_critical_failures"), None)
         assert step is not None
         assert "condition" in step
@@ -168,7 +169,7 @@ class TestHealthStatus:
     """Test health status evaluation."""
 
     def test_status_aggregation_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "aggregate_health_status"), None)
         assert step is not None
 
@@ -180,13 +181,13 @@ class TestHealthStatus:
             {"name": "svc-c", "status_code": 500, "response_time_ms": 100},
             {"name": "svc-d", "error": "Connection refused"}
         ]
-        
+
         warning_threshold = 500
-        
+
         healthy = []
         degraded = []
         unhealthy = []
-        
+
         for r in results:
             if r.get("error") or r.get("status_code", 0) >= 500:
                 unhealthy.append(r)
@@ -194,7 +195,7 @@ class TestHealthStatus:
                 degraded.append(r)
             else:
                 healthy.append(r)
-        
+
         assert len(healthy) == 1
         assert len(degraded) == 1
         assert len(unhealthy) == 2
@@ -204,12 +205,12 @@ class TestMetrics:
     """Test metrics pushing."""
 
     def test_metrics_step(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "push_metrics"), None)
         assert step is not None
 
     def test_metrics_include_counts(self, agent_yaml):
-        step = next((s for s in agent_yaml["steps"] 
+        step = next((s for s in agent_yaml["steps"]
                     if s["name"] == "push_metrics"), None)
         params_str = str(step["params"])
         assert "opensre_dependency_healthy" in params_str
@@ -226,16 +227,13 @@ class TestIntegration:
             {"name": "user-service", "status": "healthy", "response_time_ms": 45},
             {"name": "payment-service", "status": "unhealthy", "error": "Connection refused"}
         ]
-        
+
         external_results = [
             {"name": "stripe-api", "status": "healthy", "response_time_ms": 120},
             {"name": "aws-s3", "status": "healthy", "response_time_ms": 85}
         ]
-        
-        dns_results = [
-            {"host": "primary.db.example.com", "resolved": True, "ip": "10.0.1.50"}
-        ]
-        
+
+
         # Aggregate
         total_healthy = (
             len([r for r in internal_results if r["status"] == "healthy"]) +
@@ -245,7 +243,7 @@ class TestIntegration:
             len([r for r in internal_results if r["status"] == "unhealthy"]) +
             len([r for r in external_results if r["status"] == "unhealthy"])
         )
-        
+
         assert total_healthy == 3
         assert total_unhealthy == 1
 

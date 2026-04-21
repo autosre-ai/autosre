@@ -64,7 +64,7 @@ class TestOrchestratorBasic:
         assert result.status in ["completed", "timeout"]
 
 
-class TestScenarioDefinitions:
+class ScenarioDefinitions:
     """Test scenario definitions are valid."""
     
     def test_all_scenarios_have_required_fields(self):

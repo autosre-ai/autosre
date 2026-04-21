@@ -20,12 +20,14 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from opensre_core.agents.orchestrator import Orchestrator, InvestigationResult
-from tests.integration.scenarios import SCENARIOS, TestScenario
+from tests.integration.scenarios import SCENARIOS, Scenario
 
 
 @dataclass
 class TestResult:
     """Result of a single test scenario run."""
+    __test__ = False  # Tell pytest this isn't a test class
+    
     scenario: str
     issue: str
     namespace: str
@@ -50,6 +52,8 @@ class TestResult:
 @dataclass
 class TestSummary:
     """Summary statistics for test run."""
+    __test__ = False  # Tell pytest this isn't a test class
+    
     total_tests: int = 0
     passed: int = 0
     failed: int = 0
@@ -70,6 +74,7 @@ class TestRunner:
     Runs configured scenarios multiple times, captures results,
     and generates comprehensive reports.
     """
+    __test__ = False  # Tell pytest this isn't a test class
     
     def __init__(self, output_dir: str | None = None):
         self.orchestrator = Orchestrator()
@@ -79,7 +84,7 @@ class TestRunner:
         
     async def run_scenario(
         self,
-        scenario: TestScenario,
+        scenario: Scenario,
         namespace: str = "default",
         repetition: int = 1,
     ) -> TestResult:
@@ -163,7 +168,7 @@ class TestRunner:
         
         return result
     
-    def _evaluate_result(self, result: TestResult, scenario: TestScenario) -> bool:
+    def _evaluate_result(self, result: TestResult, scenario: Scenario) -> bool:
         """Evaluate whether a test result passes expectations."""
         if result.status == "error" or result.status == "failed":
             return False

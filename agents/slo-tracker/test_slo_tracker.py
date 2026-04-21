@@ -1,10 +1,10 @@
 """Tests for slo-tracker agent."""
 
+from pathlib import Path
+from unittest.mock import MagicMock
+
 import pytest
 import yaml
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime, timedelta
 
 
 @pytest.fixture
@@ -63,11 +63,11 @@ def mock_llm():
     mock.analyze.return_value = """
     Root Cause Analysis:
     The API availability SLO is being impacted by increased 503 errors from the payment-service.
-    
+
     Immediate Actions:
     1. Scale payment-service horizontally
     2. Enable circuit breaker for payment calls
-    
+
     Long-term Recommendations:
     1. Implement request hedging
     2. Add fallback payment provider
@@ -92,13 +92,13 @@ class TestAgentConfiguration:
         """Test triggers are properly configured."""
         triggers = agent_yaml["triggers"]
         assert len(triggers) >= 2
-        
+
         # Check schedule trigger
         schedule_trigger = next((t for t in triggers if t["type"] == "schedule"), None)
         assert schedule_trigger is not None
         assert "cron" in schedule_trigger
         assert schedule_trigger["cron"] == "*/15 * * * *"
-        
+
         # Check webhook trigger
         webhook_trigger = next((t for t in triggers if t["type"] == "webhook"), None)
         assert webhook_trigger is not None
@@ -114,7 +114,7 @@ class TestAgentConfiguration:
         config = agent_yaml["config"]
         assert "slos" in config
         assert len(config["slos"]) > 0
-        
+
         for slo in config["slos"]:
             assert "name" in slo
             assert "target" in slo
@@ -180,14 +180,14 @@ class TestBurnRateCalculation:
         # For 99.9% SLO over 30 days:
         # Error budget = 0.1% = 0.001
         # Monthly budget = 0.001 * 30 * 24 = 0.72 hours of downtime
-        
+
         target = 99.9  # 99.9%
         error_budget = (100 - target) / 100  # 0.001
-        
+
         # If current error rate is 0.003 (0.3%)
         current_error_rate = 0.003
         burn_rate = current_error_rate / error_budget
-        
+
         assert burn_rate == 3.0  # Burning 3x faster than sustainable
 
     def test_time_to_exhaustion(self):
@@ -196,7 +196,7 @@ class TestBurnRateCalculation:
         budget_remaining = 0.5
         burn_rate = 2.0
         window_days = 30
-        
+
         # Normal burn rate would exhaust in 30 days
         # At 2x, remaining 50% would exhaust in:
         time_to_exhaustion_days = (budget_remaining * window_days) / burn_rate
@@ -334,7 +334,7 @@ class TestIntegration:
         mock_prometheus.query_range.return_value = {
             "api-availability_budget": [{"value": 0.80}]  # 20% consumed
         }
-        
+
         # Should not trigger any alerts
         # (In real implementation, this would be checked by agent runtime)
 
@@ -344,7 +344,7 @@ class TestIntegration:
         mock_prometheus.query_range.return_value = {
             "api-availability_budget": [{"value": 0.45}]  # 55% consumed
         }
-        
+
         # Should trigger warning alert
 
     def test_full_workflow_critical_slo(self, mock_prometheus, mock_slack, mock_pagerduty):
@@ -353,7 +353,7 @@ class TestIntegration:
         mock_prometheus.query_range.return_value = {
             "api-availability_budget": [{"value": 0.20}]  # 80% consumed
         }
-        
+
         # Should trigger critical alert (but not page)
 
     def test_full_workflow_exhausted_slo(self, mock_prometheus, mock_slack, mock_pagerduty):
@@ -362,7 +362,7 @@ class TestIntegration:
         mock_prometheus.query_range.return_value = {
             "api-availability_budget": [{"value": -0.05}]  # 105% consumed
         }
-        
+
         # Should trigger page
 
 
