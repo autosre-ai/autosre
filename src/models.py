@@ -1,10 +1,11 @@
 """
 SRE Agent - Data Models
 """
-from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel
 
 
 class Severity(str, Enum):
@@ -38,7 +39,7 @@ class MetricSnapshot(BaseModel):
     baseline: float
     unit: str
     is_anomaly: bool = False
-    
+
     @property
     def change_percent(self) -> float:
         if self.baseline == 0:
@@ -163,14 +164,14 @@ class SituationReport(BaseModel):
     impact: str
     duration_minutes: float
     affected_customers_estimate: Optional[int] = None
-    
+
     root_cause_signals: List[RootCauseSignal] = []
     likely_root_cause: Optional[str] = None
     confidence: str  # LOW, MEDIUM, HIGH
-    
+
     recommended_actions: List[RecommendedAction] = []
     runbooks: List[Dict[str, str]] = []
-    
+
     raw_context: Optional[IncidentContext] = None
     analysis_reasoning: Optional[str] = None
     generated_at: datetime = datetime.utcnow()

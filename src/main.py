@@ -5,7 +5,6 @@ AI-powered incident context gatherer for on-call SREs.
 """
 import sys
 from pathlib import Path
-from datetime import datetime
 
 import typer
 import yaml
@@ -15,10 +14,9 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.gatherer import ContextGatherer
 from src.analyzer import LLMAnalyzer
+from src.gatherer import ContextGatherer
 from src.reporter import TerminalReporter
-
 
 app = typer.Typer(
     name="sre-agent",
@@ -46,14 +44,14 @@ def analyze(
 ):
     """
     Analyze an incident and generate a situation report.
-    
+
     Example:
         python src/main.py analyze "checkout-service 5xx spike"
     """
-    
+
     # Load config
     cfg = load_config(config)
-    
+
     # Auto-detect service from alert if not provided
     if not service:
         service = cfg.get("service", {}).get("name", "checkout-service")
@@ -62,43 +60,43 @@ def analyze(
             if "service" in word or "-svc" in word:
                 service = word.replace("-svc", "-service")
                 break
-    
+
     # Set default mock data path if not provided
     if not mock_data:
         mock_data = Path(__file__).parent.parent / "data" / "mock" / "checkout-incident.json"
-    
-    console.print(f"\n[bold cyan]🤖 SRE Agent[/] analyzing incident...")
+
+    console.print("\n[bold cyan]🤖 SRE Agent[/] analyzing incident...")
     console.print(f"[dim]Service: {service} | Alert: {alert}[/]\n")
-    
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         console=console,
         transient=True
     ) as progress:
-        
+
         # Gather context
         task = progress.add_task("Gathering context from data sources...", total=None)
-        
+
         gatherer = ContextGatherer(cfg, mock_data)
         context = gatherer.gather(alert, service)
-        
+
         progress.update(task, description="Context gathered ✓")
-        
+
         # Analyze with LLM
         progress.update(task, description="Analyzing with LLM (this may take a minute)...")
-        
+
         analyzer = LLMAnalyzer(cfg)
-        
+
         if no_llm:
             # Use rule-based analysis only
             analysis = analyzer._rule_based_analysis(context)
             report = analyzer._build_report(context, analysis)
         else:
             report = analyzer.analyze(context)
-        
+
         progress.update(task, description="Analysis complete ✓")
-    
+
     # Print report
     reporter = TerminalReporter(verbose=verbose)
     reporter.print_report(report)
@@ -110,7 +108,7 @@ def test():
     Run with test data to verify setup.
     """
     console.print("[bold cyan]🧪 Running test analysis...[/]\n")
-    
+
     # Run with default mock data
     analyze(
         alert="checkout-service 5xx spike",

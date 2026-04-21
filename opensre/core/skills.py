@@ -12,7 +12,7 @@ from .models import SkillInfo, SkillMetadata
 from .utils import load_yaml
 
 
-class Skill(ABC):
+class Skill(ABC):  # noqa: B024
     """Base class for all OpenSRE skills.
 
     Skills are the building blocks of agents. They provide methods
@@ -47,7 +47,7 @@ class Skill(ABC):
         self._config = config
         self._initialized = True
 
-    def teardown(self) -> None:
+    def teardown(self) -> None:  # noqa: B027
         """Clean up resources.
 
         Override this method to perform cleanup when the skill is unloaded.

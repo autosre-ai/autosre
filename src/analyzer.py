@@ -5,17 +5,18 @@ Uses local Ollama LLM to analyze incident context and generate insights.
 """
 import json
 from datetime import datetime
-from typing import Optional
 
 import ollama
 
 from .models import (
-    IncidentContext, SituationReport, RootCauseSignal, 
-    RecommendedAction, HealthStatus
+    HealthStatus,
+    IncidentContext,
+    RecommendedAction,
+    RootCauseSignal,
+    SituationReport,
 )
 
-
-ANALYSIS_PROMPT = """You are an expert Site Reliability Engineer analyzing an incident. 
+ANALYSIS_PROMPT = """You are an expert Site Reliability Engineer analyzing an incident.
 Based on the following context, provide a structured analysis.
 
 ## Alert
@@ -61,7 +62,7 @@ Analyze this incident and provide:
    - Dependency health (especially degraded services)
    - Infrastructure issues
    - Traffic anomalies
-   
+
 2. ROOT CAUSE SIGNALS: List each signal that points to a potential cause, with confidence level (0-100).
 
 3. RECOMMENDED ACTIONS: List specific actions in priority order, including:
@@ -102,18 +103,18 @@ Respond in this exact JSON format:
 
 class LLMAnalyzer:
     """Analyzes incident context using local LLM"""
-    
+
     def __init__(self, config: dict):
         self.config = config
         self.llm_config = config.get("llm", {})
         self.model = self.llm_config.get("model", "llama3.3:latest")
-        
+
     def analyze(self, context: IncidentContext) -> SituationReport:
         """Analyze context and generate situation report"""
-        
+
         # Build prompt with context
         prompt = self._build_prompt(context)
-        
+
         # Call LLM
         try:
             response = ollama.generate(
@@ -124,21 +125,21 @@ class LLMAnalyzer:
                     "num_predict": 2000,
                 }
             )
-            
+
             # Parse response
             analysis = self._parse_response(response["response"])
-            
+
         except Exception as e:
             # Fallback to rule-based analysis
             analysis = self._rule_based_analysis(context)
             analysis["reasoning"] = f"LLM analysis failed ({str(e)}), using rule-based fallback"
-        
+
         # Build situation report
         return self._build_report(context, analysis)
-    
+
     def _build_prompt(self, context: IncidentContext) -> str:
         """Build analysis prompt from context"""
-        
+
         # Format deployments
         deployments = "None in last 24h"
         if context.github and context.github.recent_deployments:
@@ -148,7 +149,7 @@ class LLMAnalyzer:
                 if dep.files_changed:
                     deps.append(f"  Files: {', '.join(dep.files_changed[:5])}")
             deployments = "\n".join(deps)
-        
+
         # Format error patterns
         error_patterns = "No patterns detected"
         if context.logs and context.logs.error_patterns:
@@ -156,7 +157,7 @@ class LLMAnalyzer:
             for p in context.logs.error_patterns:
                 patterns.append(f"- {p.pattern}: {p.count} occurrences ({p.percentage:.1f}%)")
             error_patterns = "\n".join(patterns)
-        
+
         # Format error samples
         error_samples = "No recent errors"
         if context.logs and context.logs.error_samples:
@@ -164,7 +165,7 @@ class LLMAnalyzer:
             for e in context.logs.error_samples[:3]:
                 samples.append(f"- [{e.level}] {e.message} (count: {e.count})")
             error_samples = "\n".join(samples)
-        
+
         # Format dependencies
         dependencies = "No dependency data"
         if context.dependencies:
@@ -173,7 +174,7 @@ class LLMAnalyzer:
                 status_emoji = "✅" if dep.status == HealthStatus.HEALTHY else "⚠️" if dep.status == HealthStatus.DEGRADED else "❌"
                 deps.append(f"- {status_emoji} {dep.name}: {dep.status.value} (p99: {dep.latency_p99}ms, errors: {dep.error_rate}%)")
             dependencies = "\n".join(deps)
-        
+
         # Format pod status
         pod_status = "Unknown"
         pod_count = 0
@@ -183,7 +184,7 @@ class LLMAnalyzer:
             pod_restarts = sum(p.restarts for p in context.kubernetes.pods)
             statuses = [f"{p.name}: {p.status}" for p in context.kubernetes.pods[:3]]
             pod_status = ", ".join(statuses) if statuses else "Unknown"
-        
+
         return ANALYSIS_PROMPT.format(
             service=context.alert.service,
             title=context.alert.title,
@@ -208,7 +209,7 @@ class LLMAnalyzer:
             is_ddos=context.traffic.is_ddos if context.traffic else "Unknown",
             akamai_status=context.traffic.akamai_status if context.traffic else "Unknown"
         )
-    
+
     def _parse_response(self, response_text: str) -> dict:
         """Parse LLM JSON response"""
         # Find JSON in response
@@ -221,7 +222,7 @@ class LLMAnalyzer:
                 return json.loads(json_str)
         except json.JSONDecodeError:
             pass
-        
+
         # Fallback
         return {
             "likely_root_cause": "Unable to parse LLM response",
@@ -231,14 +232,14 @@ class LLMAnalyzer:
             "actions": [],
             "impact": {"summary": "Unknown", "affected_customers_estimate": None}
         }
-    
+
     def _rule_based_analysis(self, context: IncidentContext) -> dict:
         """Fallback rule-based analysis when LLM fails"""
         signals = []
         actions = []
         likely_cause = None
         confidence = "LOW"
-        
+
         # Check for recent deployment correlation
         if context.github and context.github.recent_deployments:
             recent = context.github.recent_deployments[0]
@@ -257,7 +258,7 @@ class LLMAnalyzer:
                     "action": f"Consider rollback of commit {recent.short_sha}",
                     "command": f"git revert {recent.sha}"
                 })
-        
+
         # Check for dependency issues
         if context.dependencies:
             degraded = [d for d in context.dependencies if d.status != HealthStatus.HEALTHY]
@@ -273,7 +274,7 @@ class LLMAnalyzer:
                 if is_likely and not likely_cause:
                     likely_cause = f"Dependency failure: {dep.name} ({dep.status.value})"
                     confidence = "HIGH"
-        
+
         # Check for traffic anomalies
         if context.traffic:
             if context.traffic.is_malicious or context.traffic.is_ddos:
@@ -287,7 +288,7 @@ class LLMAnalyzer:
                 if not likely_cause:
                     likely_cause = "Malicious traffic / DDoS attack"
                     confidence = "HIGH"
-        
+
         # Default action
         if not actions:
             actions.append({
@@ -295,7 +296,7 @@ class LLMAnalyzer:
                 "action": "Check application logs for more details",
                 "command": None
             })
-        
+
         return {
             "likely_root_cause": likely_cause or "Unable to determine - more investigation needed",
             "confidence": confidence,
@@ -307,10 +308,10 @@ class LLMAnalyzer:
                 "affected_customers_estimate": None
             }
         }
-    
+
     def _build_report(self, context: IncidentContext, analysis: dict) -> SituationReport:
         """Build final situation report"""
-        
+
         # Calculate duration
         now = datetime.utcnow()
         started = context.alert.started_at
@@ -318,7 +319,7 @@ class LLMAnalyzer:
         if started.tzinfo is not None:
             started = started.replace(tzinfo=None)
         duration = (now - started).total_seconds() / 60
-        
+
         # Build signals
         signals = []
         for s in analysis.get("signals", []):
@@ -329,7 +330,7 @@ class LLMAnalyzer:
                 evidence=s.get("evidence", []),
                 is_likely_cause=s.get("is_likely_cause", False)
             ))
-        
+
         # Build actions
         actions = []
         for a in analysis.get("actions", []):
@@ -338,12 +339,12 @@ class LLMAnalyzer:
                 action=a.get("action", ""),
                 command=a.get("command")
             ))
-        
+
         # Build impact summary
         impact_data = analysis.get("impact", {})
         impact_summary = impact_data.get("summary", f"Service {context.alert.service} degraded")
         affected = impact_data.get("affected_customers_estimate")
-        
+
         return SituationReport(
             alert=context.alert,
             summary=analysis.get("likely_root_cause", "Unknown"),
