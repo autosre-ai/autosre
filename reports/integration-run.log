@@ -248,4 +248,11 @@ tests/integration/test_investigations.py::TestScenarioDefinitions::test_deployab
 tests/integration/test_investigations.py::TestScenarioDefinitions::test_scenario_count PASSED [ 28%]
 tests/integration/test_investigations.py::TestMemoryScenario::test_memory_hog_detection FAILED [ 33%]
 tests/integration/test_investigations.py::TestCrashloopScenario::test_crashloop_detection FAILED [ 38%]
-tests/integration/test_investigations.py::TestCPUScenario::test_cpu_hog_detection 
+tests/integration/test_investigations.py::TestCPUScenario::test_cpu_hog_detection PASSED [ 42%]
+tests/integration/test_investigations.py::TestOOMScenario::test_oom_detection FAILED [ 47%]
+tests/integration/test_investigations.py::TestHealthCheck::test_healthy_namespace FAILED [ 52%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[memory_hog] PASSED [ 57%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[cpu_hog] FAILED [ 61%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[crashloop] FAILED [ 66%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[oom_kill] FAILED [ 71%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[latency_issue] 
