@@ -1,0 +1,167 @@
+# Memory Leak Fault Injection (Instrumented with Prometheus metrics)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-service-memory-leak
+  namespace: bookstore
+  labels:
+    app: catalog-service-memory-leak
+    tier: api
+    fault: memory-leak
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: catalog-service-memory-leak
+  template:
+    metadata:
+      labels:
+        app: catalog-service-memory-leak
+        tier: api
+        fault: memory-leak
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: catalog
+        image: python:3.11-alpine
+        command: ["sh", "-c"]
+        args:
+        - |
+          pip install --quiet prometheus_client && python -c '
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+          import json
+          import threading
+          import time
+          import random
+
+          # Memory leak simulator
+          leaked_data = []
+
+          # Prometheus metrics
+          REQUEST_COUNT = Counter("http_requests_total", "Total HTTP requests", ["method", "endpoint", "status"])
+          REQUEST_LATENCY = Histogram("http_request_duration_seconds", "HTTP request latency", ["method", "endpoint"])
+          MEMORY_LEAKED_MB = Gauge("memory_leaked_megabytes", "Megabytes of leaked memory")
+          UP = Gauge("up", "Service is up")
+          UP.set(1)
+
+          def leak_memory():
+              global leaked_data
+              while True:
+                  leaked_data.append("X" * (1024 * 1024))
+                  MEMORY_LEAKED_MB.set(len(leaked_data))
+                  print(f"[memory-leak] Allocated memory block, total: {len(leaked_data)} MB")
+                  time.sleep(5)
+
+          threading.Thread(target=leak_memory, daemon=True).start()
+
+          books = [
+            {"id": 1, "title": "Site Reliability Engineering", "author": "Google", "price": 49.99},
+            {"id": 2, "title": "The Phoenix Project", "author": "Gene Kim", "price": 24.99},
+          ]
+
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  start_time = time.time()
+                  
+                  if self.path == "/metrics":
+                      self.send_response(200)
+                      self.send_header("Content-Type", CONTENT_TYPE_LATEST)
+                      self.end_headers()
+                      self.wfile.write(generate_latest())
+                      return
+                  
+                  if self.path == "/health":
+                      REQUEST_COUNT.labels(method="GET", endpoint="/health", status="200").inc()
+                      REQUEST_LATENCY.labels(method="GET", endpoint="/health").observe(time.time() - start_time)
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b"OK")
+                  elif self.path == "/ready":
+                      REQUEST_COUNT.labels(method="GET", endpoint="/ready", status="200").inc()
+                      REQUEST_LATENCY.labels(method="GET", endpoint="/ready").observe(time.time() - start_time)
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b"READY")
+                  elif self.path.startswith("/books"):
+                      time.sleep(random.uniform(0.01, 0.05))
+                      REQUEST_COUNT.labels(method="GET", endpoint="/books", status="200").inc()
+                      REQUEST_LATENCY.labels(method="GET", endpoint="/books").observe(time.time() - start_time)
+                      self.send_response(200)
+                      self.send_header("Content-Type", "application/json")
+                      self.end_headers()
+                      self.wfile.write(json.dumps(books).encode())
+                  else:
+                      REQUEST_COUNT.labels(method="GET", endpoint="other", status="404").inc()
+                      REQUEST_LATENCY.labels(method="GET", endpoint="other").observe(time.time() - start_time)
+                      self.send_response(404)
+                      self.end_headers()
+
+              def log_message(self, format, *args):
+                  print(f"[catalog-leak] {args[0]}")
+
+          print("Catalog service (MEMORY LEAK with metrics) starting on port 8080...")
+          HTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
+          '
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog-service-memory-leak
+  namespace: bookstore
+  labels:
+    app: catalog-service-memory-leak
+spec:
+  type: ClusterIP
+  selector:
+    app: catalog-service-memory-leak
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: catalog-service-memory-leak
+  namespace: bookstore
+  labels:
+    app: catalog-service-memory-leak
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: catalog-service-memory-leak
+  namespaceSelector:
+    matchNames:
+      - bookstore
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s

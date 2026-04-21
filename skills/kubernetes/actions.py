@@ -113,7 +113,6 @@ class KubernetesSkill(Skill):
         self.default_namespace = self.config.get("namespace", "default")
         self._v1: Any = None
         self._apps_v1: Any = None
-        self._initialized = False
 
         # Register actions
         self.register_action("get_pods", self.get_pods, "List pods in namespace")
@@ -125,9 +124,14 @@ class KubernetesSkill(Skill):
         self.register_action("get_events", self.get_events, "Get recent events")
         self.register_action("exec_command", self.exec_command, "Execute command in pod", requires_approval=True)
 
+    async def initialize(self) -> None:
+        """Initialize the skill and connect to Kubernetes."""
+        await super().initialize()
+        self._init_client()
+
     def _init_client(self) -> None:
         """Initialize Kubernetes client."""
-        if self._initialized or not K8S_AVAILABLE:
+        if self._v1 is not None or not K8S_AVAILABLE:
             return
 
         try:
@@ -144,7 +148,6 @@ class KubernetesSkill(Skill):
 
             self._v1 = client.CoreV1Api()
             self._apps_v1 = client.AppsV1Api()
-            self._initialized = True
         except Exception as e:
             raise ConnectionError(f"Failed to initialize Kubernetes client: {e}")
 

@@ -104,7 +104,7 @@ class TerraformSkill(Skill):
             return None
         try:
             return datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except:
+        except (ValueError, TypeError):
             return None
 
     async def list_workspaces(

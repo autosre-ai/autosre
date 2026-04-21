@@ -13,18 +13,10 @@ from opensre_core.agents.orchestrator import Orchestrator
 from tests.integration.scenarios import SCENARIOS, get_deployable_scenarios
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def orchestrator():
-    """Create shared orchestrator instance."""
+    """Create orchestrator instance for each test."""
     return Orchestrator()
-
-
-@pytest.fixture(scope="module")
-def event_loop():
-    """Create event loop for async tests."""
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
 
 
 class TestOrchestratorBasic:

@@ -123,7 +123,7 @@ class GitLabSkill(Skill):
             return None
         try:
             return datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except:
+        except (ValueError, TypeError):
             return None
 
     async def get_pipelines(
