@@ -62,7 +62,7 @@ spec:
       path: /metrics
       interval: 15s
 ---
-# ServiceMonitor for Frontend
+# ServiceMonitor for Frontend (nginx-exporter on port 9113)
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -79,6 +79,6 @@ spec:
     matchNames:
       - bookstore
   endpoints:
-    - port: http
+    - port: metrics
       path: /metrics
       interval: 15s
