@@ -1,30 +1,27 @@
-# Infrastructure Status Report
-**Agent:** infra-lead
-**Updated:** 2026-04-21 23:00 IST
+# Infrastructure Status
 
-## Current Status: 🔄 IN PROGRESS
+**Last Updated:** 2026-04-21 23:10 IST
 
-### Prometheus Stack Installation
-- ✅ Helm release created: `prometheus` in `monitoring` namespace
-- ✅ kube-state-metrics: Running (1/1)
-- ✅ node-exporter: Running (1/1)
-- 🔄 Grafana: ContainerCreating (0/3)
-- 🔄 prometheus-operator: ContainerCreating (0/1)
-- ⏳ Prometheus server: Not yet deployed (waiting for operator)
-- ⏳ Alertmanager: Not yet deployed
+## Cluster Status
+- **Kubernetes:** v1.35.0 (Kind cluster: opensre-demo)
+- **Prometheus:** Running in monitoring namespace
+- **Port Forward:** localhost:9090 → prometheus-kube-prometheus-prometheus
 
-### Estimated Completion
-- Containers pulling images - expect 5-10 more minutes for full deployment
+## OpenSRE Integration Status
+| Service | Status | Details |
+|---------|--------|---------|
+| Prometheus | ✓ Connected | http://localhost:9090 |
+| Kubernetes | ✓ Connected | K8s v1.35.0 |
+| LLM | ✓ Connected | Ollama llama3:8b |
 
-### Bookstore App Status
-- ✅ All 5 services running
-- ⚠️ payment-service-crashloop in CrashLoopBackOff (118 restarts) - THIS IS EXPECTED (fault scenario)
+## Bookstore Namespace
+All services running:
+- catalog-service (2 replicas)
+- checkout-service (1 replica)
+- frontend (2 replicas)
+- payment-service (1 replica)
+- redis (1 replica)
 
-### Next Steps
-1. Wait for all monitoring pods to become Ready
-2. Configure ServiceMonitors for bookstore services
-3. Set up Grafana dashboards
-4. Verify metrics scraping
-
-### Blockers
-None - proceeding normally
+## Notes
+- Prometheus stack installed via Helm (kube-prometheus-stack)
+- Port forwarding required for localhost access

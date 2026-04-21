@@ -139,7 +139,7 @@ class TestHTTPIntegration:
         """Test health check."""
         await http_skill.initialize()
         try:
-            result = await http_skill.health_check(
+            result = await http_skill.health_check_action(
                 url="https://httpbin.org/status/200",
                 expected_status=200,
             )
@@ -153,7 +153,7 @@ class TestHTTPIntegration:
         """Test health check with wrong status."""
         await http_skill.initialize()
         try:
-            result = await http_skill.health_check(
+            result = await http_skill.health_check_action(
                 url="https://httpbin.org/status/500",
                 expected_status=200,
             )

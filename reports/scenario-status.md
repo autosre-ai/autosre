@@ -1,29 +1,52 @@
-# Fault Scenario Status Report
-**Agent:** fault-runner
-**Updated:** 2026-04-21 23:00 IST
+# Fault Scenario Test Results
 
-## Current Status: ⏳ WAITING
+**Test Started:** 2026-04-21 23:10 IST
 
-### Waiting for Prometheus
-Integration testing blocked until Prometheus stack is fully deployed.
+## Summary
+| Scenario | Detection | Analysis | Remediation | Status |
+|----------|-----------|----------|-------------|--------|
+| crash-loop | 🔄 Pending | - | - | Not started |
+| memory-leak | 🔄 Pending | - | - | Not started |
+| high-latency | 🔄 Pending | - | - | Not started |
+| oom-kill | 🔄 Pending | - | - | Not started |
+| cpu-spike | 🔄 Pending | - | - | Not started |
 
-### Fault Scenarios Status
-| Scenario | Status | Notes |
-|----------|--------|-------|
-| crash-loop | ✅ Deployed | payment-service-crashloop running (118 restarts) |
-| memory-leak | ⏳ Pending | Waiting for Prometheus |
-| high-latency | ⏳ Pending | Waiting for Prometheus |
-| oom-kill | ⏳ Pending | Waiting for Prometheus |
-| cpu-spike | ⏳ Pending | Reviewed YAML, ready to deploy |
+---
 
-### Fault Injection Files
-All 5 scenarios ready in: `~/clawd/projects/opensre/integration/scenarios/`
+## Test Details
 
-### Next Steps
-1. Wait for Prometheus to be ready
-2. Deploy each fault scenario
-3. Run OpenSRE detection tests
-4. Document results
+### 1. Crash Loop (crash-loop.yaml)
+**Target:** payment-service
+**Status:** Not started
 
-### Blockers
-- Prometheus stack still deploying (ContainerCreating)
+---
+
+### 2. Memory Leak (memory-leak.yaml)
+**Target:** catalog-service
+**Status:** Not started
+
+---
+
+### 3. High Latency (high-latency.yaml)
+**Target:** checkout-service
+**Status:** Not started
+
+---
+
+### 4. OOM Kill (oom-kill.yaml)
+**Target:** catalog-service
+**Status:** Not started
+
+---
+
+### 5. CPU Spike (cpu-spike.yaml)
+**Target:** frontend
+**Status:** Not started
+
+---
+
+## Bugs Found
+None yet.
+
+## Recommendations
+TBD after testing.
