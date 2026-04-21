@@ -313,18 +313,17 @@ Provide your analysis in this EXACT format:
 
 def create_header() -> Panel:
     """Create the demo header panel."""
-    header_text = """
-[bold cyan]   ___                   ____  ____  _____ [/]
-[bold cyan]  / _ \ _ __   ___ _ __ / ___||  _ \| ____|[/]
-[bold cyan] | | | | '_ \ / _ \ '_ \\\\___ \| |_) |  _|  [/]
-[bold cyan] | |_| | |_) |  __/ | | |___) |  _ <| |___ [/]
-[bold cyan]  \___/| .__/ \___|_| |_|____/|_| \_\_____|[/]
-[bold cyan]       |_|                                  [/]
-
-[dim]AI-Powered Incident Response for SRE Teams[/]
-    """
+    header_text = (
+        "[bold cyan]   ___                   ____  ____  _____ [/]\n"
+        "[bold cyan]  / _ \\ _ __   ___ _ __ / ___||  _ \\| ____|[/]\n"
+        "[bold cyan] | | | | '_ \\ / _ \\ '_ \\\\___ \\| |_) |  _|  [/]\n"
+        "[bold cyan] | |_| | |_) |  __/ | | |___) |  _ <| |___ [/]\n"
+        "[bold cyan]  \\___/| .__/ \\___|_| |_|____/|_| \\_\\_____|[/]\n"
+        "[bold cyan]       |_|                                  [/]\n\n"
+        "[dim]AI-Powered Incident Response for SRE Teams[/]"
+    )
     return Panel(
-        Align.center(header_text.strip()),
+        Align.center(header_text),
         box=DOUBLE,
         border_style="cyan",
         padding=(1, 0),

@@ -1,105 +1,67 @@
 # OpenSRE Overnight Mission
 **Started:** 2026-04-21 21:30 IST
 **Target:** Production-ready demo by 2026-04-22 08:00 IST
+**Mode:** FULL AUTONOMY — No stopping, fix all issues, no questions
 
 ## Mission Objectives
 
-### Phase 1: Infrastructure (21:30 - 23:00)
-- [ ] Install Prometheus stack in cluster (real, not mock)
-- [ ] Install Grafana with pre-built dashboards
-- [ ] Configure ServiceMonitors for all bookstore services
-- [ ] Verify metrics are being scraped
+### Phase 1: Infrastructure (21:30 - 23:00) 🔄 IN PROGRESS
+- [x] Helm repo added
+- [x] kube-prometheus-stack helm install started
+- [ ] Prometheus server running and scraping
+- [ ] Grafana running with dashboards
+- [ ] ServiceMonitors for all bookstore services
+- [ ] Verify metrics visible in Prometheus UI
 
-### Phase 2: Integration Testing (23:00 - 02:00)
-- [ ] Test OpenSRE against real Prometheus metrics
-- [ ] Run all fault scenarios (crash-loop, memory-leak, high-latency, oom-kill, cpu-spike)
-- [ ] Fix any integration bugs discovered
-- [ ] Ensure LLM analysis works with real data
+### Phase 2: Integration Testing (23:00 - 02:00) ⏳ PENDING
+- [ ] Update OpenSRE config to point to real Prometheus
+- [ ] Run integration tests against real cluster
+- [ ] Fix any failing tests
+- [ ] All integration tests passing
 
-### Phase 3: End-to-End Scenarios (02:00 - 05:00)
-- [ ] Full incident lifecycle: detect → investigate → diagnose → remediate
-- [ ] Test with multiple LLM backends (Ollama, OpenAI if available)
-- [ ] Performance testing (response times, token usage)
-- [ ] Edge case handling
+### Phase 3: End-to-End Scenarios (02:00 - 05:00) ⏳ PENDING
+- [ ] crash-loop.yaml scenario tested
+- [ ] memory-leak.yaml scenario tested
+- [ ] high-latency.yaml scenario tested
+- [ ] oom-kill.yaml scenario tested
+- [ ] cpu-spike.yaml scenario tested
+- [ ] OpenSRE correctly analyzes all scenarios
 
-### Phase 4: Polish & Documentation (05:00 - 08:00)
-- [ ] Update demo.py with all working scenarios
-- [ ] Create video-ready demo script
-- [ ] Update README with real integration examples
-- [ ] Final smoke test
+### Phase 4: Polish & Documentation (05:00 - 08:00) ⏳ PENDING
+- [ ] demo.py updated and working
+- [ ] DEMO_SCRIPT.md created for video
+- [ ] README.md updated with real examples
+- [ ] Final smoke test passed
 
-## Agent Assignments
+## Agent Fleet
 
-### Agent 1: Infrastructure Lead
-- Install kube-prometheus-stack via Helm
-- Configure ServiceMonitors
-- Set up Grafana dashboards
-- Report: `~/clawd/projects/opensre/reports/infra-status.md`
+| Agent | Status | Last Update | Current Task |
+|-------|--------|-------------|--------------|
+| infra-lead | 🔄 Active | 23:00 | Waiting for pods to Ready |
+| integration-tester | ⏳ Waiting | 23:00 | Blocked on Prometheus |
+| fault-runner | ⏳ Waiting | 23:00 | Blocked on Prometheus |
+| code-fixer | ✅ Active | 23:05 | Enhanced remediation rollback |
+| demo-polish | 🔄 Standby | 23:00 | Waiting for scenarios |
+| overnight-supervisor | 🔄 Active | 21:35 | 10hr continuous monitoring |
 
-### Agent 2: Integration Tester
-- Run integration tests continuously
-- Fix failing tests
-- Document issues found
-- Report: `~/clawd/projects/opensre/reports/integration-status.md`
+## Fixes Applied
+1. ✅ Enhanced remediation rollback (commit d6753de)
 
-### Agent 3: Fault Scenario Runner
-- Deploy each fault scenario
-- Test OpenSRE detection and analysis
-- Iterate on fixes
-- Report: `~/clawd/projects/opensre/reports/scenario-status.md`
-
-### Agent 4: Code Fixer (On-Demand)
-- Fix bugs reported by other agents
-- Improve error handling
-- Optimize performance
-- Report: `~/clawd/projects/opensre/reports/fixes-status.md`
-
-### Agent 5: Demo Polish
-- Update demo script
-- Create documentation
-- Prepare video script
-- Report: `~/clawd/projects/opensre/reports/demo-status.md`
-
-## Coordination
-
-All agents write status to their report files.
-Main session monitors and coordinates.
-Critical issues escalate to main session.
+## Hourly Updates
+- 22:00 — Scheduled
+- 23:00 — Scheduled
+- 00:00 — Scheduled
+- ... continues every hour until 08:00
 
 ## Success Criteria
 
 1. ✅ All unit tests pass (384/384 - DONE)
-2. ⬜ Prometheus deployed with real metrics
-3. ⬜ All 5 fault scenarios tested successfully
-4. ⬜ OpenSRE detects, analyzes, and suggests remediation for each
-5. ⬜ Demo script runs end-to-end without errors
-6. ⬜ Documentation updated with real examples
-
-## Current Status
-
-- Kind cluster: ✅ Running (opensre-demo)
-- Bookstore app: ✅ Running (5 services)
-- Unit tests: ✅ 384 passed
-- Prometheus: 🔄 Installing (pods creating, ~75s old)
-- Integration tests: ⏳ Waiting for Prometheus
-- Fault scenarios: ✅ crash-loop deployed (118 restarts), other 4 ready to deploy
-
-### Prometheus Stack Progress (23:00 IST)
-| Component | Status |
-|-----------|--------|
-| kube-state-metrics | ✅ Running |
-| node-exporter | ✅ Running |
-| Grafana | 🔄 ContainerCreating |
-| prometheus-operator | 🔄 ContainerCreating |
-| Prometheus server | ⏳ Pending |
-| Alertmanager | ⏳ Pending |
-
-### Agent Activity
-- **infra-lead**: Installing Prometheus stack via Helm
-- **fault-runner**: Waiting for Prometheus, crash-loop already running
-- **integration-tester**: Polling monitoring namespace
-- **code-fixer**: Standby
-- **demo-polish**: Standby
+2. 🔄 Prometheus deployed with real metrics (IN PROGRESS)
+3. ⏳ All 5 fault scenarios tested successfully
+4. ⏳ OpenSRE detects, analyzes, and suggests remediation for each
+5. ⏳ Demo script runs end-to-end without errors
+6. ⏳ Documentation updated with real examples
 
 ---
-*Last updated: 2026-04-21 23:00 IST*
+*Last updated: 2026-04-21 21:40 IST*
+*Auto-updated by overnight agents*
