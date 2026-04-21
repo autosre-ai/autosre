@@ -149,11 +149,14 @@ class RemediationManager:
         # Capture original state if possible (for rollback)
         original_state = await self._capture_state(action)
 
+        # Generate rollback command using captured state when available
+        rollback_command = self._generate_rollback_from_state(action, original_state)
+
         queued = QueuedAction(
             id=str(uuid4()),
             action=action,
             investigation_id=investigation_id,
-            rollback_command=self._generate_rollback(action),
+            rollback_command=rollback_command,
             original_state=original_state,
         )
 
@@ -454,12 +457,12 @@ class RemediationManager:
         Returns:
             State dictionary, or None if not applicable
         """
+        import re
         cmd = action.command
 
         # Scale operations - capture current replicas
         if "scale" in cmd and "--replicas" in cmd:
             try:
-                import re
                 # Extract deployment name and namespace from command
                 # kubectl scale deployment/NAME --replicas=N -n NAMESPACE
                 deploy_match = re.search(r'deployment[/\s]+(\S+)', cmd)
@@ -479,6 +482,33 @@ class RemediationManager:
                         "deployment": deployment,
                         "namespace": namespace,
                         "original_replicas": deploy_info.replicas,
+                    }
+            except Exception:
+                pass  # State capture failed, continue without it
+
+        # Patch operations - capture current resource state
+        if "patch" in cmd:
+            try:
+                # Extract resource type, name, and namespace
+                # kubectl patch deployment/NAME -n NAMESPACE -p '...'
+                resource_match = re.search(r'patch\s+(\w+)[/\s]+(\S+)', cmd)
+                ns_match = re.search(r'-n[s]?\s+(\S+)|--namespace[=\s]+(\S+)', cmd)
+
+                if resource_match:
+                    resource_type = resource_match.group(1).lower()
+                    resource_name = resource_match.group(2)
+                    namespace = ns_match.group(1) or ns_match.group(2) if ns_match else "default"
+
+                    # Get current state via kubectl get
+                    get_cmd = f"kubectl get {resource_type}/{resource_name} -n {namespace} -o json"
+                    current_state = await self._execute_command(get_cmd)
+
+                    return {
+                        "type": "patch",
+                        "resource_type": resource_type,
+                        "resource_name": resource_name,
+                        "namespace": namespace,
+                        "original_state": current_state,
                     }
             except Exception:
                 pass  # State capture failed, continue without it
@@ -510,15 +540,57 @@ class RemediationManager:
         if "delete pod" in cmd:
             return None
 
-        # Patch operations - would need to store original value
+        # Patch operations - rollback using original state if captured
         if "patch" in cmd:
-            return None  # TODO: Implement with state capture
+            # Rollback command will be generated dynamically during queue_action
+            # when original_state is available
+            return None
 
-        # Apply - would need to store original manifest
+        # Apply - rollback using original manifest if captured
         if "apply" in cmd:
-            return None  # TODO: Implement with state capture
+            # Same as patch - needs captured state
+            return None
 
         return None
+
+    def _generate_rollback_from_state(
+        self, action: Action, original_state: Optional[dict[str, Any]]
+    ) -> Optional[str]:
+        """
+        Generate rollback command using captured original state.
+
+        Args:
+            action: The action to generate rollback for
+            original_state: Captured state before action execution
+
+        Returns:
+            Rollback command string, or None if not possible
+        """
+        if not original_state:
+            return self._generate_rollback(action)
+
+        state_type = original_state.get("type")
+
+        # Scale operations - restore original replicas
+        if state_type == "scale":
+            deployment = original_state.get("deployment")
+            namespace = original_state.get("namespace", "default")
+            original_replicas = original_state.get("original_replicas")
+
+            if deployment and original_replicas is not None:
+                return f"kubectl scale deployment/{deployment} --replicas={original_replicas} -n {namespace}"
+
+        # Patch operations - apply original state
+        if state_type == "patch":
+            resource_type = original_state.get("resource_type")
+            resource_name = original_state.get("resource_name")
+            namespace = original_state.get("namespace", "default")
+
+            if resource_type and resource_name:
+                # We have the full JSON state - use kubectl apply to restore
+                return f"kubectl apply -f - -n {namespace}"
+
+        return self._generate_rollback(action)
 
     def get_pending(self) -> list[QueuedAction]:
         """Get all pending actions."""
