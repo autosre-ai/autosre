@@ -2,8 +2,6 @@
 Tests for the enhanced LLM adapter.
 """
 
-import asyncio
-import hashlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,7 +13,6 @@ from opensre_core.adapters.llm import (
     LRUCache,
     RetryConfig,
     create_llm_adapter,
-    quick_generate,
     with_retry,
 )
 

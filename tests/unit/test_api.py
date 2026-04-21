@@ -1,7 +1,7 @@
 """Tests for opensre_core.api module."""
 
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 from fastapi.testclient import TestClient
 
 from opensre_core.api import create_app

@@ -1,12 +1,13 @@
 """Tests for incident learning module."""
 
-import pytest
-from datetime import datetime
-import tempfile
 import os
+import tempfile
+from datetime import datetime
 
+import pytest
+
+from opensre_core.learning.patterns import PatternRecognizer
 from opensre_core.learning.store import IncidentStore, StoredIncident
-from opensre_core.learning.patterns import PatternRecognizer, PatternMatch
 
 
 @pytest.fixture
@@ -84,10 +85,10 @@ class TestIncidentStore:
             confidence=0.8,
             created_at=datetime.now(),
         )
-        
+
         store.save(incident)
         retrieved = store.get("test1")
-        
+
         assert retrieved is not None
         assert retrieved.id == "test1"
         assert retrieved.issue == "test issue"
@@ -97,9 +98,9 @@ class TestIncidentStore:
         """Test finding similar incidents."""
         for inc in sample_incidents:
             store.save(inc)
-        
+
         similar = store.find_similar("memory issue", "production")
-        
+
         assert len(similar) >= 1
         assert any("memory" in inc.issue.lower() for inc in similar)
 
@@ -107,9 +108,9 @@ class TestIncidentStore:
         """Test finding by root cause."""
         for inc in sample_incidents:
             store.save(inc)
-        
+
         results = store.find_by_root_cause("memory leak")
-        
+
         assert len(results) == 2
         assert all("memory" in inc.root_cause.lower() for inc in results)
 
@@ -117,10 +118,10 @@ class TestIncidentStore:
         """Test finding by namespace."""
         for inc in sample_incidents:
             store.save(inc)
-        
+
         prod_incidents = store.find_by_namespace("production")
         staging_incidents = store.find_by_namespace("staging")
-        
+
         assert len(prod_incidents) == 2
         assert len(staging_incidents) == 1
 
@@ -128,9 +129,9 @@ class TestIncidentStore:
         """Test getting statistics."""
         for inc in sample_incidents:
             store.save(inc)
-        
+
         stats = store.get_statistics()
-        
+
         assert stats["total_incidents"] == 3
         assert stats["resolved"] == 2
         assert stats["escalated"] == 1
@@ -147,9 +148,9 @@ class TestIncidentStore:
             created_at=datetime.now(),
         )
         store.save(incident)
-        
+
         success = store.update_outcome("test2", "resolved", "Fixed it!")
-        
+
         assert success
         updated = store.get("test2")
         assert updated.outcome == "resolved"
@@ -168,10 +169,10 @@ class TestIncidentStore:
             created_at=datetime.now(),
         )
         store.save(incident)
-        
+
         store.record_action_executed("test3", "kubectl rollout restart")
         store.record_action_executed("test3", "kubectl scale --replicas=3")
-        
+
         updated = store.get("test3")
         assert len(updated.actions_executed) == 2
         assert "kubectl rollout restart" in updated.actions_executed
@@ -184,12 +185,12 @@ class TestPatternRecognizer:
         """Test finding matching patterns."""
         for inc in sample_incidents:
             store.save(inc)
-        
+
         recognizer = PatternRecognizer(store)
         observations = [{"summary": "Pod terminated due to OOMKilled event"}]
-        
+
         pattern = recognizer.find_matching_pattern(observations, "production")
-        
+
         assert pattern is not None
         assert "memory" in pattern.likely_root_cause.lower()
         assert pattern.similar_incidents >= 1
@@ -198,10 +199,10 @@ class TestPatternRecognizer:
         """Test runbook suggestions."""
         for inc in sample_incidents:
             store.save(inc)
-        
+
         recognizer = PatternRecognizer(store)
         suggestion = recognizer.suggest_runbook("memory leak")
-        
+
         assert suggestion is not None
         assert len(suggestion.recommended_actions) > 0
         assert suggestion.success_count >= 1
@@ -209,15 +210,15 @@ class TestPatternRecognizer:
     def test_extract_signals(self, store):
         """Test signal extraction from observations."""
         recognizer = PatternRecognizer(store)
-        
+
         observations = [
             {"summary": "Container was OOMKilled due to memory pressure"},
             {"summary": "High CPU throttling detected"},
             {"summary": "5xx errors increasing on /api/checkout"},
         ]
-        
+
         signals = recognizer._extract_signals(observations)
-        
+
         assert "memory" in signals
         assert "cpu" in signals
         assert "errors" in signals
@@ -226,10 +227,10 @@ class TestPatternRecognizer:
         """Test trend analysis."""
         for inc in sample_incidents:
             store.save(inc)
-        
+
         recognizer = PatternRecognizer(store)
         trends = recognizer.analyze_trends(days=30)
-        
+
         assert trends["total_incidents"] == 3
         assert trends["incidents_per_day"] > 0
         assert trends["resolution_rate"] == 2/3
@@ -242,7 +243,7 @@ class TestIntegration:
         """Test complete learning flow."""
         store = IncidentStore(temp_db)
         recognizer = PatternRecognizer(store)
-        
+
         # 1. Create several similar incidents
         for i in range(5):
             inc = StoredIncident(
@@ -258,23 +259,23 @@ class TestIntegration:
                 created_at=datetime.now(),
             )
             store.save(inc)
-        
+
         # 2. Check pattern matching
         pattern = recognizer.find_matching_pattern(
             [{"summary": "New OOM event detected"}],
             "prod"
         )
-        
+
         assert pattern is not None
         assert pattern.pattern_confidence >= 0.8
         assert pattern.likely_root_cause == "memory leak"
-        
+
         # 3. Get runbook suggestion
         suggestion = recognizer.suggest_runbook("memory leak", "prod")
-        
+
         assert suggestion is not None
         assert "kubectl rollout restart" in suggestion.recommended_actions
-        
+
         # 4. Check statistics
         stats = store.get_statistics("prod")
         assert stats["total_incidents"] == 5

@@ -6,7 +6,7 @@ against real or simulated Kubernetes environments.
 """
 
 from tests.integration.scenarios import SCENARIOS, Scenario, get_scenario_names
-from tests.integration.test_runner import TestRunner, TestResult
+from tests.integration.test_runner import TestResult, TestRunner
 
 __all__ = [
     "SCENARIOS",

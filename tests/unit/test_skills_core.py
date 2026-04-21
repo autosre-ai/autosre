@@ -1,11 +1,12 @@
 """Tests for opensre_core.skills module."""
 
+from unittest.mock import AsyncMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
 from opensre_core.skills import (
-    ActionResult,
     ActionDefinition,
+    ActionResult,
     Skill,
     SkillRegistry,
     action,

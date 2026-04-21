@@ -57,7 +57,7 @@ SCENARIOS = {
         description="Pod consuming high memory via stress tool",
         severity="medium",
     ),
-    
+
     "cpu_hog": Scenario(
         name="cpu_hog",
         manifest="examples/cpu-hog.yaml",
@@ -83,7 +83,7 @@ SCENARIOS = {
         description="Pod consuming high CPU via stress tool",
         severity="medium",
     ),
-    
+
     "crashloop": Scenario(
         name="crashloop",
         manifest="examples/crashloop.yaml",
@@ -110,7 +110,7 @@ SCENARIOS = {
         description="Pod that exits with error code, causing CrashLoopBackOff",
         severity="high",
     ),
-    
+
     "oom_kill": Scenario(
         name="oom_kill",
         manifest="examples/oom-pod.yaml",
@@ -136,7 +136,7 @@ SCENARIOS = {
         description="Pod exceeds memory limit and gets OOM killed",
         severity="high",
     ),
-    
+
     "latency_issue": Scenario(
         name="latency_issue",
         manifest=None,  # Requires actual service with latency
@@ -161,7 +161,7 @@ SCENARIOS = {
         description="Service experiencing high latency",
         severity="medium",
     ),
-    
+
     "error_rate": Scenario(
         name="error_rate",
         manifest=None,  # Requires actual service with errors
@@ -186,7 +186,7 @@ SCENARIOS = {
         description="Service returning 5xx errors",
         severity="high",
     ),
-    
+
     "healthy_check": Scenario(
         name="healthy_check",
         manifest=None,  # Uses existing resources
@@ -206,7 +206,7 @@ SCENARIOS = {
         description="Health check of namespace (should be healthy)",
         severity="low",
     ),
-    
+
     "network_issue": Scenario(
         name="network_issue",
         manifest=None,
@@ -231,7 +231,7 @@ SCENARIOS = {
         description="Network connectivity problems",
         severity="high",
     ),
-    
+
     "disk_pressure": Scenario(
         name="disk_pressure",
         manifest=None,
@@ -257,7 +257,7 @@ SCENARIOS = {
         description="Node experiencing disk pressure",
         severity="high",
     ),
-    
+
     "pending_pods": Scenario(
         name="pending_pods",
         manifest=None,

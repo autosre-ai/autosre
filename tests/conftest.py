@@ -2,14 +2,13 @@
 Pytest Configuration and Shared Fixtures for OpenSRE Tests
 """
 
-import pytest
 import asyncio
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
-from typing import Any
 import tempfile
-import os
+from datetime import datetime, timezone
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 # ============================================================================
 # Event Loop Configuration

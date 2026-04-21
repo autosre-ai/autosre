@@ -7,9 +7,9 @@ with appropriate credentials configured.
 Run with: pytest tests/integration/ -v --integration
 """
 
-import pytest
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 # Mark all tests in this module as integration tests
 pytestmark = pytest.mark.integration
