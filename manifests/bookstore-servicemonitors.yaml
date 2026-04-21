@@ -1,0 +1,84 @@
+---
+# ServiceMonitor for Catalog Service
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: catalog-service
+  namespace: monitoring
+  labels:
+    app: catalog-service
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: catalog-service
+  namespaceSelector:
+    matchNames:
+      - bookstore
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+# ServiceMonitor for Checkout Service  
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: checkout-service
+  namespace: monitoring
+  labels:
+    app: checkout-service
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: checkout-service
+  namespaceSelector:
+    matchNames:
+      - bookstore
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+# ServiceMonitor for Payment Service
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: payment-service
+  namespace: monitoring
+  labels:
+    app: payment-service
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: payment-service
+  namespaceSelector:
+    matchNames:
+      - bookstore
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+# ServiceMonitor for Frontend
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: frontend
+  namespace: monitoring
+  labels:
+    app: frontend
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: frontend
+  namespaceSelector:
+    matchNames:
+      - bookstore
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
