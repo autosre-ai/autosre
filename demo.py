@@ -3,7 +3,7 @@
 OpenSRE Interactive Demo Script
 ================================
 
-A bulletproof, production-ready demo for showcasing OpenSRE's AI-powered 
+A bulletproof, production-ready demo for showcasing OpenSRE's AI-powered
 incident response capabilities.
 
 Features:
@@ -30,10 +30,8 @@ import os
 import platform
 import random
 import sys
-import json
 import time
 from datetime import datetime
-from typing import Optional
 
 # Configure environment before imports
 os.environ.setdefault('OPENSRE_LLM_PROVIDER', 'ollama')
@@ -53,18 +51,24 @@ __date__ = "2026-04-22"
 
 RICH_AVAILABLE = False
 try:
-    from rich.console import Console
-    from rich.panel import Panel
-    from rich.table import Table
-    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
-    from rich.markdown import Markdown
-    from rich.layout import Layout
-    from rich.live import Live
-    from rich.text import Text
-    from rich.box import ROUNDED, DOUBLE, HEAVY
     from rich.align import Align
-    from rich.style import Style
-    from rich.theme import Theme
+    from rich.box import DOUBLE, HEAVY, ROUNDED
+    from rich.console import Console
+    from rich.layout import Layout  # noqa: F401
+    from rich.live import Live  # noqa: F401
+    from rich.markdown import Markdown  # noqa: F401
+    from rich.panel import Panel
+    from rich.progress import (
+        BarColumn,  # noqa: F401
+        Progress,
+        SpinnerColumn,
+        TextColumn,
+        TimeElapsedColumn,  # noqa: F401
+    )
+    from rich.style import Style  # noqa: F401
+    from rich.table import Table
+    from rich.text import Text
+    from rich.theme import Theme  # noqa: F401
     RICH_AVAILABLE = True
 except ImportError:
     pass
@@ -78,15 +82,15 @@ class FallbackConsole:
         import re
         text = re.sub(r'\[/?[^\]]+\]', '', text)
         print(text)
-    
+
     def clear(self):
         os.system('cls' if os.name == 'nt' else 'clear')
-    
+
     def input(self, prompt=""):
         import re
         prompt = re.sub(r'\[/?[^\]]+\]', '', prompt)
         return input(prompt)
-    
+
     def status(self, text):
         class DummyContext:
             def __enter__(self): return self
@@ -103,7 +107,7 @@ else:
 # LLM adapter import
 LLM_AVAILABLE = False
 try:
-    from opensre_core.adapters.llm import create_llm_adapter, LLMResponse
+    from opensre_core.adapters.llm import LLMResponse, create_llm_adapter  # noqa: F401
     LLM_AVAILABLE = True
 except ImportError as e:
     LLM_IMPORT_ERROR = str(e)
@@ -126,7 +130,7 @@ async def retry_with_backoff(func, *args, max_retries=None, **kwargs):
     max_retries = max_retries or RetryConfig.MAX_RETRIES
     delay = RetryConfig.INITIAL_DELAY
     last_error = None
-    
+
     for attempt in range(max_retries):
         try:
             return await asyncio.wait_for(
@@ -145,7 +149,7 @@ async def retry_with_backoff(func, *args, max_retries=None, **kwargs):
                 console.print(f"[yellow]⚠ Error on attempt {attempt + 1}/{max_retries}: {e}[/]")
             else:
                 print(f"Error on attempt {attempt + 1}/{max_retries}: {e}")
-        
+
         if attempt < max_retries - 1:
             jitter = random.uniform(0, delay * 0.1)
             wait_time = min(delay + jitter, RetryConfig.MAX_DELAY)
@@ -155,7 +159,7 @@ async def retry_with_backoff(func, *args, max_retries=None, **kwargs):
                 print(f"Retrying in {wait_time:.1f}s...")
             await asyncio.sleep(wait_time)
             delay *= RetryConfig.BACKOFF_FACTOR
-    
+
     raise last_error or RuntimeError("All retries failed")
 
 
@@ -237,11 +241,11 @@ Traffic spike (12x normal) exceeding provisioned capacity - HPA at maximum repli
 
 class MockLLMAdapter:
     """Mock LLM adapter for demos without real LLM connectivity."""
-    
+
     def __init__(self):
         self.model = "mock-gpt-4"
         self.provider = "mock"
-    
+
     async def health_check(self):
         return {
             "status": "healthy",
@@ -250,11 +254,11 @@ class MockLLMAdapter:
             "details": "Mock mode - pre-recorded responses",
             "latency_ms": 1
         }
-    
+
     async def generate(self, prompt: str, **kwargs):
         # Simulate thinking time
         await asyncio.sleep(random.uniform(0.5, 2.0))
-        
+
         # Determine scenario from prompt keywords
         scenario_id = 1  # default
         if "connection pool" in prompt.lower() or "database" in prompt.lower():
@@ -265,13 +269,13 @@ class MockLLMAdapter:
             scenario_id = 4
         elif "cpu" in prompt.lower() or "traffic" in prompt.lower():
             scenario_id = 5
-        
+
         content = MOCK_RESPONSES.get(scenario_id, MOCK_RESPONSES[1])
-        
+
         # Create mock response object
         class MockResponse:
             pass
-        
+
         response = MockResponse()
         response.content = content
         response.model = self.model
@@ -280,7 +284,7 @@ class MockLLMAdapter:
         response.output_tokens = len(content.split()) * 2
         response.latency_ms = random.randint(500, 2000)
         response.cached = False
-        
+
         return response
 
 
@@ -539,16 +543,16 @@ def create_header() -> "Panel":
     """Create the demo header panel."""
     if not RICH_AVAILABLE:
         return """
-   ___                   ____  ____  _____ 
+   ___                   ____  ____  _____
   / _ \\ _ __   ___ _ __ / ___||  _ \\| ____|
- | | | | '_ \\ / _ \\ '_ \\\\___ \\| |_) |  _|  
- | |_| | |_) |  __/ | | |___) |  _ <| |___ 
+ | | | | '_ \\ / _ \\ '_ \\\\___ \\| |_) |  _|
+ | |_| | |_) |  __/ | | |___) |  _ <| |___
   \\___/| .__/ \\___|_| |_|____/|_| \\_\\_____|
-       |_|                                  
-                                            
+       |_|
+
   AI-Powered Incident Response for SRE Teams
 """
-    
+
     header_text = (
         "[bold cyan]   ___                   ____  ____  _____ [/]\n"
         "[bold cyan]  / _ \\ _ __   ___ _ __ / ___||  _ \\| ____|[/]\n"
@@ -571,17 +575,17 @@ def create_alert_panel(scenario: dict) -> "Panel":
     if not RICH_AVAILABLE:
         alert = scenario["alert"]
         lines = [f"🚨 ALERT: {alert['title']}", "=" * 50]
-        for metric, value, severity, info in alert["details"]:
+        for metric, value, _severity, info in alert["details"]:
             lines.append(f"  • {metric}: {value} ({info})")
         return "\n".join(lines)
-    
+
     alert = scenario["alert"]
-    
+
     table = Table(show_header=False, box=None, padding=(0, 1))
     table.add_column("Metric", style="dim")
     table.add_column("Value", style="bold")
     table.add_column("Info", style="dim")
-    
+
     for metric, value, severity, info in alert["details"]:
         if severity == "critical":
             style = "bold red"
@@ -592,7 +596,7 @@ def create_alert_panel(scenario: dict) -> "Panel":
         else:
             style = "dim"
         table.add_row(f"• {metric}:", Text(value, style=style), f"({info})")
-    
+
     return Panel(
         table,
         title=f"[bold red]🚨 ALERT: {alert['title']}[/]",
@@ -605,7 +609,7 @@ def create_analysis_panel(response) -> "Panel":
     """Create a panel showing LLM analysis."""
     if not RICH_AVAILABLE:
         return f"\n🧠 AI Analysis\n{'=' * 40}\n{response.content}\n{'=' * 40}"
-    
+
     return Panel(
         response.content,
         title="[bold green]🧠 AI Analysis[/]",
@@ -624,20 +628,20 @@ def create_stats_panel(response, elapsed: float) -> "Panel":
   Latency: {elapsed:.2f}s
   Tokens: {response.input_tokens} in / {response.output_tokens} out
 """
-    
+
     table = Table(show_header=False, box=None)
     table.add_column("Stat", style="dim")
     table.add_column("Value", style="bold cyan")
-    
+
     table.add_row("Model:", response.model)
     table.add_row("Provider:", response.provider)
     table.add_row("Latency:", f"{elapsed:.2f}s")
     table.add_row("Input tokens:", str(response.input_tokens))
     table.add_row("Output tokens:", str(response.output_tokens))
-    
+
     if hasattr(response, 'cached') and response.cached:
         table.add_row("Cache:", "[green]HIT[/]")
-    
+
     return Panel(
         table,
         title="[bold blue]📊 Stats[/]",
@@ -650,7 +654,7 @@ def create_action_panel() -> "Panel":
     """Create the action prompt panel."""
     if not RICH_AVAILABLE:
         return "\n⚡ ACTOR AGENT — Awaiting Approval\n[✅ Approve] [❌ Dismiss] [📝 Details]"
-    
+
     return Panel(
         "[bold green]✅ Approve Action[/]  |  [bold red]❌ Dismiss[/]  |  [bold yellow]📝 View Details[/]",
         title="[bold]⚡ ACTOR AGENT — Awaiting Approval[/]",
@@ -663,11 +667,11 @@ def create_error_panel(error: str, hint: str = "") -> "Panel":
     """Create an error panel with recovery hint."""
     if not RICH_AVAILABLE:
         return f"\n❌ Error: {error}\n{hint}"
-    
+
     content = f"[red]{error}[/]"
     if hint:
         content += f"\n\n[yellow]💡 {hint}[/]"
-    
+
     return Panel(
         content,
         title="[bold red]❌ Error[/]",
@@ -683,7 +687,7 @@ def create_error_panel(error: str, hint: str = "") -> "Panel":
 async def run_diagnostics():
     """Run comprehensive diagnostics."""
     console.clear()
-    
+
     if RICH_AVAILABLE:
         console.print(create_header())
         console.print()
@@ -691,23 +695,23 @@ async def run_diagnostics():
     else:
         print(create_header())
         print("\nRunning Diagnostics...\n")
-    
+
     results = []
-    
+
     # 1. Python version
     py_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     py_ok = sys.version_info >= (3, 11)
     results.append(("Python Version", py_version, py_ok, "Requires 3.11+"))
-    
+
     # 2. Platform
     results.append(("Platform", platform.platform(), True, ""))
-    
+
     # 3. Rich library
     results.append(("Rich Library", "✓ Available" if RICH_AVAILABLE else "✗ Not found", RICH_AVAILABLE, "pip install rich"))
-    
+
     # 4. OpenSRE core
     results.append(("OpenSRE Core", "✓ Imported" if LLM_AVAILABLE else "✗ Not found", LLM_AVAILABLE, "pip install -e ."))
-    
+
     # 5. Ollama connectivity
     ollama_ok = False
     ollama_status = "Checking..."
@@ -729,9 +733,9 @@ async def run_diagnostics():
                 ollama_status = f"✗ HTTP {response.status_code}"
     except Exception as e:
         ollama_status = f"✗ {type(e).__name__}: {str(e)[:50]}"
-    
+
     results.append(("Ollama", ollama_status, ollama_ok, "ollama serve"))
-    
+
     # 6. LLM Health Check
     if LLM_AVAILABLE and ollama_ok:
         try:
@@ -745,14 +749,14 @@ async def run_diagnostics():
             results.append(("LLM Health", f"✗ {e}", False, ""))
     else:
         results.append(("LLM Health", "⊘ Skipped (dependencies missing)", None, ""))
-    
+
     # Display results
     if RICH_AVAILABLE:
         table = Table(title="[bold]Diagnostic Results[/]", box=ROUNDED)
         table.add_column("Check", style="cyan")
         table.add_column("Status", style="white")
         table.add_column("Hint", style="dim")
-        
+
         for name, status, ok, hint in results:
             if ok is True:
                 style = "green"
@@ -761,7 +765,7 @@ async def run_diagnostics():
             else:
                 style = "yellow"
             table.add_row(name, Text(status, style=style), hint)
-        
+
         console.print(table)
     else:
         print("=" * 60)
@@ -771,11 +775,11 @@ async def run_diagnostics():
             if hint and not ok:
                 print(f"      Hint: {hint}")
         print("=" * 60)
-    
+
     # Summary
-    passed = sum(1 for _, _, ok, _ in results if ok is True)
+    sum(1 for _, _, ok, _ in results if ok is True)
     failed = sum(1 for _, _, ok, _ in results if ok is False)
-    
+
     console.print()
     if failed == 0:
         if RICH_AVAILABLE:
@@ -789,7 +793,7 @@ async def run_diagnostics():
         else:
             print(f"⚠ {failed} check(s) failed. Demo may not work correctly.")
             print("Tip: Use --mock for demos without LLM connectivity")
-    
+
     console.print()
 
 
@@ -801,7 +805,7 @@ async def check_llm_health(llm, silent: bool = False) -> bool:
     """Check if LLM is healthy with retry."""
     try:
         health = await retry_with_backoff(llm.health_check, max_retries=2)
-        
+
         if health["status"] == "healthy":
             if not silent:
                 if RICH_AVAILABLE:
@@ -838,14 +842,14 @@ async def run_scenario(scenario: dict, llm, interactive: bool = True) -> dict:
         "latency": 0,
         "tokens": 0
     }
-    
+
     try:
         # Clear screen and show header
         console.clear()
         if RICH_AVAILABLE:
             console.print(create_header())
             console.print()
-            
+
             # Scenario title
             console.print(Panel(
                 f"[bold]{scenario['name']}[/]\n[dim]Service: {scenario['service']} | Fault: {scenario['fault_type']} | Severity: {scenario['severity']}[/]",
@@ -853,7 +857,7 @@ async def run_scenario(scenario: dict, llm, interactive: bool = True) -> dict:
                 border_style="cyan",
             ))
             console.print()
-            
+
             # Show alert
             console.print(create_alert_panel(scenario))
             console.print()
@@ -865,16 +869,16 @@ async def run_scenario(scenario: dict, llm, interactive: bool = True) -> dict:
             print(f"{'=' * 60}\n")
             print(create_alert_panel(scenario))
             print()
-        
+
         if interactive:
             console.input("[dim]Press Enter to start investigation...[/] " if RICH_AVAILABLE else "Press Enter to start investigation... ")
             if RICH_AVAILABLE:
                 console.print()
-        
+
         # Phase 1: Observer Agent
         if RICH_AVAILABLE:
             console.print("[bold cyan]🔍 OBSERVER AGENT[/] — Collecting signals...\n")
-            
+
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
@@ -885,7 +889,7 @@ async def run_scenario(scenario: dict, llm, interactive: bool = True) -> dict:
                     await asyncio.sleep(random.uniform(0.3, 0.7))  # Simulate query time
                     progress.remove_task(task)
                     console.print(f"  [green]✓[/] [cyan]{source}[/]: {signal}")
-            
+
             console.print()
         else:
             print("🔍 OBSERVER AGENT — Collecting signals...\n")
@@ -893,15 +897,15 @@ async def run_scenario(scenario: dict, llm, interactive: bool = True) -> dict:
                 await asyncio.sleep(0.3)
                 print(f"  ✓ {source}: {signal}")
             print()
-        
+
         # Phase 2: Reasoner Agent
         if RICH_AVAILABLE:
             console.print("[bold green]🧠 REASONER AGENT[/] — Analyzing with LLM...\n")
         else:
             print("🧠 REASONER AGENT — Analyzing with LLM...\n")
-        
+
         llm_start = time.time()
-        
+
         try:
             # Try with retry
             if RICH_AVAILABLE:
@@ -918,9 +922,9 @@ async def run_scenario(scenario: dict, llm, interactive: bool = True) -> dict:
                     scenario["prompt"],
                     max_retries=3
                 )
-            
+
             llm_elapsed = time.time() - llm_start
-            
+
             if RICH_AVAILABLE:
                 console.print(create_analysis_panel(response))
                 console.print()
@@ -929,15 +933,15 @@ async def run_scenario(scenario: dict, llm, interactive: bool = True) -> dict:
             else:
                 print(create_analysis_panel(response))
                 print(create_stats_panel(response, llm_elapsed))
-            
+
             result["success"] = True
             result["latency"] = llm_elapsed
             result["tokens"] = response.input_tokens + response.output_tokens
-            
+
         except Exception as e:
             llm_elapsed = time.time() - llm_start
             error_msg = str(e)
-            
+
             if RICH_AVAILABLE:
                 console.print(create_error_panel(
                     f"LLM analysis failed: {error_msg}",
@@ -946,30 +950,30 @@ async def run_scenario(scenario: dict, llm, interactive: bool = True) -> dict:
             else:
                 print(f"\n❌ LLM analysis failed: {error_msg}")
                 print("Tip: Try --mock flag for demo without LLM")
-            
+
             result["error"] = error_msg
             result["latency"] = llm_elapsed
             return result
-        
+
         # Phase 3: Actor Agent
         if RICH_AVAILABLE:
             console.print(create_action_panel())
             console.print()
         else:
             print(create_action_panel())
-        
+
         total_elapsed = time.time() - start_time
-        
+
         if RICH_AVAILABLE:
             console.print(f"[dim]Total time: {total_elapsed:.1f}s[/]\n")
         else:
             print(f"Total time: {total_elapsed:.1f}s\n")
-        
+
         if interactive:
             console.input("[dim]Press Enter to continue...[/] " if RICH_AVAILABLE else "Press Enter to continue... ")
-        
+
         return result
-        
+
     except KeyboardInterrupt:
         result["error"] = "Interrupted by user"
         return result
@@ -990,7 +994,7 @@ async def run_demo_menu(llm) -> None:
             if RICH_AVAILABLE:
                 console.print(create_header())
                 console.print()
-                
+
                 # Scenario menu
                 table = Table(
                     title="[bold]Select a Scenario[/]",
@@ -1001,11 +1005,11 @@ async def run_demo_menu(llm) -> None:
                 table.add_column("Scenario", style="white")
                 table.add_column("Service", style="cyan")
                 table.add_column("Severity", style="white")
-                
+
                 for s in SCENARIOS:
                     severity_style = {
                         "critical": "bold red",
-                        "high": "yellow", 
+                        "high": "yellow",
                         "medium": "green",
                     }.get(s["severity"], "white")
                     table.add_row(
@@ -1014,7 +1018,7 @@ async def run_demo_menu(llm) -> None:
                         s["service"],
                         Text(s["severity"].upper(), style=severity_style),
                     )
-                
+
                 console.print(table)
                 console.print()
                 console.print("[dim]  a. Run all scenarios[/]")
@@ -1029,9 +1033,9 @@ async def run_demo_menu(llm) -> None:
                 print("\n  a. Run all scenarios")
                 print("  d. Run diagnostics")
                 print("  q. Quit\n")
-            
+
             choice = console.input("[bold cyan]Enter choice:[/] " if RICH_AVAILABLE else "Enter choice: ").strip().lower()
-            
+
             if choice == "q":
                 if RICH_AVAILABLE:
                     console.print("\n[bold cyan]👋 Thanks for trying OpenSRE![/]\n")
@@ -1060,7 +1064,7 @@ async def run_demo_menu(llm) -> None:
                     else:
                         print("Invalid choice")
                     await asyncio.sleep(1)
-                    
+
         except KeyboardInterrupt:
             if RICH_AVAILABLE:
                 console.print("\n[dim]Interrupted[/]")
@@ -1072,19 +1076,19 @@ async def run_demo_menu(llm) -> None:
 async def run_all_scenarios(llm) -> list:
     """Run all scenarios and show summary."""
     results = []
-    
+
     for scenario in SCENARIOS:
         result = await run_scenario(scenario, llm, interactive=False)
         results.append(result)
         # Brief pause between scenarios
         await asyncio.sleep(0.5)
-    
+
     # Show summary
     console.clear()
     if RICH_AVAILABLE:
         console.print(create_header())
         console.print()
-        
+
         table = Table(
             title="[bold]Demo Summary[/]",
             box=ROUNDED,
@@ -1094,11 +1098,11 @@ async def run_all_scenarios(llm) -> list:
         table.add_column("Status", style="white", justify="center")
         table.add_column("Latency", style="cyan", justify="right")
         table.add_column("Tokens", style="dim", justify="right")
-        
+
         total_time = 0
         total_tokens = 0
         passed = 0
-        
+
         for r in results:
             if r["success"]:
                 status = "[green]✓ PASS[/]"
@@ -1111,9 +1115,9 @@ async def run_all_scenarios(llm) -> list:
                 status = "[red]✗ FAIL[/]"
                 latency = "-"
                 tokens = "-"
-            
+
             table.add_row(r["scenario"], status, latency, tokens)
-        
+
         console.print(table)
         console.print()
         console.print(f"[bold]Results:[/] {passed}/{len(results)} passed | Total: {total_time:.1f}s | {total_tokens} tokens")
@@ -1123,11 +1127,11 @@ async def run_all_scenarios(llm) -> list:
         print("\n" + "=" * 60)
         print("Demo Summary")
         print("=" * 60)
-        
+
         total_time = 0
         total_tokens = 0
         passed = 0
-        
+
         for r in results:
             status = "✓ PASS" if r["success"] else "✗ FAIL"
             latency = f"{r.get('latency', 0):.2f}s" if r["success"] else "-"
@@ -1136,13 +1140,13 @@ async def run_all_scenarios(llm) -> list:
                 total_time += r.get("latency", 0)
                 total_tokens += r.get("tokens", 0)
                 passed += 1
-        
+
         print("=" * 60)
         print(f"Results: {passed}/{len(results)} passed | Total: {total_time:.1f}s | {total_tokens} tokens")
         print()
-    
+
     console.input("[dim]Press Enter to continue...[/] " if RICH_AVAILABLE else "Press Enter to continue... ")
-    
+
     return results
 
 
@@ -1215,19 +1219,19 @@ Tips:
         metavar="FILE",
         help="Export results to JSON file",
     )
-    
+
     args = parser.parse_args()
-    
+
     # Version
     if args.version:
         print(f"OpenSRE Demo v{__version__} ({__date__})")
         return
-    
+
     # Diagnostics
     if args.diag:
         await run_diagnostics()
         return
-    
+
     # Override provider/model if specified
     if args.provider:
         os.environ["OPENSRE_LLM_PROVIDER"] = args.provider
@@ -1239,7 +1243,7 @@ Tips:
             os.environ["OPENSRE_ANTHROPIC_MODEL"] = args.model
         else:
             os.environ["OPENSRE_OLLAMA_MODEL"] = args.model
-    
+
     # Show header
     console.clear()
     if RICH_AVAILABLE:
@@ -1252,7 +1256,7 @@ Tips:
         print(create_header())
         print(f"\nv{__version__} | {datetime.now().strftime('%Y-%m-%d %H:%M')}")
         print("\nInitializing...\n")
-    
+
     # Initialize LLM
     if args.mock:
         if RICH_AVAILABLE:
@@ -1271,7 +1275,7 @@ Tips:
                 print(f"❌ OpenSRE core not available: {LLM_IMPORT_ERROR}")
                 print("Tip: Use --mock for demos without LLM")
             sys.exit(1)
-        
+
         try:
             llm = create_llm_adapter()
         except Exception as e:
@@ -1283,7 +1287,7 @@ Tips:
             else:
                 print(f"❌ Failed to create LLM adapter: {e}")
             sys.exit(1)
-        
+
         # Health check
         if not await check_llm_health(llm):
             if RICH_AVAILABLE:
@@ -1297,12 +1301,12 @@ Tips:
                 print("  • Pull a model: ollama pull llama3:8b")
                 print("  • Use mock mode: python demo.py --mock")
             sys.exit(1)
-    
+
     if RICH_AVAILABLE:
         console.print()
     else:
         print()
-    
+
     # Run demo based on args
     results = []
     try:
@@ -1318,7 +1322,7 @@ Tips:
             console.print("\n[dim]Demo interrupted[/]")
         else:
             print("\nDemo interrupted")
-    
+
     # Export results if requested
     if args.export and results:
         import json
