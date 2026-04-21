@@ -74,6 +74,15 @@ python demo.py --all
 # Using different LLM providers
 python demo.py --provider openai
 python demo.py --provider anthropic
+
+# Mock mode (no LLM required - perfect for demos)
+python demo.py --mock
+
+# Run diagnostics
+python demo.py --diag
+
+# Export results to JSON
+python demo.py --all --quick --export results.json
 ```
 
 ## Recording Tips
