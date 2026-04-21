@@ -1208,6 +1208,12 @@ Tips:
         action="store_true",
         help="Show version and exit",
     )
+    parser.add_argument(
+        "--export",
+        type=str,
+        metavar="FILE",
+        help="Export results to JSON file",
+    )
     
     args = parser.parse_args()
     
@@ -1297,11 +1303,13 @@ Tips:
         print()
     
     # Run demo based on args
+    results = []
     try:
         if args.scenario:
-            await run_scenario(SCENARIOS[args.scenario - 1], llm, interactive=not args.quick)
+            result = await run_scenario(SCENARIOS[args.scenario - 1], llm, interactive=not args.quick)
+            results = [result]
         elif args.all:
-            await run_all_scenarios(llm)
+            results = await run_all_scenarios(llm)
         else:
             await run_demo_menu(llm)
     except KeyboardInterrupt:
@@ -1309,6 +1317,37 @@ Tips:
             console.print("\n[dim]Demo interrupted[/]")
         else:
             print("\nDemo interrupted")
+    
+    # Export results if requested
+    if args.export and results:
+        import json
+        export_data = {
+            "version": __version__,
+            "timestamp": datetime.now().isoformat(),
+            "mode": "mock" if args.mock else "live",
+            "provider": llm.provider if hasattr(llm, 'provider') else "mock",
+            "model": llm.model if hasattr(llm, 'model') else "mock-gpt-4",
+            "scenarios": results,
+            "summary": {
+                "total": len(results),
+                "passed": sum(1 for r in results if r.get("success")),
+                "failed": sum(1 for r in results if not r.get("success")),
+                "total_latency_s": sum(r.get("latency", 0) for r in results),
+                "total_tokens": sum(r.get("tokens", 0) for r in results),
+            }
+        }
+        try:
+            with open(args.export, 'w') as f:
+                json.dump(export_data, f, indent=2)
+            if RICH_AVAILABLE:
+                console.print(f"[green]✓[/] Results exported to: {args.export}")
+            else:
+                print(f"✓ Results exported to: {args.export}")
+        except Exception as e:
+            if RICH_AVAILABLE:
+                console.print(f"[red]✗[/] Export failed: {e}")
+            else:
+                print(f"✗ Export failed: {e}")
 
 
 if __name__ == "__main__":
