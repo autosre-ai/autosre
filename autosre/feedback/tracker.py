@@ -4,12 +4,17 @@ Feedback Tracker - Track incident outcomes and feedback.
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from enum import Enum
 
 from pydantic import BaseModel, Field
+
+
+def utcnow() -> datetime:
+    """Return timezone-aware UTC datetime."""
+    return datetime.now(timezone.utc)
 
 
 class FeedbackType(str, Enum):
@@ -49,7 +54,7 @@ class Feedback(BaseModel):
     
     # Metadata
     submitted_by: str = Field(default="unknown")
-    submitted_at: datetime = Field(default_factory=datetime.utcnow)
+    submitted_at: datetime = Field(default_factory=utcnow)
 
 
 class IncidentOutcome(BaseModel):
@@ -75,7 +80,7 @@ class IncidentOutcome(BaseModel):
     lessons_learned: Optional[str] = None
     
     # Metadata
-    recorded_at: datetime = Field(default_factory=datetime.utcnow)
+    recorded_at: datetime = Field(default_factory=utcnow)
     recorded_by: str = Field(default="unknown")
 
 
