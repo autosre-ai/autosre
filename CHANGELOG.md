@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Testing & Coverage Sprint (Iterations 1-10)**
+  - Tests for ownership management module (18 tests)
+  - Tests for change tracking module (17 tests) 
+  - Tests for runbook indexing module (26 tests)
+  - Tests for learning patterns and incident store (27 tests)
+  - Tests for skills base class and registry (28 tests)
+  - Tests for real-time streaming module (28 tests)
+  - Tests for Prometheus metrics exporter (23 tests)
+  - Tests for structured logging module (24 tests)
+  - Total: **556 tests, 34% coverage** (up from 281/21%)
+
+- **Evals Expansion**
+  - Expanded evaluation scenarios to 33 total:
+    - Kafka consumer lag
+    - Load balancer unhealthy hosts
+    - S3 bucket permissions
+    - Kubernetes OOM limits
+
 - **Evals & Polish Sprint**
   - Expanded evaluation scenarios from 10 to 33:
     - Database incidents: connection pool, replication lag, slow queries
@@ -22,31 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Human-readable formatter for development
     - Configurable log levels
     - Extra field support for structured context
-  - New `autosre/exceptions.py` with actionable error messages:
-    - ConfigurationError, MissingConfigError, InvalidConfigError
-    - ConnectionError variants (K8s, Prometheus, LLM providers)
-    - ContextError, ServiceNotFoundError, NoContextDataError
-    - AgentError, InvestigationError, ActionBlockedError
-    - SandboxError, EvalError with specific subtypes
+  - New `autosre/exceptions.py` with actionable error messages
   - Added `types-PyYAML` to dev dependencies for mypy
 
-- **Testing Sprint (Iterations 1-25)**
+- **Testing Sprint (Previous)**
   - 236 new tests (281 total) - from 7% to 21% coverage
-  - CLI command tests (21 tests)
-  - Connector base class tests (14 tests)
-  - Prometheus connector tests (10 tests)
-  - Kubernetes connector tests (9 tests)
-  - Feedback tracker tests (10 tests)
-  - RBAC security tests (31 tests)
-  - Observer module tests (18 tests)
-  - Guardrails module tests (21 tests)
-  - Actor module tests (15 tests)
-  - Learning pipeline tests (9 tests)
-  - Evals integration tests (15 tests)
-  - Configuration tests (21 tests)
-  - Audit logging tests (17 tests)
-  - Input sanitization tests (25 tests)
-  - Shared test fixtures in conftest.py
+  - Comprehensive fixtures in conftest.py
 
 - **New CLI Commands**
   - `autosre init` - Initialize AutoSRE in a directory
