@@ -9,9 +9,14 @@ The actor executes approved remediation actions:
 """
 
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Any
 from enum import Enum
+
+
+def utcnow() -> datetime:
+    """Return timezone-aware UTC datetime."""
+    return datetime.now(timezone.utc)
 
 from pydantic import BaseModel, Field
 
@@ -133,7 +138,7 @@ class Actor:
             return result
         
         # Execute based on type
-        result.started_at = datetime.utcnow()
+        result.started_at = utcnow()
         
         try:
             if action_type == ActionType.NOTIFICATION:
@@ -157,7 +162,7 @@ class Actor:
             result.status = ActionStatus.FAILED
             result.error = str(e)
         
-        result.completed_at = datetime.utcnow()
+        result.completed_at = utcnow()
         self._action_history.append(result)
         
         return result
