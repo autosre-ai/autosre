@@ -432,7 +432,7 @@ def _show_summary(results: list):
     console.print()
     
     # Per-scenario breakdown
-    scenarios = {}
+    scenarios: dict[str, dict] = {}
     for r in results:
         name = r.get("scenario", "unknown")
         if name not in scenarios:
@@ -440,11 +440,13 @@ def _show_summary(results: list):
         scenarios[name]["total"] += 1
         if r.get("success"):
             scenarios[name]["passed"] += 1
-        scenarios[name]["accuracy"].append(r.get("accuracy", 0))
+        accuracy_list: list[float] = scenarios[name]["accuracy"]
+        accuracy_list.append(r.get("accuracy", 0))
     
     console.print("[bold]Per-Scenario Breakdown:[/bold]")
     for name, data in scenarios.items():
-        avg = sum(data["accuracy"]) / len(data["accuracy"])
+        acc_list: list[float] = data["accuracy"]
+        avg = sum(acc_list) / len(acc_list) if acc_list else 0
         console.print(f"  {name}: {data['passed']}/{data['total']} passed, {avg*100:.0f}% avg accuracy")
     
     console.print()
