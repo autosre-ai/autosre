@@ -10,12 +10,17 @@ Ensures that:
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from enum import Enum
 
 from pydantic import BaseModel, Field
+
+
+def utcnow() -> datetime:
+    """Return timezone-aware UTC datetime."""
+    return datetime.now(timezone.utc)
 
 
 class ApprovalStatus(str, Enum):
@@ -56,14 +61,14 @@ class ApprovalRequest(BaseModel):
     approval_notes: Optional[str] = None
     
     # Timestamps
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
     expires_at: Optional[datetime] = None
     resolved_at: Optional[datetime] = None
 
 
 class AuditEntry(BaseModel):
     """An audit log entry."""
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=utcnow)
     action_type: str
     target: str
     actor: str = Field(default="autosre-agent")
@@ -226,20 +231,20 @@ class Guardrails:
             risk_level=risk_level,
             blast_radius=blast_radius,
             reason=reason,
-            expires_at=datetime.utcnow() + timedelta(hours=1),
+            expires_at=utcnow() + timedelta(hours=1),
         )
         
         # Check auto-approval
         if self.auto_approve_low_risk and risk_level == RiskLevel.LOW:
             request.status = ApprovalStatus.AUTO_APPROVED
             request.approver = "auto"
-            request.resolved_at = datetime.utcnow()
+            request.resolved_at = utcnow()
         
         # Check blast radius
         if blast_radius > self.max_blast_radius:
             request.status = ApprovalStatus.REJECTED
             request.approval_notes = f"Blast radius {blast_radius} exceeds limit {self.max_blast_radius}"
-            request.resolved_at = datetime.utcnow()
+            request.resolved_at = utcnow()
         
         # Save to database
         self._save_approval(request)
@@ -268,7 +273,7 @@ class Guardrails:
         request.status = ApprovalStatus.APPROVED
         request.approver = approver
         request.approval_notes = notes
-        request.resolved_at = datetime.utcnow()
+        request.resolved_at = utcnow()
         
         self._save_approval(request)
         
@@ -296,7 +301,7 @@ class Guardrails:
         request.status = ApprovalStatus.REJECTED
         request.approver = approver
         request.approval_notes = notes
-        request.resolved_at = datetime.utcnow()
+        request.resolved_at = utcnow()
         
         self._save_approval(request)
         
