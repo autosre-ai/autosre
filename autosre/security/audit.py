@@ -80,10 +80,10 @@ class AuditLogger:
         event_type: str | EventType,
         user: str,
         action: str,
-        details: dict = None,
+        details: Optional[dict] = None,
         result: str = "success",
-        source_ip: str = None,
-        session_id: str = None,
+        source_ip: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> AuditEntry:
         """
         Write an audit log entry.
@@ -267,10 +267,10 @@ class AuditLogger:
 
     def query(
         self,
-        start_date: str = None,
-        end_date: str = None,
-        event_type: str = None,
-        user: str = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        event_type: Optional[str] = None,
+        user: Optional[str] = None,
         limit: int = 100,
     ) -> list[AuditEntry]:
         """
@@ -286,7 +286,7 @@ class AuditLogger:
         Returns:
             List of matching audit entries
         """
-        entries = []
+        entries: list[AuditEntry] = []
 
         # Find relevant log files
         for log_file in sorted(self.log_dir.glob("audit-*.jsonl"), reverse=True):

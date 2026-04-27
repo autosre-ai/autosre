@@ -22,8 +22,8 @@ class StoredIncident:
     outcome: Optional[str] = None  # "resolved", "escalated", "false_positive"
     resolution_time_minutes: Optional[int] = None
     user_feedback: Optional[str] = None
-    created_at: datetime = None
-    resolved_at: datetime = None
+    created_at: Optional[datetime] = None
+    resolved_at: Optional[datetime] = None
 
 
 class IncidentStore:
@@ -102,7 +102,7 @@ class IncidentStore:
                 return self._row_to_incident(row)
         return None
 
-    def find_similar(self, issue: str, namespace: str = None, limit: int = 5) -> list[StoredIncident]:
+    def find_similar(self, issue: str, namespace: Optional[str] = None, limit: int = 5) -> list[StoredIncident]:
         """Find similar past incidents."""
         # Simple keyword matching - could be enhanced with embeddings
         keywords = issue.lower().split()
@@ -111,10 +111,10 @@ class IncidentStore:
             return []
 
         with sqlite3.connect(self.db_path) as conn:
-            params = []
+            params: list[str | int] = []
 
             # Build OR conditions for keyword matching
-            keyword_conditions = []
+            keyword_conditions: list[str] = []
             for kw in keywords:
                 if len(kw) > 2:  # Skip very short words
                     keyword_conditions.append("(LOWER(issue) LIKE ? OR LOWER(root_cause) LIKE ?)")
@@ -164,7 +164,7 @@ class IncidentStore:
             ).fetchall()
             return [self._row_to_incident(row) for row in rows]
 
-    def get_statistics(self, namespace: str = None) -> dict:
+    def get_statistics(self, namespace: Optional[str] = None) -> dict:
         """Get incident statistics."""
         with sqlite3.connect(self.db_path) as conn:
             base_where = "WHERE namespace = ?" if namespace else "WHERE 1=1"
@@ -238,8 +238,8 @@ class IncidentStore:
         self,
         incident_id: str,
         outcome: str,
-        feedback: str = None,
-        resolved_at: datetime = None,
+        feedback: Optional[str] = None,
+        resolved_at: Optional[datetime] = None,
     ) -> bool:
         """Update incident outcome and feedback."""
         from datetime import timezone as tz

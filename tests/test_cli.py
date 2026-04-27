@@ -134,15 +134,15 @@ class TestEvalCommands:
 class TestSandboxCommands:
     """Test sandbox subcommands."""
     
-    def test_sandbox_create_help(self, runner):
-        """Test sandbox create --help."""
-        result = runner.invoke(cli, ["sandbox", "create", "--help"])
+    def test_sandbox_start_help(self, runner):
+        """Test sandbox start --help."""
+        result = runner.invoke(cli, ["sandbox", "start", "--help"])
         assert result.exit_code == 0
         assert "--name" in result.output
     
-    def test_sandbox_destroy_help(self, runner):
-        """Test sandbox destroy --help."""
-        result = runner.invoke(cli, ["sandbox", "destroy", "--help"])
+    def test_sandbox_stop_help(self, runner):
+        """Test sandbox stop --help."""
+        result = runner.invoke(cli, ["sandbox", "stop", "--help"])
         assert result.exit_code == 0
         assert "--name" in result.output
 
