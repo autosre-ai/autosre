@@ -11,6 +11,10 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field
 import yaml
 
+from autosre.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 def utcnow() -> datetime:
     """Return timezone-aware UTC datetime."""
@@ -207,6 +211,8 @@ def get_eval_store() -> EvalStore:
 
 def load_scenario(name: str) -> Optional[Scenario]:
     """Load a scenario by name."""
+    logger.debug("Loading scenario", scenario=name)
+    
     # Check built-in scenarios
     scenarios_dir = Path(__file__).parent / "scenarios"
     
@@ -214,6 +220,7 @@ def load_scenario(name: str) -> Optional[Scenario]:
         with open(path) as f:
             data = yaml.safe_load(f)
             if data.get("name") == name:
+                logger.debug("Found scenario", path=str(path))
                 return Scenario(**data)
     
     # Check custom scenarios directory
@@ -273,8 +280,11 @@ async def run_scenario(name: str, verbose: bool = False) -> dict:
     """
     import time
     
+    logger.info("Running scenario", scenario=name, verbose=verbose)
+    
     scenario = load_scenario(name)
     if not scenario:
+        logger.warning("Scenario not found", scenario=name)
         return {
             "success": False,
             "error": f"Scenario '{name}' not found",
@@ -282,6 +292,7 @@ async def run_scenario(name: str, verbose: bool = False) -> dict:
         }
     
     start_time = time.time()
+    logger.debug("Scenario loaded", difficulty=scenario.difficulty)
     
     # TODO: Actually run the agent against the scenario
     # For now, return a stub result
@@ -303,6 +314,7 @@ async def run_scenario(name: str, verbose: bool = False) -> dict:
     
     # Save result
     get_eval_store().save_result(result)
+    logger.info("Scenario completed", scenario=name, accuracy=result.accuracy)
     
     return {
         "success": result.success,
@@ -318,7 +330,6 @@ async def run_scenario(name: str, verbose: bool = False) -> dict:
             "reasoning": result.agent_reasoning,
         },
     }
-
 
 def get_results(scenario: Optional[str] = None, limit: int = 100) -> list[dict]:
     """Get evaluation results."""

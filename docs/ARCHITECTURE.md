@@ -1,628 +1,477 @@
-# Architecture
+# AutoSRE Architecture
 
-Deep dive into OpenSRE's system design and multi-agent architecture.
+This document explains how AutoSRE works internally.
 
-## System Overview
+## Overview
+
+AutoSRE follows a **foundation-first** architecture:
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                                  OpenSRE Core                                    │
-├─────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                 │
-│  ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐          │
-│  │    API Server    │    │   Agent Runtime  │    │   Skill Manager  │          │
-│  │   (FastAPI)      │    │   (Orchestrator) │    │   (Plugin Mgr)   │          │
-│  └────────┬─────────┘    └────────┬─────────┘    └────────┬─────────┘          │
-│           │                       │                       │                     │
-│           └───────────────────────┼───────────────────────┘                     │
-│                                   │                                             │
-│  ┌────────────────────────────────┴─────────────────────────────────────┐      │
-│  │                          Message Bus                                  │      │
-│  │                  (Events, Commands, Observations)                     │      │
-│  └────────────────────────────────┬─────────────────────────────────────┘      │
-│                                   │                                             │
-│  ┌────────────────────────────────┴─────────────────────────────────────┐      │
-│  │                        Multi-Agent System                             │      │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐             │      │
-│  │  │ Observer │  │ Reasoner │  │  Actor   │  │ Notifier │             │      │
-│  │  │  Agent   │  │  Agent   │  │  Agent   │  │  Agent   │             │      │
-│  │  └──────────┘  └──────────┘  └──────────┘  └──────────┘             │      │
-│  └──────────────────────────────────────────────────────────────────────┘      │
-│                                                                                 │
-│  ┌──────────────────────────────────────────────────────────────────────┐      │
-│  │                          Knowledge Layer                              │      │
-│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐     │      │
-│  │  │  Runbooks  │  │  Incident  │  │   Vector   │  │  Pattern   │     │      │
-│  │  │            │  │   Store    │  │   Store    │  │  Matcher   │     │      │
-│  │  └────────────┘  └────────────┘  └────────────┘  └────────────┘     │      │
-│  └──────────────────────────────────────────────────────────────────────┘      │
-│                                                                                 │
-│  ┌──────────────────────────────────────────────────────────────────────┐      │
-│  │                           Skill Layer                                 │      │
-│  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ │      │
-│  │  │Promethe│ │  K8s   │ │ Slack  │ │  AWS   │ │PagerDut│ │ Custom │ │      │
-│  │  │  us    │ │        │ │        │ │        │ │   y    │ │        │ │      │
-│  │  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ │      │
-│  └──────────────────────────────────────────────────────────────────────┘      │
-│                                                                                 │
-└─────────────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│                        User Interface                          │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐           │
+│  │   CLI   │  │   API   │  │  Slack  │  │ PagerD. │           │
+│  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘           │
+└───────┴────────────┴────────────┴────────────┴────────────────┘
+                              │
+┌─────────────────────────────┴──────────────────────────────────┐
+│                          Agent                                  │
+│                                                                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │
+│  │   Observer   │  │   Reasoner   │  │    Actor     │         │
+│  │              │  │              │  │              │         │
+│  │ • Alerts     │──│ • Analysis   │──│ • Execute    │         │
+│  │ • Metrics    │  │ • Correlation│  │ • Verify     │         │
+│  │ • Logs       │  │ • Runbooks   │  │ • Guardrails │         │
+│  │ • Changes    │  │ • LLM        │  │ • Audit      │         │
+│  └──────────────┘  └──────────────┘  └──────────────┘         │
+│                              │                                  │
+└──────────────────────────────┴──────────────────────────────────┘
+                               │
+┌──────────────────────────────┴──────────────────────────────────┐
+│                       Context Store                             │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │  Services  │  Ownership  │  Changes  │  Runbooks  │ Alerts │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                              │                                   │
+│  ┌─────────────────────────────────────────────────────────────┐│
+│  │                       Connectors                             ││
+│  │  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌──────────┐ ││
+│  │  │Kubernetes │  │Prometheus │  │  GitHub   │  │  Slack   │ ││
+│  │  └───────────┘  └───────────┘  └───────────┘  └──────────┘ ││
+│  └─────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-## Core Components
+## Core Principles
 
-### API Server
+### 1. Foundation First
 
-The API server provides:
+The **Context Store** is the foundation. Without accurate context, LLMs produce unreliable recommendations.
 
-- **REST API** for programmatic access
-- **WebSocket** for real-time updates
-- **Webhooks** for alert ingestion
-- **MCP Server** for AI assistant integration
+**Before AutoSRE makes any decision, it:**
+1. Knows what services exist
+2. Understands their dependencies
+3. Tracks recent changes
+4. Has relevant runbooks loaded
+5. Correlates with past incidents
+
+### 2. Observer-Reasoner-Actor Pattern
+
+Based on the OODA loop (Observe, Orient, Decide, Act), adapted for SRE:
+
+| Component | Role | Outputs |
+|-----------|------|---------|
+| **Observer** | Watch for signals | Alerts, anomalies, changes |
+| **Reasoner** | Analyze and correlate | Root cause, confidence, recommendations |
+| **Actor** | Execute safely | Actions, verifications, rollbacks |
+
+### 3. Guardrails Everywhere
+
+Every automated action passes through guardrails:
+- **Approval workflows** for risky operations
+- **Blast radius checks** before execution
+- **Automatic rollback** on failures
+- **Audit logging** for compliance
+
+---
+
+## Components
+
+### Context Store
+
+The single source of truth for infrastructure state.
+
+**Data Model:**
 
 ```python
-# opensre_core/api.py
-from fastapi import FastAPI
-app = FastAPI(title="OpenSRE API")
+# Services and topology
+class Service:
+    name: str
+    namespace: str
+    cluster: str
+    dependencies: list[str]
+    status: ServiceStatus
+    replicas: int
 
-@app.post("/webhook/alertmanager")
-async def alertmanager_webhook(alert: AlertmanagerPayload):
-    """Receive alerts from Alertmanager."""
-    await orchestrator.dispatch(alert)
+# Ownership and on-call
+class Ownership:
+    service_name: str
+    team: str
+    slack_channel: str
+    oncall_email: str
 
-@app.post("/investigate")
-async def investigate(request: InvestigateRequest):
-    """Manually trigger an investigation."""
-    result = await orchestrator.investigate(request.description)
-    return result
+# Changes and deployments
+class ChangeEvent:
+    service_name: str
+    change_type: ChangeType
+    description: str
+    author: str
+    timestamp: datetime
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    """Real-time investigation updates."""
-    await manager.connect(websocket)
+# Runbooks
+class Runbook:
+    id: str
+    title: str
+    alert_names: list[str]
+    steps: list[dict]
+    automated: bool
+
+# Alerts and incidents
+class Alert:
+    name: str
+    severity: Severity
+    service_name: str
+    summary: str
 ```
 
-### Agent Runtime
+**Storage:** SQLite database at `~/.autosre/context.db`
 
-The runtime manages agent lifecycle:
+**Sync Sources:**
+- Kubernetes (services, pods, deployments)
+- Prometheus (alerts, metrics)
+- GitHub (PRs, deployments, commits)
+- Manual entry via CLI
+
+### Connectors
+
+Adapters for external systems:
+
+```
+┌─────────────────┐
+│ Base Connector  │
+├─────────────────┤
+│ + connect()     │
+│ + disconnect()  │
+│ + sync()        │
+│ + health()      │
+└─────────────────┘
+        △
+        │
+┌───────┴────────┬──────────────┬─────────────┐
+│                │              │             │
+┌──────────────┐ ┌────────────┐ ┌───────────┐ ┌──────────┐
+│  Kubernetes  │ │ Prometheus │ │  GitHub   │ │  Slack   │
+└──────────────┘ └────────────┘ └───────────┘ └──────────┘
+```
+
+Each connector:
+1. Connects to its external system
+2. Syncs data into the Context Store
+3. Handles failures gracefully
+4. Supports health checks
+
+### Observer
+
+Watches for signals that require attention:
+
+**Alert Watcher:**
+- Polls Prometheus/Alertmanager for firing alerts
+- Deduplicates and prioritizes
+- Triggers analysis when thresholds exceeded
+
+**Metric Analyzer:**
+- Detects anomalies in time series
+- Identifies correlations across services
+- Tracks SLO/SLI violations
+
+**Log Correlator:**
+- Searches logs for error patterns
+- Correlates across services
+- Extracts relevant context
+
+**Change Detector:**
+- Monitors for recent deployments
+- Tracks config changes
+- Identifies potentially risky changes
+
+### Reasoner
+
+The LLM-powered analysis engine:
 
 ```python
-# opensre_core/runtime.py
-class AgentRuntime:
-    def __init__(self):
-        self.agents: dict[str, Agent] = {}
-        self.skill_manager = SkillManager()
-        self.orchestrator = Orchestrator()
-    
-    async def load_agents(self, path: str):
-        """Load agents from YAML files."""
-        for file in Path(path).glob("**/*.yaml"):
-            agent = Agent.from_yaml(file)
-            self.agents[agent.name] = agent
-    
-    async def dispatch(self, trigger: Trigger):
-        """Dispatch trigger to matching agents."""
-        for agent in self.agents.values():
-            if agent.matches(trigger):
-                await self.orchestrator.run(agent, trigger)
-```
-
-### Skill Manager
-
-Manages skill loading and lifecycle:
-
-```python
-# opensre_core/skills/manager.py
-class SkillManager:
-    def __init__(self):
-        self.skills: dict[str, Skill] = {}
-    
-    async def load_skill(self, name: str):
-        """Load and initialize a skill."""
-        spec = self.load_spec(f"skills/{name}/skill.yaml")
-        module = importlib.import_module(f"skills.{name}.actions")
-        skill = module.get_skill(spec.config)
-        await skill.initialize()
-        self.skills[name] = skill
-    
-    async def invoke(self, action: str, **params):
-        """Invoke a skill action."""
-        skill_name, action_name = action.split(".", 1)
-        skill = self.skills[skill_name]
-        return await skill.invoke(action_name, **params)
-```
-
-## Multi-Agent System
-
-### Agent Pipeline
-
-Each investigation flows through a pipeline of specialized agents:
-
-```
-┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
-│  Alert  │───▶│ Observer│───▶│ Reasoner│───▶│  Actor  │───▶ Result
-└─────────┘    └─────────┘    └─────────┘    └─────────┘
-                    │              │              │
-                    ▼              ▼              ▼
-               Observations    Analysis      Actions
-```
-
-### Observer Agent
-
-Gathers signals from connected systems:
-
-```python
-# opensre_core/agents/observer.py
-class ObserverAgent:
-    """Gathers observations from infrastructure."""
-    
-    async def observe(self, context: InvestigationContext) -> Observations:
-        observations = Observations()
+class Reasoner:
+    async def analyze(self, alert: Alert) -> Analysis:
+        # 1. Gather context
+        context = self.gather_context(alert)
         
-        # Query metrics
-        if "prometheus" in context.skills:
-            metrics = await self.gather_metrics(context)
-            observations.add("metrics", metrics)
+        # 2. Find relevant runbooks
+        runbooks = self.find_runbooks(alert)
         
-        # Check Kubernetes
-        if "kubernetes" in context.skills:
-            k8s_data = await self.gather_kubernetes(context)
-            observations.add("kubernetes", k8s_data)
+        # 3. Check recent changes
+        changes = self.get_recent_changes(alert.service_name)
         
-        # Get recent events
-        events = await self.gather_events(context)
-        observations.add("events", events)
+        # 4. Build prompt with context
+        prompt = self.build_prompt(alert, context, runbooks, changes)
         
-        return observations
-    
-    async def gather_metrics(self, context) -> dict:
-        """Gather relevant metrics."""
-        queries = self.generate_queries(context)
-        results = {}
-        for name, query in queries.items():
-            results[name] = await prometheus.query(query)
-        return results
-```
-
-### Reasoner Agent
-
-Analyzes observations and identifies root cause:
-
-```python
-# opensre_core/agents/reasoner.py
-class ReasonerAgent:
-    """Analyzes observations and identifies root cause."""
-    
-    def __init__(self, llm: LLMAdapter):
-        self.llm = llm
-        self.pattern_matcher = PatternMatcher()
-    
-    async def reason(
-        self, 
-        context: InvestigationContext,
-        observations: Observations
-    ) -> Analysis:
-        # Check for similar past incidents
-        similar = await self.pattern_matcher.find_similar(observations)
+        # 5. Call LLM
+        response = await self.llm.generate(prompt)
         
-        # Build prompt with observations and context
-        prompt = self.build_prompt(context, observations, similar)
-        
-        # Get LLM analysis
-        response = await self.llm.analyze(prompt)
-        
-        # Parse structured response
-        analysis = self.parse_analysis(response)
+        # 6. Parse and validate
+        analysis = self.parse_response(response)
         
         return analysis
-    
-    def build_prompt(self, context, observations, similar) -> str:
-        return f"""
-        Analyze this incident:
-        
-        ## Alert
-        {context.alert}
-        
-        ## Observations
-        {observations.format()}
-        
-        ## Similar Past Incidents
-        {self.format_similar(similar)}
-        
-        ## Relevant Runbooks
-        {self.get_runbooks(context)}
-        
-        Identify the root cause and recommend remediation.
-        """
 ```
 
-### Actor Agent
-
-Proposes and executes remediation:
+**Analysis Output:**
 
 ```python
-# opensre_core/agents/actor.py
-class ActorAgent:
-    """Executes remediation actions."""
-    
-    async def act(
-        self,
-        context: InvestigationContext,
-        analysis: Analysis
-    ) -> ActionResult:
-        # Check if action is allowed
-        action = analysis.recommended_action
+class Analysis:
+    root_cause: str
+    confidence: float  # 0.0 - 1.0
+    affected_services: list[str]
+    related_changes: list[ChangeEvent]
+    recommended_runbook: Optional[Runbook]
+    suggested_actions: list[Action]
+    reasoning: str
+```
+
+**LLM Providers:**
+
+| Provider | Model | Use Case |
+|----------|-------|----------|
+| Ollama | llama3.1:8b | Local, privacy-focused |
+| OpenAI | gpt-4o-mini | High accuracy, cloud |
+| Anthropic | claude-3.5-sonnet | Reasoning tasks |
+| Azure | gpt-4 | Enterprise, compliance |
+
+### Actor
+
+Executes remediation with safety:
+
+```python
+class Actor:
+    async def execute(self, action: Action) -> ActionResult:
+        # 1. Check guardrails
+        if not self.guardrails.approve(action):
+            return ActionResult(status="blocked", reason="Guardrail violation")
         
-        if self.requires_approval(action):
-            # Request human approval
-            approved = await self.request_approval(context, action)
+        # 2. Request approval if needed
+        if action.requires_approval:
+            approved = await self.request_approval(action)
             if not approved:
                 return ActionResult(status="rejected")
         
-        # Execute action
+        # 3. Execute with rollback support
         try:
-            result = await self.execute(action)
-            return ActionResult(status="success", result=result)
+            result = await self.execute_with_rollback(action)
         except Exception as e:
-            return ActionResult(status="failed", error=str(e))
-    
-    async def request_approval(self, context, action) -> bool:
-        """Request human approval via Slack."""
-        message = await slack.post_blocks(
-            channel=context.channel,
-            blocks=self.format_approval_request(action)
-        )
+            await self.rollback(action)
+            raise
         
-        # Wait for button click
-        response = await self.wait_for_response(message.ts)
-        return response.action_id == "approve"
+        # 4. Verify success
+        if not await self.verify(action):
+            await self.rollback(action)
+            return ActionResult(status="failed", reason="Verification failed")
+        
+        # 5. Log for audit
+        self.audit_log.record(action, result)
+        
+        return result
 ```
 
-### Notifier Agent
+**Guardrails:**
 
-Keeps humans informed:
+| Check | Description |
+|-------|-------------|
+| **Blast Radius** | Limits how many pods/services affected |
+| **Tier Protection** | Higher tiers require approval |
+| **Time Windows** | Blocks actions during sensitive periods |
+| **Rate Limiting** | Prevents runaway automation |
+| **Dry Run** | Simulates before executing |
 
-```python
-# opensre_core/agents/notifier.py
-class NotifierAgent:
-    """Sends notifications to humans."""
-    
-    async def notify(
-        self,
-        context: InvestigationContext,
-        observations: Observations,
-        analysis: Analysis,
-        action_result: ActionResult
-    ):
-        # Build notification
-        blocks = self.build_notification(
-            context, observations, analysis, action_result
-        )
-        
-        # Post to Slack
-        await slack.post_blocks(
-            channel=context.channel,
-            blocks=blocks
-        )
-        
-        # Update PagerDuty
-        if context.pagerduty_incident_id:
-            await pagerduty.add_note(
-                incident_id=context.pagerduty_incident_id,
-                note=self.format_summary(analysis)
-            )
-```
-
-## Knowledge Layer
-
-### Runbook System
-
-```python
-# opensre_core/knowledge/runbooks.py
-class RunbookManager:
-    """Manages runbooks for agent reference."""
-    
-    def __init__(self, path: str):
-        self.path = Path(path)
-        self.runbooks = {}
-        self.index = None
-    
-    async def load(self):
-        """Load and index runbooks."""
-        for file in self.path.glob("**/*.md"):
-            runbook = self.parse_runbook(file)
-            self.runbooks[runbook.name] = runbook
-        
-        # Build vector index for semantic search
-        self.index = await self.build_index()
-    
-    async def find_relevant(self, context: str, limit: int = 3) -> list:
-        """Find relevant runbooks for a context."""
-        results = await self.index.search(context, limit=limit)
-        return [self.runbooks[r.name] for r in results]
-```
-
-### Incident Store
-
-```python
-# opensre_core/knowledge/incidents.py
-class IncidentStore:
-    """Stores past incidents for learning."""
-    
-    def __init__(self, db_path: str):
-        self.db = sqlite3.connect(db_path)
-        self.vector_store = ChromaDB("incidents")
-    
-    async def store(self, incident: Incident):
-        """Store an incident for future reference."""
-        # Store in SQLite
-        self.db.execute(
-            "INSERT INTO incidents VALUES (?, ?, ?, ?, ?)",
-            (incident.id, incident.timestamp, incident.alert,
-             incident.root_cause, incident.resolution)
-        )
-        
-        # Store embedding in vector store
-        embedding = await self.embed(incident)
-        self.vector_store.add(incident.id, embedding)
-    
-    async def find_similar(
-        self, 
-        observations: Observations, 
-        limit: int = 5
-    ) -> list[Incident]:
-        """Find similar past incidents."""
-        query = self.format_for_search(observations)
-        results = await self.vector_store.search(query, limit=limit)
-        return [self.get_incident(r.id) for r in results]
-```
-
-### Pattern Matcher
-
-```python
-# opensre_core/knowledge/patterns.py
-class PatternMatcher:
-    """Identifies patterns across incidents."""
-    
-    async def analyze_patterns(self) -> list[Pattern]:
-        """Analyze historical incidents for patterns."""
-        incidents = await self.incident_store.get_all()
-        
-        patterns = []
-        
-        # Time-based patterns
-        patterns.extend(self.find_time_patterns(incidents))
-        
-        # Service-based patterns
-        patterns.extend(self.find_service_patterns(incidents))
-        
-        # Root cause patterns
-        patterns.extend(self.find_cause_patterns(incidents))
-        
-        return patterns
-    
-    def find_time_patterns(self, incidents) -> list[Pattern]:
-        """Find time-based patterns (e.g., issues after deploys)."""
-        deploy_related = [i for i in incidents if i.tags.get("deploy_related")]
-        if len(deploy_related) > 10:
-            return [Pattern(
-                type="deployment",
-                description="Issues commonly occur after deployments",
-                confidence=len(deploy_related) / len(incidents)
-            )]
-        return []
-```
-
-## LLM Integration
-
-### LLM Adapter
-
-Abstraction over multiple LLM providers:
-
-```python
-# opensre_core/adapters/llm.py
-class LLMAdapter:
-    """Unified interface for LLM providers."""
-    
-    def __init__(self, config: LLMConfig):
-        self.provider = self.create_provider(config)
-    
-    def create_provider(self, config):
-        if config.provider == "ollama":
-            return OllamaProvider(config)
-        elif config.provider == "openai":
-            return OpenAIProvider(config)
-        elif config.provider == "anthropic":
-            return AnthropicProvider(config)
-        raise ValueError(f"Unknown provider: {config.provider}")
-    
-    async def analyze(self, prompt: str, system: str = None) -> str:
-        """Send prompt to LLM and get response."""
-        return await self.provider.complete(prompt, system=system)
-    
-    async def structured_output(
-        self, 
-        prompt: str, 
-        schema: type[BaseModel]
-    ) -> BaseModel:
-        """Get structured output from LLM."""
-        return await self.provider.structured(prompt, schema)
-```
-
-### Structured Reasoning
-
-```python
-# opensre_core/adapters/reasoning.py
-class AnalysisSchema(BaseModel):
-    """Schema for LLM analysis output."""
-    root_cause: str
-    confidence: float = Field(ge=0, le=1)
-    evidence: list[str]
-    recommendation: str
-    action: str | None
-    urgency: Literal["low", "medium", "high", "critical"]
-
-async def get_analysis(
-    llm: LLMAdapter,
-    observations: Observations
-) -> AnalysisSchema:
-    """Get structured analysis from LLM."""
-    prompt = f"""
-    Analyze these observations and identify the root cause.
-    
-    {observations.format()}
-    
-    Respond with:
-    - root_cause: What caused this issue
-    - confidence: Your confidence (0-1)
-    - evidence: List of supporting evidence
-    - recommendation: What should be done
-    - action: Specific action to take (or null)
-    - urgency: low/medium/high/critical
-    """
-    
-    return await llm.structured_output(prompt, AnalysisSchema)
-```
+---
 
 ## Data Flow
 
-### Investigation Flow
+### Alert Analysis Flow
 
 ```
-1. Alert Received
-   └── API Server receives webhook
-       └── Validates and parses alert
-
-2. Agent Selection
-   └── Orchestrator finds matching agents
-       └── Creates InvestigationContext
-
-3. Observation Phase
-   └── Observer Agent runs
-       └── Queries Prometheus, K8s, etc.
-       └── Returns Observations
-
-4. Reasoning Phase
-   └── Reasoner Agent runs
-       └── Searches similar incidents
-       └── Gets relevant runbooks
-       └── Sends to LLM
-       └── Returns Analysis
-
-5. Action Phase
-   └── Actor Agent runs
-       └── Checks safety rules
-       └── Requests approval if needed
-       └── Executes action
-       └── Returns ActionResult
-
-6. Notification Phase
-   └── Notifier Agent runs
-       └── Posts to Slack
-       └── Updates PagerDuty
-       └── Creates tickets
-
-7. Learning Phase
-   └── Store incident
-   └── Update patterns
-   └── Improve for next time
+Alert Fires
+     │
+     ▼
+┌─────────────┐
+│  Observer   │ ← Polls Alertmanager
+└─────────────┘
+     │
+     ▼
+┌─────────────┐
+│ Context     │ ← Enriches with topology, ownership, changes
+│ Gathering   │
+└─────────────┘
+     │
+     ▼
+┌─────────────┐
+│  Reasoner   │ ← LLM analysis with context
+└─────────────┘
+     │
+     ▼
+┌─────────────┐
+│  Analysis   │ → Root cause, confidence, recommendations
+│  Output     │
+└─────────────┘
+     │
+     ▼
+┌─────────────┐
+│  Actor      │ → Execute remediation (with approval)
+└─────────────┘
+     │
+     ▼
+┌─────────────┐
+│  Feedback   │ ← Human confirms correctness
+│  Loop       │
+└─────────────┘
 ```
 
-## Security Model
+### Context Sync Flow
 
-### Authentication
-
-- API key authentication for REST API
-- JWT tokens for WebSocket connections
-- Slack signature verification for webhooks
-- mTLS for internal communication
-
-### Authorization
-
-```yaml
-# Role-based access control
-roles:
-  viewer:
-    - "*.get_*"
-    - "*.list_*"
-  operator:
-    - "*.get_*"
-    - "*.list_*"
-    - "slack.post_*"
-    - "kubernetes.scale"
-  admin:
-    - "*"
-
-users:
-  - name: alice
-    role: admin
-  - name: bob
-    role: operator
+```
+External System
+     │
+     ▼
+┌─────────────┐
+│ Connector   │ ← Adapts to system API
+└─────────────┘
+     │
+     ▼
+┌─────────────┐
+│ Transform   │ ← Normalizes to AutoSRE models
+└─────────────┘
+     │
+     ▼
+┌─────────────┐
+│ Context     │ ← Upserts into SQLite
+│ Store       │
+└─────────────┘
 ```
 
-### Audit Logging
+---
 
-```python
-# All actions are logged
-@audit_log
-async def rollback(deployment: str, namespace: str):
-    """Rollback a deployment."""
-    # ... implementation
+## Evaluation Framework
+
+The eval framework measures agent accuracy against synthetic incidents:
+
+```
+┌────────────────────────────────────────────────────────┐
+│                   Scenario YAML                        │
+│  ┌───────────────────────────────────────────────────┐ │
+│  │ - alert: {...}                                    │ │
+│  │ - services: [...]                                 │ │
+│  │ - changes: [...]                                  │ │
+│  │ - expected_root_cause: "..."                      │ │
+│  │ - expected_service: "..."                         │ │
+│  └───────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────┘
+                         │
+                         ▼
+┌────────────────────────────────────────────────────────┐
+│                  Evaluation Runner                      │
+│  1. Load scenario                                       │
+│  2. Inject context into store                           │
+│  3. Run agent analysis                                  │
+│  4. Compare output to expected                          │
+│  5. Calculate metrics                                   │
+└────────────────────────────────────────────────────────┘
+                         │
+                         ▼
+┌────────────────────────────────────────────────────────┐
+│                  Metrics Output                         │
+│  - time_to_root_cause: 12.3s                           │
+│  - root_cause_correct: true                            │
+│  - service_correct: true                               │
+│  - accuracy: 85%                                       │
+└────────────────────────────────────────────────────────┘
 ```
 
-## Scalability
+---
 
-### Horizontal Scaling
+## Directory Structure
 
-```yaml
-# docker-compose.scale.yaml
-services:
-  opensre:
-    image: opensre:latest
-    deploy:
-      replicas: 3
-    environment:
-      - OPENSRE_REDIS_URL=redis://redis:6379
+```
+autosre/
+├── agent/               # Observer, Reasoner, Actor
+│   ├── observer.py
+│   ├── reasoner.py
+│   ├── actor.py
+│   └── guardrails.py
+├── cli/                 # CLI commands
+│   ├── main.py
+│   └── commands/
+├── evals/               # Evaluation framework
+│   ├── framework.py
+│   ├── metrics.py
+│   └── scenarios/       # YAML scenario files
+├── feedback/            # Feedback loop
+├── foundation/          # Core data layer
+│   ├── context_store.py
+│   ├── models.py
+│   └── connectors/
+├── sandbox/             # Test environment
+│   ├── cluster.py
+│   ├── chaos.py
+│   └── observability.py
+└── config.py            # Configuration
 ```
 
-### Message Queue
-
-For high-throughput deployments:
-
-```yaml
-config:
-  message_bus:
-    type: redis  # or kafka, rabbitmq
-    url: redis://redis:6379
-```
-
-### Database Options
-
-- **SQLite** — Default, good for single instance
-- **PostgreSQL** — Recommended for production
-- **Redis** — For caching and pub/sub
+---
 
 ## Extension Points
 
-### Custom Agents
+### Adding a New Connector
 
-Write Python agents for complex logic.
+1. Create connector in `autosre/foundation/connectors/`
+2. Implement `BaseConnector` interface
+3. Register in connector factory
+4. Add CLI sync option
 
-### Custom Skills
+### Adding a New LLM Provider
 
-Create skills for your internal tools.
+1. Create adapter in `autosre/agent/llm/`
+2. Implement `LLMProvider` interface
+3. Add to config options
+4. Update CLI model selection
 
-### Custom Reasoners
+### Adding a New Scenario
 
-Implement custom reasoning strategies:
+1. Create YAML in `autosre/evals/scenarios/`
+2. Define alert, services, changes
+3. Specify expected outcomes
+4. Run with `autosre eval run`
 
-```python
-class MyReasoner(ReasonerAgent):
-    async def reason(self, context, observations):
-        # Your custom reasoning logic
-        pass
-```
+---
 
-## Next Steps
+## Security Considerations
 
-- **[Deployment](deployment.md)** — Production deployment guide
-- **[API Reference](api-reference.md)** — Complete API documentation
+### Data Protection
+- Context store is local SQLite (no cloud)
+- API keys stored in environment variables
+- Sensitive data can be excluded from context
+
+### Action Safety
+- All remediation requires approval by default
+- Guardrails prevent dangerous operations
+- Audit logging for compliance
+
+### LLM Privacy
+- Ollama option for fully local inference
+- No training on customer data
+- Prompts don't include secrets
+
+---
+
+## Performance
+
+### Context Store
+- SQLite handles millions of records
+- Indexes on common queries
+- Incremental sync for efficiency
+
+### LLM Calls
+- Response caching (configurable TTL)
+- Retry with exponential backoff
+- Timeout handling
+
+### Connectors
+- Async I/O for parallel sync
+- Rate limiting per external API
+- Graceful degradation
