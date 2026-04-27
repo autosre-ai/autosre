@@ -1,487 +1,275 @@
-# OpenSRE
+# AutoSRE
 
-<div align="center">
+**Open-source AI SRE Agent — Built Foundation-First**
 
-![OpenSRE Logo](docs/images/logo.png)
-
-**AI-Powered Incident Response for SRE Teams**
-
-[![CI](https://github.com/srisainath/opensre/actions/workflows/ci.yaml/badge.svg)](https://github.com/srisainath/opensre/actions/workflows/ci.yaml)
-[![Tests](https://img.shields.io/badge/tests-468%20passed-brightgreen)](https://github.com/srisainath/opensre/actions)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://github.com/opensre/autosre/actions/workflows/tests.yml/badge.svg)](https://github.com/opensre/autosre/actions)
 
-[Documentation](https://opensre.dev/docs) · [Demo](#-try-the-demo) · [Discord](https://discord.gg/opensre) · [Blog](https://opensre.dev/blog)
+AutoSRE is the open-source equivalent to [Azure SRE Agent](https://azure.microsoft.com/en-us/products/sre-agent). Unlike other tools that connect an LLM directly to alerts (and get garbage results), AutoSRE is **built foundation-first**.
 
-</div>
+## 🎯 The Problem
 
----
-
-## 🎬 Demo Video
-
-<!-- TODO: Replace with actual demo video -->
-[![OpenSRE Demo](https://img.shields.io/badge/▶_Watch_Demo-4285F4?style=for-the-badge&logo=youtube&logoColor=white)](https://github.com/srisainath/opensre)
-
-> *See OpenSRE investigate a memory leak, identify the root cause, and suggest a rollback — in under 60 seconds.*
-
----
-
-## 🚨 Stop Debugging at 3 AM
-
-Your phone buzzes. PagerDuty alert. You stumble to your laptop. Query Prometheus. Tail logs. Check deploys. 45 minutes later, you find it: a memory leak.
-
-**OpenSRE investigates incidents automatically while you sleep.**
+Most internal AI SRE tools fail because they skip the foundation:
 
 ```
-🚨 ALERT: checkout-service Memory Alert
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• Error Rate:     8.3%        (threshold: 1%)
-• Memory:         1.8GB       (baseline: 500MB)
-• OOMKilled:      3 pods      (last 10 min)
-• Recent Deploy:  v2.4.1      (12 min ago)
-
-🔍 OBSERVER AGENT — Collecting signals...
-  ✓ prometheus: memory_working_set_bytes trending +15% over 10m
-  ✓ kubernetes: 3x OOMKilled events in checkout-service namespace
-  ✓ deploy: v2.4.1 rolled out 12 minutes ago by deploy-bot
-  ✓ baseline: Normal memory ~500MB, current 1.8GB (+260%)
-
-🧠 AI ANALYSIS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎯 ROOT CAUSE:
-Memory leak introduced in deployment v2.4.1
-
-📊 CONFIDENCE: 94%
-
-⚡ IMMEDIATE ACTION:
-Rollback to v2.4.0
-
-🔍 FOLLOW-UP:
-Profile memory usage, check for unclosed connections
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-[✅ Approve Rollback] [❌ Dismiss] [📝 Details]
+┌─────────────────────────────────────────────────┐
+│  🏠 ROOF: Connect LLM to Alerts                 │  ← Most teams START and STOP here
+│     (Where 90% of teams begin)                  │
+├─────────────────────────────────────────────────┤
+│  🔄 Feedback Loop                               │  ← SKIPPED
+│     (Real incidents feeding agent back)         │
+├─────────────────────────────────────────────────┤
+│  🎭 Realistic Eval Scenarios                    │  ← SKIPPED  
+│     (Actual alert payloads, real env setup)     │
+├─────────────────────────────────────────────────┤
+│  📊 Evals and Baselines                         │  ← SKIPPED
+│     (How do you know it's getting better?)      │
+├─────────────────────────────────────────────────┤
+│  🏗️ FOUNDATION                                  │  ← NEVER BUILT
+│     (Context, topology, ownership, history)     │
+└─────────────────────────────────────────────────┘
 ```
 
-You tap **Approve**. Go back to sleep.
+**Result:** Teams dump alerts into LLM → garbage results → "AI isn't ready" → abandon project.
 
----
+## ✨ The Solution
 
-## ✨ Features
+AutoSRE builds the foundation first:
 
-| Feature | Description |
-|---------|-------------|
-| 🧠 **AI Root Cause Analysis** | Multi-agent system correlates metrics, logs, events, and deploys |
-| ⚡ **60-Second Investigations** | What took 45 min manually now happens automatically |
-| 👤 **Human-in-the-Loop** | AI suggests, humans approve, AI executes |
-| 🔌 **Pluggable Skills** | Prometheus, Kubernetes, AWS, Slack, PagerDuty, and more |
-| 📚 **Runbook Integration** | Your runbooks inform AI decisions |
-| 🔒 **Safe by Default** | Dangerous actions always require approval |
-| 🏠 **Local LLM Support** | Works with Ollama + Qwen3 — private, offline, free |
-| 📖 **Open Source** | Apache 2.0 licensed, community-driven |
+1. **Context Store** — Service topology, ownership, change history
+2. **Eval Framework** — Synthetic incidents, replay attacks, baseline metrics
+3. **Sandbox Environment** — Kind cluster with chaos injection
+4. **Agent Core** — Observer/Reasoner/Actor with guardrails
+5. **Feedback Loop** — Learn from outcomes, continuous improvement
 
----
+## 🚀 Quick Start
 
-## 🎯 Try the Demo
-
-Experience OpenSRE without any infrastructure setup:
+### Installation
 
 ```bash
-# Clone and setup
-git clone https://github.com/srisainath/opensre.git
-cd opensre
-python -m venv .venv && source .venv/bin/activate
-pip install -e .
+# Install with pip
+pip install autosre
 
-# Start Ollama (if not running)
-ollama serve &
-ollama pull llama3:8b
-
-# Run the interactive demo
-python demo.py
+# Or with uv (recommended)
+uv add autosre
 ```
 
-The demo includes five real-world scenarios:
-1. **Memory Leak** - Post-deployment OOMKill cascade
-2. **Database Exhaustion** - Connection pool saturation
-3. **Certificate Expiry** - SSL handshake failures
-4. **Crash Loop** - Dependency failure causing restarts
-5. **CPU Spike** - Traffic surge overwhelming capacity
-
----
-
-## 🚀 Quick Start (With Real Infrastructure)
-
-### 1. Install
+### Basic Usage
 
 ```bash
-pip install opensre
+# Show context summary
+autosre context show
+
+# Sync from Kubernetes
+autosre context sync --kubernetes
+
+# List evaluation scenarios
+autosre eval list
+
+# Run an evaluation
+autosre eval run --scenario memory_leak
+
+# Create sandbox cluster
+autosre sandbox create
+
+# Analyze an alert
+autosre agent analyze --alert alert.json
 ```
 
-### 2. Configure
-
-```bash
-# Prometheus connection
-export OPENSRE_PROMETHEUS_URL=http://prometheus:9090
-
-# LLM provider (choose one)
-# Option A: Local with Ollama (recommended for privacy/cost)
-export OPENSRE_LLM_PROVIDER=ollama
-export OPENSRE_OLLAMA_MODEL=qwen3:14b  # Or llama3:8b for faster/smaller
-
-# Option B: OpenAI
-export OPENSRE_LLM_PROVIDER=openai
-export OPENSRE_OPENAI_API_KEY=sk-...
-export OPENSRE_OPENAI_MODEL=gpt-4o
-
-# Option C: Anthropic
-export OPENSRE_LLM_PROVIDER=anthropic
-export OPENSRE_ANTHROPIC_API_KEY=sk-ant-...
-export OPENSRE_ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
-```
-
-### 3. Investigate
-
-```bash
-opensre investigate "high error rate on checkout service"
-```
-
----
-
-## 📊 Real Integration Examples
-
-### Prometheus Queries
-
-OpenSRE generates and executes PromQL queries automatically:
+### Python API
 
 ```python
-from opensre_core.skills.prometheus import PrometheusSkill
+from autosre.foundation import ContextStore, Service
+from autosre.agent import Reasoner, ReasonerConfig
 
-prometheus = PrometheusSkill(url="http://prometheus:9090")
+# Initialize context store
+store = ContextStore()
 
-# Query error rate
-result = await prometheus.query(
-    'sum(rate(http_requests_total{status=~"5.."}[5m])) / '
-    'sum(rate(http_requests_total[5m])) * 100'
-)
-print(f"Error rate: {result['value']}%")
-
-# Get firing alerts
-alerts = await prometheus.get_alerts()
-for alert in alerts:
-    print(f"🚨 {alert['labels']['alertname']}: {alert['annotations']['summary']}")
-```
-
-### Kubernetes Operations
-
-Inspect and remediate cluster issues:
-
-```python
-from opensre_core.skills.kubernetes import KubernetesSkill
-
-k8s = KubernetesSkill()
-
-# Get pods in CrashLoopBackOff
-pods = await k8s.get_pods(
+# Add services
+store.add_service(Service(
+    name="payment-service",
     namespace="production",
-    field_selector="status.phase!=Running"
+    dependencies=["database", "redis-cache"],
+))
+
+# Configure reasoner with Ollama
+config = ReasonerConfig(
+    model="qwen3:14b",
+    provider="ollama",
 )
 
-# Get recent events for a troubled pod
-events = await k8s.get_events(
-    namespace="production",
-    field_selector=f"involvedObject.name={pod_name}"
-)
+# Analyze an alert
+reasoner = Reasoner(store, config)
+result = await reasoner.analyze(alert)
 
-# Rollback a deployment
-await k8s.rollback_deployment(
-    namespace="production",
-    name="checkout-service",
-    revision=None  # Previous revision
-)
+print(f"Root Cause: {result.root_cause}")
+print(f"Confidence: {result.confidence}")
+print(f"Actions: {result.immediate_actions}")
 ```
 
-### LLM Analysis
+## 📊 Evaluation Scenarios
 
-Generate root cause analysis with multiple LLM backends:
+AutoSRE includes 10 built-in scenarios:
 
-```python
-from opensre_core.adapters.llm import create_llm_adapter
+| Scenario | Difficulty | Description |
+|----------|------------|-------------|
+| `memory_leak` | Medium | Gradual memory leak causing OOM kills |
+| `high_cpu` | Easy | High CPU usage causing latency spikes |
+| `cert_expiry` | Easy | TLS certificate about to expire |
+| `cascading_failure` | Hard | Database failure causing cascading outages |
+| `deployment_rollback` | Medium | Bad deployment needs rollback |
+| `disk_full` | Easy | Disk space exhausted |
+| `network_latency` | Medium | Network latency spike between services |
+| `external_dependency_down` | Medium | Third-party API is down |
+| `alert_storm` | Hard | Multiple alerts, find root cause |
+| `silent_failure` | Hard | Service healthy but processing broken |
 
-# Create adapter (auto-detects from environment)
-llm = create_llm_adapter()
+Run evaluations:
 
-# Or specify provider explicitly
-llm = create_llm_adapter(provider="openai")
-
-# Generate analysis
-response = await llm.generate(
-    prompt="""
-    Analyze this incident:
-    - checkout-service error rate: 8.3%
-    - memory_working_set_bytes: 1.8GB (baseline: 500MB)
-    - 3 OOMKilled events in last 10 minutes
-    - Deployment v2.4.1 rolled out 12 minutes ago
-    
-    What is the root cause and recommended action?
-    """,
-    temperature=0.3,
-    max_tokens=1024
-)
-
-print(response.content)
-print(f"Tokens used: {response.input_tokens} in, {response.output_tokens} out")
-print(f"Latency: {response.latency_ms}ms")
+```bash
+autosre eval run --scenario cascading_failure --verbose
+autosre eval report
 ```
-
-### Slack Notifications
-
-Send alerts and get approval for actions:
-
-```python
-from opensre_core.skills.slack import SlackSkill
-
-slack = SlackSkill(bot_token="xoxb-...")
-
-# Send an alert
-await slack.post_message(
-    channel="#incidents",
-    text="🚨 checkout-service error rate spike detected"
-)
-
-# Request approval for action
-approval = await slack.request_approval(
-    channel="#sre-oncall",
-    title="Rollback checkout-service",
-    description="Memory leak detected in v2.4.1. Recommend rollback to v2.4.0.",
-    actions=["approve", "reject", "investigate"]
-)
-
-if approval.action == "approve":
-    await k8s.rollback_deployment(...)
-```
-
----
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         OpenSRE Core                             │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐        │
-│  │ Observer │  │ Reasoner │  │  Actor   │  │ Notifier │        │
-│  │  Agent   │──│  Agent   │──│  Agent   │──│  Agent   │        │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘        │
-│       │             │             │             │               │
-│  ┌────┴─────────────┴─────────────┴─────────────┴────┐         │
-│  │                    Skill Layer                     │         │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌───────┐ │         │
-│  │  │Prometheus│ │Kubernetes│ │   LLM    │ │ Slack │ │         │
-│  │  └──────────┘ └──────────┘ └──────────┘ └───────┘ │         │
-│  └────────────────────────────────────────────────────┘         │
-└─────────────────────────────────────────────────────────────────┘
-         │              │              │              │
-         ▼              ▼              ▼              ▼
-   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
-   │Prometheus│   │Kubernetes│   │ Ollama/  │   │  Slack   │
-   │          │   │          │   │ OpenAI   │   │          │
-   └──────────┘   └──────────┘   └──────────┘   └──────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                     AutoSRE Agent                            │
+├─────────────────────────────────────────────────────────────┤
+│  Observer          │  Reasoner         │  Actor              │
+│  ─────────────     │  ──────────       │  ─────              │
+│  • Alert Watcher   │  • LLM Analysis   │  • Runbook Exec     │
+│  • Metric Analyzer │  • Context Inject │  • Notifications    │
+│  • Log Correlator  │  • Chain of Thought│ • Ticket Creation  │
+│  • Change Detector │  • Confidence     │  • Rollbacks        │
+├─────────────────────────────────────────────────────────────┤
+│                     Guardrails                               │
+│  • Human Approval  • Blast Radius Limits  • Audit Logging   │
+├─────────────────────────────────────────────────────────────┤
+│                     Foundation                               │
+│  ┌──────────┐  ┌───────────┐  ┌─────────┐  ┌──────────┐     │
+│  │ Context  │  │ Connectors│  │ Topology│  │ Runbooks │     │
+│  │ Store    │  │ K8s/Prom  │  │ Graph   │  │ Index    │     │
+│  └──────────┘  └───────────┘  └─────────┘  └──────────┘     │
+├─────────────────────────────────────────────────────────────┤
+│                     Data Sources                             │
+│  Kubernetes  │  Prometheus  │  GitHub  │  PagerDuty         │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### Multi-Agent Flow
+## 📈 Comparison
 
-1. **Observer Agent** — Collects signals from Prometheus, Kubernetes, logs
-2. **Reasoner Agent** — Analyzes signals with LLM, determines root cause
-3. **Actor Agent** — Proposes and executes remediation (with approval)
-4. **Notifier Agent** — Sends updates to Slack, PagerDuty, email
+| Feature | AutoSRE | Azure SRE Agent | HolmesGPT |
+|---------|---------|-----------------|-----------|
+| **Open Source** | ✅ | ❌ | ✅ |
+| **Cloud Agnostic** | ✅ | ❌ (Azure only) | ✅ |
+| **Local LLM** | ✅ (Ollama) | ❌ | ✅ |
+| **Foundation Layer** | ✅ | ✅ | ❌ |
+| **Eval Framework** | ✅ | Internal | ❌ |
+| **Sandbox Testing** | ✅ | ❌ | ❌ |
+| **Feedback Loop** | ✅ | ✅ | ❌ |
+| **Guardrails** | ✅ | ✅ | ❌ |
 
----
+## 🔧 Configuration
 
-## 🔌 Built-in Skills
+AutoSRE uses a simple YAML config:
 
-| Skill | Description | Actions |
-|-------|-------------|---------|
-| **prometheus** | Query metrics and alerts | `query`, `alerts`, `silence` |
-| **kubernetes** | Manage K8s resources | `get_pods`, `logs`, `rollback`, `scale` |
-| **slack** | Notifications and approvals | `post_message`, `approval_request` |
-| **pagerduty** | Incident management | `acknowledge`, `resolve` |
-| **aws** | AWS operations | `describe_instances`, `cloudwatch` |
-| **http** | HTTP requests | `get`, `post`, `health_check` |
-| **github** | Repository operations | `issues`, `deployments` |
+```yaml
+# ~/.autosre/config.yaml
 
-See [docs/skills](docs/skills) for the complete list and configuration options.
+# LLM Configuration
+llm:
+  provider: ollama  # ollama, openai, anthropic
+  model: qwen3:14b
+  host: http://localhost:11434
 
----
+# Connectors
+connectors:
+  kubernetes:
+    enabled: true
+    kubeconfig: ~/.kube/config
+    
+  prometheus:
+    enabled: true
+    url: http://localhost:9090
+    
+  github:
+    enabled: true
+    token: ${GITHUB_TOKEN}
+    repositories:
+      - myorg/service-a
+      - myorg/service-b
+
+# Guardrails
+guardrails:
+  dry_run: true
+  auto_approve_low_risk: true
+  max_blast_radius: 5
+  require_approval:
+    - rollback
+    - scale
+    - script
+```
 
 ## 📚 Documentation
 
-| Topic | Description |
-|-------|-------------|
-| [Getting Started](docs/getting-started.md) | First investigation in 5 minutes |
-| [Configuration](docs/CONFIGURATION.md) | Environment variables and settings |
-| [Skills Reference](docs/skills/overview.md) | Built-in and custom skills |
-| [Architecture](docs/ARCHITECTURE.md) | System design deep dive |
-| [Deployment](docs/DEPLOYMENT.md) | Kubernetes, Docker, bare metal |
-| [Security](docs/security.md) | RBAC, audit logging, secrets |
-
----
-
-## 🛠️ Development
-
-```bash
-# Clone the repo
-git clone https://github.com/srisainath/opensre.git
-cd opensre
-
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate
-
-# Install with dev dependencies
-pip install -e ".[dev]"
-
-# Run tests (384 tests, all passing)
-pytest
-
-# Run linting
-ruff check .
-mypy .
-
-# Run the demo
-python demo.py
-```
-
----
-
-## 🔒 Security
-
-- **Human-in-the-Loop**: All remediation actions require explicit approval
-- **Local LLM**: Use Ollama with Qwen3 to keep sensitive data on-premises
-- **Audit Logging**: Every action is logged with full context
-- **RBAC**: Fine-grained permissions for users and service accounts
-- **Secret Management**: Integrates with Vault, AWS Secrets Manager
-
----
-
-## 🏠 Local LLM Setup (Qwen3)
-
-Run AI-powered incident analysis completely offline and free:
-
-```bash
-# Install Ollama
-brew install ollama  # macOS
-# Or: curl -fsSL https://ollama.com/install.sh | sh
-
-# Start Ollama server
-ollama serve &
-
-# Pull Qwen3 (recommended for 16GB+ RAM)
-ollama pull qwen3:14b
-
-# Or use a smaller model (8GB RAM)
-ollama pull qwen3:8b
-# Or llama3:8b as fallback
-```
-
-### Check LLM Status
-
-```bash
-opensre llm status
-```
-
-### Analyze an Incident Locally
-
-```bash
-opensre llm analyze -a '{"service": "checkout", "error_rate": "8%"}' -m qwen3:14b
-```
-
-### Use in Code
-
-```python
-from opensre.core.llm import get_llm, OllamaProvider
-
-# Auto-select best available provider (prefers local)
-llm = get_llm("auto")
-
-# Or explicitly use Ollama
-llm = OllamaProvider(model="qwen3:14b")
-
-# Analyze incident
-response = llm.analyze_incident(
-    alert={"service": "checkout", "error_rate": "8%"},
-    metrics=[{"name": "memory", "value": "1.8GB"}]
-)
-print(response.content)
-
-# Enable thinking/reasoning mode (Qwen3)
-response = llm.generate("Why is this service crashing?", thinking=True)
-if response.thinking:
-    print(f"Reasoning: {response.thinking}")
-print(response.content)
-```
-
-### Why Local LLM?
-
-| | Cloud API | Local (Ollama) |
-|---|---|---|
-| **Privacy** | Data sent externally | Data stays local |
-| **Cost** | Per-token billing | Free |
-| **Speed** | Network latency | Instant |
-| **Offline** | Requires internet | Works offline |
-| **Quality** | GPT-4/Claude best | Qwen3 is close! |
-
----
-
-## 🗺️ Roadmap
-
-- [x] Multi-agent architecture (Observer → Reasoner → Actor)
-- [x] Prometheus, Kubernetes, Slack skills
-- [x] Ollama, OpenAI, Anthropic LLM support
-- [x] Interactive demo with 5 scenarios
-- [x] 384 passing tests
-- [ ] Web UI dashboard
-- [ ] Log analysis (Loki, Elasticsearch)
-- [ ] Trace analysis (Jaeger, Tempo)
-- [ ] Anomaly detection with ML
-- [ ] Multi-cluster support
-
----
+- [Getting Started](docs/getting-started.md)
+- [Architecture](docs/architecture.md)
+- [Connectors](docs/connectors.md)
+- [Evaluation Framework](docs/evals.md)
+- [Sandbox Setup](docs/sandbox.md)
+- [API Reference](docs/api.md)
 
 ## 🤝 Contributing
 
 We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-Quick start:
 ```bash
-git clone https://github.com/srisainath/opensre.git
-cd opensre
-pip install -e ".[dev]"
-pytest  # Make sure tests pass
-# Make your changes
-# Submit a PR!
+# Clone the repo
+git clone https://github.com/opensre/autosre.git
+cd autosre
+
+# Install with dev dependencies
+uv sync --all-extras
+
+# Run tests
+uv run pytest
+
+# Run linting
+uv run ruff check .
 ```
 
+## 🛣️ Roadmap
+
+- [x] Foundation layer (context store, connectors)
+- [x] Evaluation framework with synthetic scenarios
+- [x] Sandbox environment with chaos injection
+- [x] Agent core (observer/reasoner/actor)
+- [x] Guardrails and approval workflow
+- [x] Feedback loop and learning pipeline
+- [ ] Web UI for incident management
+- [ ] Slack/Teams integration
+- [ ] Custom scenario builder
+- [ ] Multi-cluster support
+- [ ] Anomaly detection ML models
+
+## 📜 License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## 🙏 Acknowledgments
+
+- Inspired by [Azure SRE Agent](https://azure.microsoft.com/en-us/products/sre-agent)
+- Built on insights from [HolmesGPT](https://github.com/robusta-dev/holmesgpt)
+- Thanks to the CNCF observability ecosystem
+
 ---
 
-## 📄 License
-
-OpenSRE is licensed under the [Apache License 2.0](LICENSE).
-
----
-
-## 💬 Community
-
-- **[GitHub Discussions](https://github.com/srisainath/opensre/discussions)** — Questions and ideas
-- **[Discord](https://discord.gg/opensre)** — Real-time chat
-- **[Twitter](https://twitter.com/opensre_dev)** — Updates and announcements
-
----
-
-<div align="center">
-
-**Made with ❤️ by SREs, for SREs**
-
-[⬆ Back to top](#opensre)
-
-</div>
+<p align="center">
+  <strong>Built by the OpenSRE Community</strong><br>
+  <a href="https://github.com/opensre/autosre">GitHub</a> •
+  <a href="https://github.com/opensre/autosre/issues">Issues</a> •
+  <a href="https://github.com/opensre/autosre/discussions">Discussions</a>
+</p>

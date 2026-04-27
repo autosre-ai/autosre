@@ -14,9 +14,14 @@ Without good context, LLMs produce garbage recommendations.
 
 import json
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
+
+
+def utcnow() -> datetime:
+    """Return timezone-aware UTC datetime."""
+    return datetime.now(timezone.utc)
 
 from autosre.foundation.models import (
     Service,
@@ -189,7 +194,7 @@ class ContextStore:
                 json.dumps(service.labels),
                 json.dumps(service.annotations),
                 service.created_at.isoformat() if service.created_at else None,
-                datetime.utcnow().isoformat(),
+                utcnow().isoformat(),
             ))
     
     def get_service(self, name: str) -> Optional[Service]:
@@ -328,7 +333,7 @@ class ContextStore:
         limit: int = 50
     ) -> list[ChangeEvent]:
         """Get recent changes, optionally filtered by service."""
-        cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
+        cutoff = (utcnow() - timedelta(hours=hours)).isoformat()
         
         query = "SELECT * FROM changes WHERE timestamp > ?"
         params: list = [cutoff]
@@ -385,7 +390,7 @@ class ContextStore:
                 runbook.automation_script,
                 1 if runbook.requires_approval else 0,
                 runbook.author,
-                datetime.utcnow().isoformat(),
+                utcnow().isoformat(),
                 runbook.success_rate,
             ))
     
@@ -575,7 +580,7 @@ class ContextStore:
             ownership_count = conn.execute("SELECT COUNT(*) FROM ownership").fetchone()[0]
             changes_24h = conn.execute(
                 "SELECT COUNT(*) FROM changes WHERE timestamp > ?",
-                ((datetime.utcnow() - timedelta(hours=24)).isoformat(),)
+                ((utcnow() - timedelta(hours=24)).isoformat(),)
             ).fetchone()[0]
             runbooks_count = conn.execute("SELECT COUNT(*) FROM runbooks").fetchone()[0]
             firing_alerts = conn.execute(

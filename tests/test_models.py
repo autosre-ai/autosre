@@ -3,7 +3,12 @@ Tests for foundation models.
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def utcnow() -> datetime:
+    """Return timezone-aware UTC datetime."""
+    return datetime.now(timezone.utc)
 
 from autosre.foundation.models import (
     Service,
@@ -144,7 +149,7 @@ class TestAlert:
             id="alert-002",
             name="HighLatency",
             summary="Latency above threshold",
-            resolved_at=datetime.utcnow(),
+            resolved_at=utcnow(),
         )
         
         assert alert.is_firing is False

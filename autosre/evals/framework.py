@@ -4,12 +4,17 @@ Evaluation Framework Core - Run scenarios and track results.
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 import yaml
+
+
+def utcnow() -> datetime:
+    """Return timezone-aware UTC datetime."""
+    return datetime.now(timezone.utc)
 
 
 class Scenario(BaseModel):
@@ -43,7 +48,7 @@ class ScenarioResult(BaseModel):
     """Result of running a scenario."""
     scenario: str
     success: bool
-    run_at: datetime = Field(default_factory=datetime.utcnow)
+    run_at: datetime = Field(default_factory=utcnow)
     
     # Metrics
     time_to_root_cause: Optional[float] = Field(None, description="Seconds to identify root cause")

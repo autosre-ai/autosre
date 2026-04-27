@@ -5,11 +5,16 @@ These Pydantic models represent the entities that the agent reasons about.
 All connectors normalize their data into these standard models.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, Field
+
+
+def utcnow() -> datetime:
+    """Return timezone-aware UTC datetime."""
+    return datetime.now(timezone.utc)
 
 
 class ServiceStatus(str, Enum):
@@ -118,7 +123,7 @@ class ChangeEvent(BaseModel):
     new_version: Optional[str] = None
     
     # Timestamps
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=utcnow)
     
     # Status
     successful: bool = Field(default=True)
@@ -179,7 +184,7 @@ class Alert(BaseModel):
     annotations: dict[str, str] = Field(default_factory=dict)
     
     # Timing
-    fired_at: datetime = Field(default_factory=datetime.utcnow)
+    fired_at: datetime = Field(default_factory=utcnow)
     resolved_at: Optional[datetime] = None
     
     # Related data
@@ -214,7 +219,7 @@ class Incident(BaseModel):
     runbook_used: Optional[str] = Field(None, description="Runbook ID used")
     
     # Timing
-    started_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: datetime = Field(default_factory=utcnow)
     detected_at: Optional[datetime] = None
     acknowledged_at: Optional[datetime] = None
     resolved_at: Optional[datetime] = None

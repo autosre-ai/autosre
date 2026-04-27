@@ -5,7 +5,12 @@ Tests for the context store.
 import pytest
 import tempfile
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+
+def utcnow() -> datetime:
+    """Return timezone-aware UTC datetime."""
+    return datetime.now(timezone.utc)
 
 from autosre.foundation.context_store import ContextStore
 from autosre.foundation.models import (
@@ -115,7 +120,7 @@ class TestContextStoreChanges:
             service_name="test-service",
             description="Test deployment",
             author="tester@example.com",
-            timestamp=datetime.utcnow(),
+            timestamp=utcnow(),
         )
         
         store.add_change(change)
@@ -133,7 +138,7 @@ class TestContextStoreChanges:
             service_name="test-service",
             description="Old deployment",
             author="tester@example.com",
-            timestamp=datetime.utcnow() - timedelta(days=2),
+            timestamp=utcnow() - timedelta(days=2),
         )
         store.add_change(old_change)
         
@@ -144,7 +149,7 @@ class TestContextStoreChanges:
             service_name="test-service",
             description="Recent deployment",
             author="tester@example.com",
-            timestamp=datetime.utcnow(),
+            timestamp=utcnow(),
         )
         store.add_change(recent_change)
         
@@ -180,7 +185,7 @@ class TestContextStoreAlerts:
             id="resolved-alert",
             name="ResolvedAlert",
             summary="Was firing, now resolved",
-            resolved_at=datetime.utcnow(),
+            resolved_at=utcnow(),
         )
         
         store.add_alert(alert)
@@ -246,7 +251,7 @@ class TestContextStoreIncidents:
         resolved_inc = Incident(
             id="resolved-inc",
             title="Resolved Incident",
-            resolved_at=datetime.utcnow(),
+            resolved_at=utcnow(),
         )
         store.create_incident(resolved_inc)
         

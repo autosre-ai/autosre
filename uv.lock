@@ -97,6 +97,7 @@ sandbox = [
 dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
 ]
 
 [package.metadata]
@@ -124,6 +125,7 @@ provides-extras = ["llm", "sandbox", "all", "dev"]
 dev = [
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
 ]
 
 [[package]]
