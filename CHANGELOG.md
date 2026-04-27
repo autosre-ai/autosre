@@ -8,6 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Evals & Polish Sprint**
+  - Expanded evaluation scenarios from 10 to 33:
+    - Database incidents: connection pool, replication lag, slow queries
+    - Kubernetes failures: node not ready, pod eviction, HPA thrashing, image pull
+    - Network issues: DNS resolution, packet loss
+    - Memory issues: gradual leaks, Redis exhaustion  
+    - Security/auth: certificate chain, secret rotation
+    - Infrastructure: disk I/O saturation, cronjob cascades
+    - Advanced patterns: thundering herd, service mesh, API rate limiting
+  - New `autosre/logging.py` module with structured logging:
+    - JSON formatter for production
+    - Human-readable formatter for development
+    - Configurable log levels
+    - Extra field support for structured context
+  - New `autosre/exceptions.py` with actionable error messages:
+    - ConfigurationError, MissingConfigError, InvalidConfigError
+    - ConnectionError variants (K8s, Prometheus, LLM providers)
+    - ContextError, ServiceNotFoundError, NoContextDataError
+    - AgentError, InvestigationError, ActionBlockedError
+    - SandboxError, EvalError with specific subtypes
+  - Added `types-PyYAML` to dev dependencies for mypy
+
 - **Testing Sprint (Iterations 1-25)**
   - 236 new tests (281 total) - from 7% to 21% coverage
   - CLI command tests (21 tests)
@@ -35,10 +57,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added pydantic-settings and python-dotenv dependencies
 
 ### Changed
+- Fixed license in pyproject.toml: Apache-2.0 (matches LICENSE file)
+- Added MANIFEST.in for source distributions
 - Replaced deprecated `datetime.utcnow()` with timezone-aware alternative throughout codebase
 
 ### Fixed
+- Type hint fixes across multiple modules for mypy compliance
 - All deprecation warnings for datetime handling
+- Fixed evals module exports (load_scenario, get_all_scenarios, etc.)
 
 ---
 

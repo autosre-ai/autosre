@@ -1,0 +1,87 @@
+# High CPU Troubleshooting Runbook
+id: high-cpu
+title: High CPU Usage Troubleshooting
+description: Steps to investigate and resolve high CPU usage in Kubernetes pods
+
+# Alerts this runbook handles
+alerts:
+  - HighCPUUsage
+  - ContainerCPUHigh
+  - NodeCPUHigh
+  - CPUThrottlingHigh
+
+# Services this applies to (empty = all)
+services: []
+
+# Keywords for fuzzy matching
+keywords:
+  - cpu
+  - performance
+  - throttling
+  - slow
+  - latency
+
+# Diagnostic and remediation steps
+steps:
+  - name: Check current CPU usage
+    command: kubectl top pods -n {{ namespace }}
+    description: View current CPU usage for all pods in the namespace
+    expected: Shows CPU metrics for pods
+    
+  - name: Check node CPU pressure
+    command: kubectl top nodes
+    description: Check if CPU pressure is cluster-wide or pod-specific
+    expected: Node CPU should be under 80%
+    
+  - name: Get pod details
+    command: kubectl describe pod {{ pod }} -n {{ namespace }}
+    description: Check resource requests/limits and recent events
+    expected: Look for OOMKilled, Throttled events
+    
+  - name: Check for CPU throttling
+    command: |
+      kubectl exec -n {{ namespace }} {{ pod }} -- cat /sys/fs/cgroup/cpu/cpu.stat 2>/dev/null || \
+      kubectl exec -n {{ namespace }} {{ pod }} -- cat /sys/fs/cgroup/cpu.stat 2>/dev/null
+    description: Check if container is being CPU throttled
+    expected: nr_throttled should be low
+    
+  - name: Check recent deployments
+    command: kubectl rollout history deployment/{{ deployment }} -n {{ namespace }}
+    description: See if a recent deployment caused the issue
+    expected: Identify recent changes
+    
+  - name: Check application logs for errors
+    command: kubectl logs {{ pod }} -n {{ namespace }} --tail=100
+    description: Look for application errors or performance warnings
+    expected: No error spikes
+    
+  - name: Check HPA status
+    command: kubectl get hpa -n {{ namespace }}
+    description: See if Horizontal Pod Autoscaler is active
+    expected: HPA should scale if configured
+
+# Remediation options
+remediation:
+  - name: Scale up replicas
+    command: kubectl scale deployment/{{ deployment }} -n {{ namespace }} --replicas={{ new_replicas }}
+    risk: low
+    requires_approval: false
+    
+  - name: Increase CPU limits
+    command: kubectl patch deployment {{ deployment }} -n {{ namespace }} -p '{"spec":{"template":{"spec":{"containers":[{"name":"{{ container }}","resources":{"limits":{"cpu":"{{ new_cpu }}"}}}]}}}}'
+    risk: medium
+    requires_approval: true
+    
+  - name: Rollback deployment
+    command: kubectl rollout undo deployment/{{ deployment }} -n {{ namespace }}
+    risk: medium
+    requires_approval: true
+
+# Metadata
+automated: false
+requires_approval: true
+author: SRE Team
+tags:
+  - cpu
+  - performance
+  - troubleshooting

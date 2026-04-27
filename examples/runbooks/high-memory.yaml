@@ -1,0 +1,81 @@
+# High Memory / OOM Troubleshooting Runbook
+id: high-memory
+title: High Memory Usage Troubleshooting
+description: Steps to investigate memory issues and OOMKilled pods
+
+alerts:
+  - HighMemoryUsage
+  - ContainerMemoryHigh
+  - OOMKilled
+  - MemoryPressure
+
+services: []
+
+keywords:
+  - memory
+  - oom
+  - killed
+  - heap
+  - leak
+
+steps:
+  - name: Check current memory usage
+    command: kubectl top pods -n {{ namespace }}
+    description: View current memory usage for all pods
+    expected: Memory should be under 80% of limits
+    
+  - name: Check for OOMKilled events
+    command: kubectl get events -n {{ namespace }} --field-selector reason=OOMKilled --sort-by='.lastTimestamp'
+    description: Find recent OOMKilled events
+    expected: No recent OOMKilled events
+    
+  - name: Get pod restart count
+    command: kubectl get pods -n {{ namespace }} -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[*].restartCount}{"\n"}{end}'
+    description: Check if pods are restarting frequently
+    expected: Restart count should be low
+    
+  - name: Check memory limits vs usage
+    command: |
+      kubectl describe pod {{ pod }} -n {{ namespace }} | grep -A5 "Limits:"
+    description: Compare actual usage to configured limits
+    expected: Usage should be well under limits
+    
+  - name: Check node memory pressure
+    command: kubectl describe node | grep -A5 "Conditions:" | grep Memory
+    description: Check if nodes have memory pressure
+    expected: MemoryPressure should be False
+    
+  - name: Check for memory leaks in logs
+    command: kubectl logs {{ pod }} -n {{ namespace }} --tail=200 | grep -i "memory\|heap\|gc"
+    description: Look for memory-related warnings in logs
+    expected: No memory warnings
+    
+  - name: Get memory profile (if available)
+    command: kubectl exec -n {{ namespace }} {{ pod }} -- wget -qO- localhost:8080/debug/pprof/heap 2>/dev/null | head -20
+    description: Get heap profile if application supports it
+    expected: Heap should not show leaks
+
+remediation:
+  - name: Restart pod
+    command: kubectl delete pod {{ pod }} -n {{ namespace }}
+    risk: low
+    requires_approval: false
+    description: Restart the pod to free memory (temporary fix)
+    
+  - name: Increase memory limits
+    command: kubectl patch deployment {{ deployment }} -n {{ namespace }} -p '{"spec":{"template":{"spec":{"containers":[{"name":"{{ container }}","resources":{"limits":{"memory":"{{ new_memory }}"}}}]}}}}'
+    risk: medium
+    requires_approval: true
+    
+  - name: Scale down to reduce pressure
+    command: kubectl scale deployment/{{ deployment }} -n {{ namespace }} --replicas={{ reduced_replicas }}
+    risk: medium
+    requires_approval: true
+
+automated: false
+requires_approval: true
+author: SRE Team
+tags:
+  - memory
+  - oom
+  - troubleshooting
