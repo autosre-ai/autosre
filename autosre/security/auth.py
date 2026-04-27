@@ -60,6 +60,8 @@ class AuthManager:
 
     def _load_keys(self) -> None:
         """Load API keys from file."""
+        if not self.keys_file:
+            return
         try:
             with open(self.keys_file) as f:
                 data = json.load(f)
@@ -74,7 +76,7 @@ class AuthManager:
             with open(self.keys_file, "w") as f:
                 json.dump({"api_keys": self.api_keys}, f, indent=2)
 
-    def generate_api_key(self, user: str, roles: list[str] = None) -> str:
+    def generate_api_key(self, user: str, roles: Optional[list[str]] = None) -> str:
         """
         Generate a new API key for a user.
 
@@ -163,7 +165,7 @@ class AuthManager:
 
         return None
 
-    def get_current_user(self, api_key: str = None, token: str = None) -> Optional[dict]:
+    def get_current_user(self, api_key: Optional[str] = None, token: Optional[str] = None) -> Optional[dict]:
         """
         Get current user from API key or token.
 
@@ -207,7 +209,7 @@ def get_auth_manager() -> AuthManager:
     return _auth_manager
 
 
-def require_auth(func: Callable = None, *, roles: list[str] = None):
+def require_auth(func: Optional[Callable] = None, *, roles: Optional[list[str]] = None):
     """
     Decorator to require authentication on a function.
 

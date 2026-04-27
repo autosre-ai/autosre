@@ -1,167 +1,250 @@
-# Getting Started with OpenSRE
+# Getting Started with AutoSRE
 
-This guide will help you get OpenSRE running in under 5 minutes.
+This guide will get you from zero to running AutoSRE in 5 minutes.
 
 ## Prerequisites
 
-Before you begin, ensure you have:
+- **Python 3.11+** - [Download](https://www.python.org/downloads/)
+- **Docker** (optional) - For sandbox environments
+- **kubectl** (optional) - For Kubernetes integration
+- **kind** (optional) - For local test clusters
 
-- **Python 3.11+** — [Download Python](https://www.python.org/downloads/)
-- **Kubernetes cluster** — Local (minikube, kind) or remote
-- **Prometheus** — Running and accessible
-- **Slack workspace** — For notifications (optional but recommended)
+## Installation
 
-## Quick Installation
-
-### Option 1: pip (Recommended)
+### Quick Install
 
 ```bash
-pip install opensre
+pip install autosre
 ```
 
-### Option 2: From Source
+### Full Installation (with all features)
 
 ```bash
-git clone https://github.com/srisainath/opensre.git
-cd opensre
-pip install -e .
+pip install autosre[all]
 ```
 
-## Configuration
+This includes:
+- `llm` - OpenAI, Anthropic, Ollama support
+- `sandbox` - Docker/Kind cluster management
 
-### 1. Set Environment Variables
+### Development Install
 
 ```bash
-# Create config from template
+git clone https://github.com/opensre/autosre.git
+cd autosre
+pip install -e ".[all,dev]"
+```
+
+## First Steps
+
+### 1. Initialize Your Project
+
+```bash
+cd your-project
+autosre init
+```
+
+This creates:
+```
+your-project/
+├── .autosre/           # AutoSRE data directory
+│   ├── context.db      # Context store (SQLite)
+│   ├── evals.db        # Evaluation results
+│   └── scenarios/      # Custom evaluation scenarios
+├── runbooks/           # Your runbook YAML files
+│   └── high-cpu.yaml   # Sample runbook
+└── .env.example        # Configuration template
+```
+
+### 2. Configure AutoSRE
+
+Copy and edit the configuration:
+
+```bash
 cp .env.example .env
-
-# Or set directly
-export OPENSRE_PROMETHEUS_URL=http://prometheus:9090
-export OPENSRE_KUBECONFIG=~/.kube/config
 ```
 
-### 2. Choose Your LLM
-
-**Option A: Local with Ollama (Recommended for Privacy)**
+**Minimal configuration (local Ollama):**
 
 ```bash
-# Install Ollama: https://ollama.ai
-ollama pull llama3.1:8b
-
-export OPENSRE_LLM_PROVIDER=ollama
-export OPENSRE_OLLAMA_MODEL=llama3.1:8b
+# .env
+OPENSRE_LLM_PROVIDER=ollama
+OPENSRE_OLLAMA_HOST=http://localhost:11434
+OPENSRE_OLLAMA_MODEL=llama3.1:8b
 ```
 
-**Option B: OpenAI**
+**Using OpenAI:**
 
 ```bash
-export OPENSRE_LLM_PROVIDER=openai
-export OPENSRE_OPENAI_API_KEY=sk-your-key
-export OPENSRE_OPENAI_MODEL=gpt-4o
+OPENSRE_LLM_PROVIDER=openai
+OPENSRE_OPENAI_API_KEY=sk-your-key-here
+OPENSRE_OPENAI_MODEL=gpt-4o-mini
 ```
 
-**Option C: Anthropic**
+### 3. Check Status
 
 ```bash
-export OPENSRE_LLM_PROVIDER=anthropic
-export OPENSRE_ANTHROPIC_API_KEY=sk-ant-your-key
-export OPENSRE_ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
+autosre status
 ```
 
-### 3. Optional: Slack Integration
+You should see:
+```
+📊 AutoSRE Status
+
+Configuration
+  ✓ .env file found
+  ✓ .autosre directory exists
+
+Context Store
+  Services: 0
+  Ownership Mappings: 0
+  Changes (24h): 0
+  ...
+
+LLM Provider
+  Provider: ollama
+  Host: http://localhost:11434
+  Model: llama3.1:8b
+  Status: ✓ Connected, model available
+```
+
+### 4. (Optional) Create a Sandbox
+
+If you have Docker and kind installed:
 
 ```bash
-export OPENSRE_SLACK_BOT_TOKEN=xoxb-your-token
-export OPENSRE_SLACK_CHANNEL=#incidents
+autosre sandbox start
 ```
 
-## Verify Installation
+This creates a local Kubernetes cluster with:
+- Prometheus for metrics
+- Grafana for dashboards
+- Sample applications
+
+### 5. Sync Context
+
+Connect to your Kubernetes cluster:
 
 ```bash
-# Check OpenSRE is installed
-opensre --version
+# If using sandbox
+export KUBECONFIG=~/.autosre/kubeconfig-autosre-sandbox
 
-# Check system status
-opensre status
+# Sync context
+autosre context sync --kubernetes
 ```
 
-Expected output:
-
-```
-OpenSRE v0.1.0
-
-✓ Prometheus    http://prometheus:9090    Connected
-✓ Kubernetes    ~/.kube/config            Connected (3 nodes)
-✓ LLM           ollama/llama3.1:8b        Ready
-✓ Slack         #incidents                Connected
-
-Ready to investigate incidents!
-```
-
-## Your First Investigation
-
-### Manual Investigation
+View what was synced:
 
 ```bash
-opensre investigate "high error rate on checkout service"
+autosre context show --services
 ```
 
-OpenSRE will:
-1. Query Prometheus for relevant metrics
-2. Check Kubernetes for pod health and events
-3. Look at recent deployments
-4. Correlate signals to find root cause
-5. Output analysis and recommendations
-
-### Watch Mode (Daemon)
+### 6. Run Your First Evaluation
 
 ```bash
-# Start daemon to watch for alerts
-opensre start
+# List available scenarios
+autosre eval list
 
-# Or run in foreground
-opensre start --foreground
+# Run a simple scenario
+autosre eval run --scenario high_cpu --verbose
 ```
 
-Configure Alertmanager to send webhooks to `http://localhost:8000/webhook/alertmanager`.
+### 7. Start the Agent
 
-## Example Output
+```bash
+# Watch mode (continuous monitoring)
+autosre agent run
 
-```
-╭────────────────────────────────────────────────────────────────╮
-│                  🔍 OpenSRE Investigation                       │
-├────────────────────────────────────────────────────────────────┤
-│ Alert: checkout-service high error rate                        │
-│ Time: 2024-03-15 03:02:14                                      │
-│                                                                │
-│ 📊 Observations:                                               │
-│ • Error rate: 0.1% → 8.3% (started 12m ago)                    │
-│ • Affected endpoint: /api/v1/checkout/payment                  │
-│ • 3 pods showing OOMKilled restarts                            │
-│ • Deployment v2.4.1 rolled out 15m ago                         │
-│                                                                │
-│ 🎯 Root Cause (Confidence: 94%):                               │
-│ Memory leak in checkout-service v2.4.1                         │
-│ Connection pool not releasing connections properly             │
-│                                                                │
-│ ✅ Recommended Actions:                                        │
-│ 1. Rollback to v2.4.0 (immediate)                              │
-│ 2. Scale replicas 3 → 5 (temporary mitigation)                 │
-│                                                                │
-│ 📚 Related Runbook: memory-leak-remediation.md                 │
-╰────────────────────────────────────────────────────────────────╯
+# Or analyze a specific alert
+autosre agent analyze --alert-name HighCPUUsage
 ```
 
 ## Next Steps
 
-- **[Installation Guide](installation.md)** — Detailed installation options
-- **[Configuration](configuration.md)** — All configuration options
-- **[Skills Overview](skills/overview.md)** — Extend OpenSRE with skills
-- **[Writing Agents](agents/writing-agents.md)** — Create custom automation
-- **[Deployment](deployment.md)** — Production deployment guide
+- **[CLI Reference](cli-reference.md)** - All commands explained
+- **[Configuration Guide](CONFIGURATION.md)** - All configuration options
+- **[Architecture](ARCHITECTURE.md)** - How AutoSRE works
+- **[Writing Runbooks](RUNBOOKS.md)** - Create your own runbooks
+- **[Custom Scenarios](examples/custom-scenario.md)** - Create test scenarios
 
-## Need Help?
+## Common Tasks
 
-- **GitHub Issues**: [Report bugs](https://github.com/srisainath/opensre/issues)
-- **Discussions**: [Ask questions](https://github.com/srisainath/opensre/discussions)
-- **Discord**: [Join community](https://discord.gg/opensre)
+### Add a Service Manually
+
+```bash
+autosre context add service \
+  --name my-api \
+  --namespace production \
+  --team platform
+```
+
+### Add a Runbook
+
+Create `runbooks/my-runbook.yaml`:
+
+```yaml
+id: my-runbook
+title: My Custom Runbook
+description: Steps to resolve X issue
+
+alerts:
+  - MyCustomAlert
+
+steps:
+  - name: Check the thing
+    command: kubectl get pods -n {{ namespace }}
+    
+  - name: Fix the thing
+    command: kubectl rollout restart deployment/{{ service }}
+
+automated: false
+```
+
+Then add it:
+
+```bash
+autosre context add runbook --file runbooks/my-runbook.yaml
+```
+
+### Test with Chaos
+
+```bash
+# Inject CPU stress
+autosre sandbox inject cpu-hog --target my-service
+
+# Watch the agent analyze
+autosre agent run --once
+```
+
+### View Feedback Stats
+
+```bash
+autosre feedback report
+```
+
+## Troubleshooting
+
+### "Ollama not reachable"
+
+Make sure Ollama is running:
+```bash
+ollama serve
+ollama pull llama3.1:8b
+```
+
+### "Failed to connect to Kubernetes"
+
+Check your kubeconfig:
+```bash
+kubectl cluster-info
+```
+
+### "No scenarios found"
+
+Run `autosre init` to create sample scenarios, or check that `~/.autosre/scenarios/` exists.
+
+## Getting Help
+
+- **GitHub Issues**: [Report a bug](https://github.com/opensre/autosre/issues)
+- **Discussions**: [Ask questions](https://github.com/opensre/autosre/discussions)
+- **Contributing**: [CONTRIBUTING.md](../CONTRIBUTING.md)

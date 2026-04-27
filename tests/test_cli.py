@@ -156,9 +156,9 @@ class TestAgentCommands:
         assert result.exit_code == 0
         assert "--alert" in result.output
     
-    def test_agent_watch_help(self, runner):
-        """Test agent watch --help."""
-        result = runner.invoke(cli, ["agent", "watch", "--help"])
+    def test_agent_run_help(self, runner):
+        """Test agent run --help."""
+        result = runner.invoke(cli, ["agent", "run", "--help"])
         assert result.exit_code == 0
         assert "--interval" in result.output
     

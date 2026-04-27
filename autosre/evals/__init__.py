@@ -11,9 +11,14 @@ The eval framework provides:
 from autosre.evals.framework import (
     Scenario,
     ScenarioResult,
+    EvalRunner,
+    EvalStore,
     run_scenario,
     list_scenarios,
     get_results,
+    get_all_scenarios,
+    get_scenario,
+    load_scenario,
 )
 from autosre.evals.metrics import (
     EvalMetrics,
@@ -23,9 +28,14 @@ from autosre.evals.metrics import (
 __all__ = [
     "Scenario",
     "ScenarioResult",
+    "EvalRunner",
+    "EvalStore",
     "run_scenario",
     "list_scenarios",
     "get_results",
+    "get_all_scenarios",
+    "get_scenario",
+    "load_scenario",
     "EvalMetrics",
     "calculate_metrics",
 ]

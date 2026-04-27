@@ -120,9 +120,10 @@ class TestReasoner:
     """Test Reasoner class."""
     
     @pytest.fixture
-    def context_store(self):
-        """Create an in-memory context store."""
-        return ContextStore(":memory:")
+    def context_store(self, tmp_path):
+        """Create a context store with temp database."""
+        db_path = str(tmp_path / "test.db")
+        return ContextStore(db_path=db_path)
     
     @pytest.fixture
     def reasoner(self, context_store):
@@ -292,6 +293,7 @@ class TestReasoner:
         ))
         
         context_store.add_change(ChangeEvent(
+            id="change-001",
             change_type=ChangeType.DEPLOYMENT,
             service_name="api-service",
             description="Deploy v2.0.0",
@@ -311,7 +313,7 @@ class TestReasoner:
         alert = Alert(
             id="alert-002",
             name="UnknownAlert",
-            severity=Severity.WARNING,
+            severity=Severity.MEDIUM,
             summary="Test alert",
             source="test",
             service_name="nonexistent-service",
@@ -363,8 +365,10 @@ class TestReasonerProviders:
     """Test different LLM provider implementations."""
     
     @pytest.fixture
-    def context_store(self):
-        return ContextStore(":memory:")
+    def context_store(self, tmp_path):
+        """Create a context store with temp database."""
+        db_path = str(tmp_path / "test.db")
+        return ContextStore(db_path=db_path)
     
     @pytest.mark.asyncio
     async def test_query_ollama(self, context_store):

@@ -1,275 +1,382 @@
 # AutoSRE
 
-**Open-source AI SRE Agent — Built Foundation-First**
-
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://github.com/opensre/autosre/actions/workflows/tests.yml/badge.svg)](https://github.com/opensre/autosre/actions)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-AutoSRE is the open-source equivalent to [Azure SRE Agent](https://azure.microsoft.com/en-us/products/sre-agent). Unlike other tools that connect an LLM directly to alerts (and get garbage results), AutoSRE is **built foundation-first**.
+**Open-source AI SRE agent** for incident investigation, root cause analysis, and auto-remediation.
 
-## 🎯 The Problem
+Built **foundation-first**: context awareness before AI reasoning, for reliable and accurate incident response.
 
-Most internal AI SRE tools fail because they skip the foundation:
+<p align="center">
+  <img src="docs/images/autosre-demo.gif" alt="AutoSRE Demo" width="700">
+</p>
 
-```
-┌─────────────────────────────────────────────────┐
-│  🏠 ROOF: Connect LLM to Alerts                 │  ← Most teams START and STOP here
-│     (Where 90% of teams begin)                  │
-├─────────────────────────────────────────────────┤
-│  🔄 Feedback Loop                               │  ← SKIPPED
-│     (Real incidents feeding agent back)         │
-├─────────────────────────────────────────────────┤
-│  🎭 Realistic Eval Scenarios                    │  ← SKIPPED  
-│     (Actual alert payloads, real env setup)     │
-├─────────────────────────────────────────────────┤
-│  📊 Evals and Baselines                         │  ← SKIPPED
-│     (How do you know it's getting better?)      │
-├─────────────────────────────────────────────────┤
-│  🏗️ FOUNDATION                                  │  ← NEVER BUILT
-│     (Context, topology, ownership, history)     │
-└─────────────────────────────────────────────────┘
-```
-
-**Result:** Teams dump alerts into LLM → garbage results → "AI isn't ready" → abandon project.
-
-## ✨ The Solution
-
-AutoSRE builds the foundation first:
-
-1. **Context Store** — Service topology, ownership, change history
-2. **Eval Framework** — Synthetic incidents, replay attacks, baseline metrics
-3. **Sandbox Environment** — Kind cluster with chaos injection
-4. **Agent Core** — Observer/Reasoner/Actor with guardrails
-5. **Feedback Loop** — Learn from outcomes, continuous improvement
+---
 
 ## 🚀 Quick Start
 
-### Installation
+Get running in 5 minutes:
 
 ```bash
-# Install with pip
+# Install
 pip install autosre
 
-# Or with uv (recommended)
-uv add autosre
-```
+# Initialize in your project
+autosre init
 
-### Basic Usage
+# Start a local sandbox (optional, requires Docker)
+autosre sandbox start
 
-```bash
-# Show context summary
-autosre context show
-
-# Sync from Kubernetes
+# Sync context from Kubernetes
 autosre context sync --kubernetes
 
-# List evaluation scenarios
-autosre eval list
-
-# Run an evaluation
-autosre eval run --scenario memory_leak
-
-# Create sandbox cluster
-autosre sandbox create
-
-# Analyze an alert
-autosre agent analyze --alert alert.json
+# Run the agent
+autosre agent run
 ```
 
-### Python API
+---
 
-```python
-from autosre.foundation import ContextStore, Service
-from autosre.agent import Reasoner, ReasonerConfig
+## ✨ Features
 
-# Initialize context store
-store = ContextStore()
+### 🔍 **Context-Aware Analysis**
+- Correlates alerts with recent deployments, config changes, and dependencies
+- Maintains service topology and ownership mappings
+- Tracks historical incidents for pattern recognition
 
-# Add services
-store.add_service(Service(
-    name="payment-service",
-    namespace="production",
-    dependencies=["database", "redis-cache"],
-))
+### 🤖 **Intelligent Root Cause Analysis**
+- Multi-LLM support (Ollama, OpenAI, Anthropic, Azure)
+- Structured reasoning with confidence scores
+- Learns from feedback to improve over time
 
-# Configure reasoner with Ollama
-config = ReasonerConfig(
-    model="qwen3:14b",
-    provider="ollama",
-)
+### 📖 **Runbook Integration**
+- Matches alerts to relevant runbooks
+- Step-by-step execution guidance
+- Automated execution with guardrails
 
-# Analyze an alert
-reasoner = Reasoner(store, config)
-result = await reasoner.analyze(alert)
+### 🛡️ **Safe Remediation**
+- Approval workflows for risky actions
+- Auto-approve low-risk operations
+- Audit logging for compliance
 
-print(f"Root Cause: {result.root_cause}")
-print(f"Confidence: {result.confidence}")
-print(f"Actions: {result.immediate_actions}")
-```
+### 🧪 **Built-in Evaluation**
+- 25+ synthetic incident scenarios
+- Measure accuracy before production
+- Track improvements over time
 
-## 📊 Evaluation Scenarios
+---
 
-AutoSRE includes 10 built-in scenarios:
+## 📦 Installation
 
-| Scenario | Difficulty | Description |
-|----------|------------|-------------|
-| `memory_leak` | Medium | Gradual memory leak causing OOM kills |
-| `high_cpu` | Easy | High CPU usage causing latency spikes |
-| `cert_expiry` | Easy | TLS certificate about to expire |
-| `cascading_failure` | Hard | Database failure causing cascading outages |
-| `deployment_rollback` | Medium | Bad deployment needs rollback |
-| `disk_full` | Easy | Disk space exhausted |
-| `network_latency` | Medium | Network latency spike between services |
-| `external_dependency_down` | Medium | Third-party API is down |
-| `alert_storm` | Hard | Multiple alerts, find root cause |
-| `silent_failure` | Hard | Service healthy but processing broken |
-
-Run evaluations:
+### From PyPI (Recommended)
 
 ```bash
-autosre eval run --scenario cascading_failure --verbose
-autosre eval report
+pip install autosre
+
+# With LLM support
+pip install autosre[llm]
+
+# With sandbox support
+pip install autosre[sandbox]
+
+# Everything
+pip install autosre[all]
 ```
+
+### From Source
+
+```bash
+git clone https://github.com/opensre/autosre.git
+cd autosre
+pip install -e ".[all,dev]"
+```
+
+### Requirements
+
+- **Python 3.11+**
+- **Docker** (for sandbox environments)
+- **kubectl** (for Kubernetes integration)
+- **kind** (for local sandbox clusters)
+
+---
+
+## ⚙️ Configuration
+
+Create a `.env` file or set environment variables:
+
+```bash
+# Copy the example
+cp .env.example .env
+```
+
+### Essential Settings
+
+```bash
+# LLM Provider (ollama is default, runs locally)
+OPENSRE_LLM_PROVIDER=ollama
+OPENSRE_OLLAMA_HOST=http://localhost:11434
+OPENSRE_OLLAMA_MODEL=llama3.1:8b
+
+# Or use OpenAI
+# OPENSRE_LLM_PROVIDER=openai
+# OPENSRE_OPENAI_API_KEY=sk-...
+# OPENSRE_OPENAI_MODEL=gpt-4o-mini
+
+# Infrastructure
+OPENSRE_PROMETHEUS_URL=http://localhost:9090
+OPENSRE_K8S_NAMESPACES=default,production
+```
+
+See [Configuration Guide](docs/CONFIGURATION.md) for all options.
+
+---
+
+## 📖 Usage
+
+### Initialize AutoSRE
+
+```bash
+autosre init
+```
+
+Creates:
+- `.autosre/` - Configuration and databases
+- `runbooks/` - Runbook YAML files
+- `.env.example` - Configuration template
+
+### Check Status
+
+```bash
+autosre status
+```
+
+Shows:
+- Configuration status
+- Context store summary
+- LLM provider health
+- Connected integrations
+
+### Manage Context
+
+```bash
+# View context summary
+autosre context show
+
+# View specific data
+autosre context show --services
+autosre context show --changes
+autosre context show --alerts
+autosre context show --runbooks
+
+# Sync from external sources
+autosre context sync --kubernetes
+autosre context sync --prometheus
+autosre context sync --all
+
+# Add items manually
+autosre context add service --name api --namespace prod --team platform
+autosre context add runbook --file runbooks/high-cpu.yaml
+```
+
+### Run Evaluations
+
+```bash
+# List available scenarios
+autosre eval list
+
+# Run a scenario
+autosre eval run --scenario high_cpu
+
+# View results
+autosre eval report
+
+# Create custom scenario
+autosre eval create --template
+```
+
+### Manage Sandbox
+
+```bash
+# Create local Kind cluster
+autosre sandbox start
+
+# Check status
+autosre sandbox status
+
+# Inject chaos for testing
+autosre sandbox inject cpu-hog
+autosre sandbox inject pod-kill --target frontend
+
+# Tear down
+autosre sandbox stop
+```
+
+### Run the Agent
+
+```bash
+# Watch mode (continuous)
+autosre agent run
+
+# Single analysis
+autosre agent analyze --alert alert.json
+autosre agent analyze --service frontend
+
+# View configuration
+autosre agent config
+
+# View history
+autosre agent history
+```
+
+### Submit Feedback
+
+```bash
+# Mark analysis as correct
+autosre feedback submit -i INC-123 --correct
+
+# Mark as incorrect with correction
+autosre feedback submit -i INC-123 --incorrect --actual-cause "DNS timeout"
+
+# View feedback stats
+autosre feedback report
+```
+
+---
 
 ## 🏗️ Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     AutoSRE Agent                            │
+│                        AutoSRE Agent                        │
 ├─────────────────────────────────────────────────────────────┤
-│  Observer          │  Reasoner         │  Actor              │
-│  ─────────────     │  ──────────       │  ─────              │
-│  • Alert Watcher   │  • LLM Analysis   │  • Runbook Exec     │
-│  • Metric Analyzer │  • Context Inject │  • Notifications    │
-│  • Log Correlator  │  • Chain of Thought│ • Ticket Creation  │
-│  • Change Detector │  • Confidence     │  • Rollbacks        │
-├─────────────────────────────────────────────────────────────┤
-│                     Guardrails                               │
-│  • Human Approval  • Blast Radius Limits  • Audit Logging   │
-├─────────────────────────────────────────────────────────────┤
-│                     Foundation                               │
-│  ┌──────────┐  ┌───────────┐  ┌─────────┐  ┌──────────┐     │
-│  │ Context  │  │ Connectors│  │ Topology│  │ Runbooks │     │
-│  │ Store    │  │ K8s/Prom  │  │ Graph   │  │ Index    │     │
-│  └──────────┘  └───────────┘  └─────────┘  └──────────┘     │
-├─────────────────────────────────────────────────────────────┤
-│                     Data Sources                             │
-│  Kubernetes  │  Prometheus  │  GitHub  │  PagerDuty         │
+│                                                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
+│  │  Observer   │  │  Reasoner   │  │   Actor     │         │
+│  │             │  │             │  │             │         │
+│  │ • Alerts    │  │ • LLM       │  │ • Execute   │         │
+│  │ • Metrics   │  │ • Context   │  │ • Verify    │         │
+│  │ • Logs      │  │ • Runbooks  │  │ • Rollback  │         │
+│  └─────────────┘  └─────────────┘  └─────────────┘         │
+│         │                │                │                 │
+│         └────────────────┼────────────────┘                 │
+│                          │                                  │
+│  ┌───────────────────────┴───────────────────────┐         │
+│  │              Context Store                     │         │
+│  │  • Services & Dependencies                     │         │
+│  │  • Ownership & On-call                         │         │
+│  │  • Changes & Deployments                       │         │
+│  │  • Runbooks & Playbooks                        │         │
+│  │  • Alerts & Incidents                          │         │
+│  └───────────────────────────────────────────────┘         │
+│                          │                                  │
+├──────────────────────────┼──────────────────────────────────┤
+│                          │                                  │
+│  ┌──────────┐  ┌─────────┴─────────┐  ┌─────────────┐      │
+│  │Kubernetes│  │    Prometheus     │  │   GitHub    │      │
+│  └──────────┘  └───────────────────┘  └─────────────┘      │
+│                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 📈 Comparison
+**Foundation-First Philosophy:**
+1. **Context Store** - Single source of truth for all infrastructure state
+2. **Connectors** - Sync from Kubernetes, Prometheus, GitHub, etc.
+3. **Observer** - Watch for alerts and anomalies
+4. **Reasoner** - LLM-powered root cause analysis with rich context
+5. **Actor** - Execute remediation with guardrails
 
-| Feature | AutoSRE | Azure SRE Agent | HolmesGPT |
-|---------|---------|-----------------|-----------|
-| **Open Source** | ✅ | ❌ | ✅ |
-| **Cloud Agnostic** | ✅ | ❌ (Azure only) | ✅ |
-| **Local LLM** | ✅ (Ollama) | ❌ | ✅ |
-| **Foundation Layer** | ✅ | ✅ | ❌ |
-| **Eval Framework** | ✅ | Internal | ❌ |
-| **Sandbox Testing** | ✅ | ❌ | ❌ |
-| **Feedback Loop** | ✅ | ✅ | ❌ |
-| **Guardrails** | ✅ | ✅ | ❌ |
+See [Architecture Guide](docs/ARCHITECTURE.md) for details.
 
-## 🔧 Configuration
+---
 
-AutoSRE uses a simple YAML config:
+## 🧪 Evaluation Framework
 
-```yaml
-# ~/.autosre/config.yaml
+AutoSRE includes 25+ synthetic incident scenarios for testing:
 
-# LLM Configuration
-llm:
-  provider: ollama  # ollama, openai, anthropic
-  model: qwen3:14b
-  host: http://localhost:11434
+| Scenario | Difficulty | Description |
+|----------|------------|-------------|
+| `high_cpu` | Easy | CPU spike causing latency |
+| `memory_leak` | Medium | Gradual memory exhaustion |
+| `cascading_failure` | Hard | Multi-service outage |
+| `deployment_rollback` | Medium | Failed deployment |
+| `database_connection_pool_exhaustion` | Medium | DB connection issues |
 
-# Connectors
-connectors:
-  kubernetes:
-    enabled: true
-    kubeconfig: ~/.kube/config
-    
-  prometheus:
-    enabled: true
-    url: http://localhost:9090
-    
-  github:
-    enabled: true
-    token: ${GITHUB_TOKEN}
-    repositories:
-      - myorg/service-a
-      - myorg/service-b
+Run evaluations before production to ensure accuracy:
 
-# Guardrails
-guardrails:
-  dry_run: true
-  auto_approve_low_risk: true
-  max_blast_radius: 5
-  require_approval:
-    - rollback
-    - scale
-    - script
+```bash
+autosre eval run --scenario cascading_failure --verbose
 ```
+
+---
+
+## 🔌 Integrations
+
+### Supported
+
+- **Kubernetes** - Service discovery, pod status, events
+- **Prometheus** - Metrics, alerts, Alertmanager
+- **GitHub** - Deployments, PRs, commits
+- **Slack** - Alert notifications, approval workflows
+- **PagerDuty** - Incident management
+
+### Coming Soon
+
+- Datadog
+- New Relic
+- Grafana Loki
+- OpsGenie
+- VictorOps
+
+---
 
 ## 📚 Documentation
 
 - [Getting Started](docs/getting-started.md)
-- [Architecture](docs/architecture.md)
-- [Connectors](docs/connectors.md)
-- [Evaluation Framework](docs/evals.md)
-- [Sandbox Setup](docs/sandbox.md)
-- [API Reference](docs/api.md)
+- [CLI Reference](docs/cli-reference.md)
+- [Configuration](docs/CONFIGURATION.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [API Reference](docs/api-reference.md)
+- [Contributing](CONTRIBUTING.md)
+
+---
 
 ## 🤝 Contributing
 
 We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ```bash
-# Clone the repo
+# Setup development environment
 git clone https://github.com/opensre/autosre.git
 cd autosre
-
-# Install with dev dependencies
-uv sync --all-extras
+pip install -e ".[all,dev]"
 
 # Run tests
-uv run pytest
+pytest
 
 # Run linting
-uv run ruff check .
+ruff check .
 ```
 
-## 🛣️ Roadmap
+---
 
-- [x] Foundation layer (context store, connectors)
-- [x] Evaluation framework with synthetic scenarios
-- [x] Sandbox environment with chaos injection
-- [x] Agent core (observer/reasoner/actor)
-- [x] Guardrails and approval workflow
-- [x] Feedback loop and learning pipeline
-- [ ] Web UI for incident management
-- [ ] Slack/Teams integration
-- [ ] Custom scenario builder
-- [ ] Multi-cluster support
-- [ ] Anomaly detection ML models
-
-## 📜 License
+## 📄 License
 
 MIT License - see [LICENSE](LICENSE) for details.
 
+---
+
 ## 🙏 Acknowledgments
 
-- Inspired by [Azure SRE Agent](https://azure.microsoft.com/en-us/products/sre-agent)
-- Built on insights from [HolmesGPT](https://github.com/robusta-dev/holmesgpt)
-- Thanks to the CNCF observability ecosystem
+Built with:
+- [Click](https://click.palletsprojects.com/) - CLI framework
+- [Rich](https://rich.readthedocs.io/) - Beautiful terminal output
+- [Pydantic](https://pydantic.dev/) - Data validation
+- [HTTPX](https://www.python-httpx.org/) - HTTP client
+
+Inspired by the SRE practices at Google, Netflix, and the broader DevOps community.
 
 ---
 
 <p align="center">
-  <strong>Built by the OpenSRE Community</strong><br>
-  <a href="https://github.com/opensre/autosre">GitHub</a> •
-  <a href="https://github.com/opensre/autosre/issues">Issues</a> •
-  <a href="https://github.com/opensre/autosre/discussions">Discussions</a>
+  <b>Built with ❤️ by the OpenSRE Community</b>
 </p>
