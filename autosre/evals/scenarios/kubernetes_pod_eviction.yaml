@@ -1,0 +1,85 @@
+name: kubernetes_pod_eviction
+description: "Pod eviction due to resource pressure causing service degradation"
+difficulty: medium
+
+setup_steps:
+  - "Node experiences memory pressure"
+  - "Kubelet starts evicting BestEffort pods"
+  - "Critical pods get evicted due to missing resource limits"
+
+alert:
+  name: "KubePodEvicted"
+  severity: high
+  service_name: recommendation-service
+  namespace: production
+  summary: "Pods evicted from worker-node-2"
+  description: "Multiple pods evicted due to NodeMemoryPressure"
+  labels:
+    alertname: KubePodEvicted
+    namespace: production
+    node: worker-node-2
+    reason: Evicted
+    eviction_reason: "NodeMemoryPressure"
+  annotations:
+    evicted_pods: "recommendation-service-abc123,recommendation-service-def456"
+
+services:
+  - name: recommendation-service
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 1
+    labels:
+      app: recommendation-service
+      team: ml
+    annotations:
+      autosre.io/priority: "high"
+      
+  - name: batch-processor
+    namespace: production
+    status: healthy
+    replicas: 5
+    ready_replicas: 5
+    labels:
+      app: batch-processor
+      team: data
+
+changes:
+  - id: change-evict-001
+    change_type: deployment
+    service_name: batch-processor
+    description: "Deployed batch-processor v2.0 with larger memory footprint"
+    author: data-team@example.com
+    timestamp: "2024-01-15T08:00:00Z"
+    successful: true
+    
+  - id: change-evict-002
+    change_type: config_change
+    service_name: recommendation-service
+    description: "Removed memory limits for performance testing"
+    author: ml-team@example.com
+    timestamp: "2024-01-15T06:00:00Z"
+    successful: true
+
+metrics:
+  node_memory_MemAvailable_bytes:
+    worker-node-2:
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 4294967296
+      - timestamp: "2024-01-15T09:00:00Z"
+        value: 1073741824
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 104857600
+  container_memory_working_set_bytes:
+    batch-processor:
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 2147483648
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 6442450944
+
+expected_root_cause: "batch-processor v2.0 memory increase combined with missing limits on recommendation-service"
+expected_service: recommendation-service
+expected_runbook: pod-eviction
+expected_action: "Restore memory limits on recommendation-service, set resource requests on batch-processor"
+
+max_time_seconds: 150

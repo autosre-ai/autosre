@@ -1,0 +1,90 @@
+name: dns_resolution_failure
+description: "DNS resolution failures causing intermittent service connectivity"
+difficulty: medium
+
+setup_steps:
+  - "CoreDNS pod has memory pressure"
+  - "DNS lookups start timing out"
+  - "Services intermittently fail to reach each other"
+
+alert:
+  name: "KubeContainerDNSError"
+  severity: high
+  service_name: api-gateway
+  namespace: production
+  summary: "DNS resolution failures in api-gateway pods"
+  description: "Multiple pods reporting DNS lookup timeouts for internal services"
+  labels:
+    alertname: KubeContainerDNSError
+    namespace: production
+    pod: api-gateway-xyz789
+    error_type: dns_timeout
+  annotations:
+    dns_server: "10.96.0.10"
+    failure_rate: "30%"
+    affected_lookups: "user-service.production.svc.cluster.local"
+
+services:
+  - name: api-gateway
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    labels:
+      app: api-gateway
+      team: platform
+      
+  - name: user-service
+    namespace: production
+    status: healthy
+    replicas: 3
+    ready_replicas: 3
+    labels:
+      app: user-service
+      team: identity
+
+  - name: coredns
+    namespace: kube-system
+    status: degraded
+    replicas: 2
+    ready_replicas: 1
+    labels:
+      k8s-app: kube-dns
+
+changes:
+  - id: change-dns-001
+    change_type: deployment
+    service_name: coredns
+    description: "Updated CoreDNS to v1.11.1"
+    author: platform@example.com
+    timestamp: "2024-01-15T07:00:00Z"
+    successful: true
+
+metrics:
+  coredns_dns_request_duration_seconds:
+    coredns:
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 0.002
+      - timestamp: "2024-01-15T09:00:00Z"
+        value: 0.5
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 2.5
+  coredns_cache_misses_total:
+    coredns:
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 100
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 50000
+  container_memory_usage_percent:
+    coredns:
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 45
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 98
+
+expected_root_cause: "CoreDNS memory exhaustion after upgrade causing DNS resolution timeouts"
+expected_service: coredns
+expected_runbook: dns-troubleshooting
+expected_action: "Restart CoreDNS pods, increase memory limits, check for DNS cache configuration"
+
+max_time_seconds: 120

@@ -1,0 +1,83 @@
+name: certificate_chain_broken
+description: "Intermediate certificate missing causing TLS failures"
+difficulty: medium
+
+setup_steps:
+  - "Certificate renewed without intermediate cert"
+  - "Some clients can't verify chain"
+  - "Intermittent TLS handshake failures"
+
+alert:
+  name: "TLSHandshakeErrors"
+  severity: high
+  service_name: api-gateway
+  namespace: production
+  summary: "TLS handshake failures on api-gateway"
+  description: "Significant increase in TLS handshake errors from clients"
+  labels:
+    alertname: TLSHandshakeErrors
+    namespace: production
+    service: api-gateway
+    error_type: certificate_verify_failed
+  annotations:
+    error_rate: "15%"
+    affected_clients: "mobile-app,legacy-integrations"
+    recent_change: "certificate renewed"
+
+services:
+  - name: api-gateway
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    labels:
+      app: api-gateway
+      team: platform
+      
+  - name: cert-manager
+    namespace: cert-manager
+    status: healthy
+    replicas: 1
+    ready_replicas: 1
+    labels:
+      app: cert-manager
+
+changes:
+  - id: change-cert-001
+    change_type: config_change
+    service_name: api-gateway
+    description: "Renewed TLS certificate via cert-manager"
+    author: security@example.com
+    timestamp: "2024-01-15T03:00:00Z"
+    successful: true
+    
+  - id: change-cert-002
+    change_type: config_change
+    service_name: cert-manager
+    description: "Updated ClusterIssuer to use new CA"
+    author: platform@example.com
+    timestamp: "2024-01-14T22:00:00Z"
+    successful: true
+
+metrics:
+  nginx_ingress_controller_ssl_certificate_handshake_failures_total:
+    api-gateway:
+      - timestamp: "2024-01-15T02:00:00Z"
+        value: 10
+      - timestamp: "2024-01-15T04:00:00Z"
+        value: 5000
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 25000
+  http_requests_total:
+    api-gateway:
+      - timestamp: "2024-01-15T02:00:00Z"
+        value: 100000
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 85000
+
+expected_root_cause: "ClusterIssuer change removed intermediate certificate from chain"
+expected_service: cert-manager
+expected_runbook: tls-certificate-troubleshooting
+expected_action: "Update ClusterIssuer to include full certificate chain, renew certificate"
+
+max_time_seconds: 120

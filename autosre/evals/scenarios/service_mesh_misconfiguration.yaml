@@ -1,0 +1,98 @@
+name: service_mesh_misconfiguration
+description: "Istio sidecar misconfiguration blocking traffic"
+difficulty: hard
+
+setup_steps:
+  - "Istio VirtualService updated with incorrect routing"
+  - "Traffic fails to reach backend"
+  - "503 errors across multiple services"
+
+alert:
+  name: "IstioHighErrorRate"
+  severity: critical
+  service_name: istio-proxy
+  namespace: production
+  summary: "High 503 error rate from Istio sidecar"
+  description: "Envoy sidecar returning 503 for 40% of requests"
+  labels:
+    alertname: IstioHighErrorRate
+    namespace: production
+    response_code: "503"
+    source: istio-proxy
+  annotations:
+    error_rate: "40%"
+    affected_services: "checkout-service,payment-service"
+    recent_change: "VirtualService update"
+
+services:
+  - name: checkout-service
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    labels:
+      app: checkout-service
+      team: commerce
+    annotations:
+      sidecar.istio.io/inject: "true"
+      
+  - name: payment-service
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    labels:
+      app: payment-service
+      team: payments
+    annotations:
+      sidecar.istio.io/inject: "true"
+      
+  - name: istiod
+    namespace: istio-system
+    status: healthy
+    replicas: 2
+    ready_replicas: 2
+
+changes:
+  - id: change-mesh-001
+    change_type: config_change
+    service_name: istio
+    description: "Updated VirtualService for canary deployment"
+    author: platform@example.com
+    timestamp: "2024-01-15T09:00:00Z"
+    successful: true
+    
+  - id: change-mesh-002
+    change_type: config_change
+    service_name: istio
+    description: "Added retryPolicy to DestinationRule"
+    author: platform@example.com
+    timestamp: "2024-01-15T09:15:00Z"
+    successful: true
+
+metrics:
+  istio_requests_total:
+    checkout-service:
+      200:
+        - timestamp: "2024-01-15T08:00:00Z"
+          value: 10000
+        - timestamp: "2024-01-15T10:00:00Z"
+          value: 3000
+      503:
+        - timestamp: "2024-01-15T08:00:00Z"
+          value: 10
+        - timestamp: "2024-01-15T10:00:00Z"
+          value: 4000
+  envoy_cluster_upstream_cx_connect_fail:
+    checkout-service:
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 5
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 8000
+
+expected_root_cause: "VirtualService canary routing references non-existent subset in DestinationRule"
+expected_service: istio
+expected_runbook: istio-traffic-troubleshooting
+expected_action: "Fix DestinationRule to include canary subset, or revert VirtualService"
+
+max_time_seconds: 180

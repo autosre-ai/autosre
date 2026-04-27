@@ -1,0 +1,86 @@
+name: database_connection_pool_exhaustion
+description: "Database connection pool exhausted causing application timeouts"
+difficulty: medium
+
+setup_steps:
+  - "Traffic spike hits application"
+  - "Connection pool becomes saturated"
+  - "New requests queue and timeout"
+
+alert:
+  name: "DatabaseConnectionPoolExhausted"
+  severity: critical
+  service_name: order-service
+  namespace: production
+  summary: "Connection pool exhausted for order-service"
+  description: "All database connections are in use, new connections are being rejected"
+  labels:
+    alertname: DatabaseConnectionPoolExhausted
+    namespace: production
+    service: order-service
+    database: orders-db
+  annotations:
+    pool_size: "20"
+    active_connections: "20"
+    waiting_requests: "150"
+
+services:
+  - name: order-service
+    namespace: production
+    status: degraded
+    replicas: 5
+    ready_replicas: 5
+    labels:
+      app: order-service
+      team: orders
+    annotations:
+      autosre.io/dependencies: "orders-db"
+      
+  - name: orders-db
+    namespace: production
+    status: healthy
+    replicas: 2
+    ready_replicas: 2
+    labels:
+      app: postgresql
+      database: orders
+
+changes:
+  - id: change-pool-001
+    change_type: scale_up
+    service_name: order-service
+    description: "Scaled order-service from 2 to 5 replicas for flash sale"
+    author: oncall@example.com
+    timestamp: "2024-01-15T09:00:00Z"
+    successful: true
+
+metrics:
+  db_connection_pool_active:
+    order-service:
+      - timestamp: "2024-01-15T09:00:00Z"
+        value: 8
+      - timestamp: "2024-01-15T09:30:00Z"
+        value: 15
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 20
+  db_connection_pool_waiting:
+    order-service:
+      - timestamp: "2024-01-15T09:00:00Z"
+        value: 0
+      - timestamp: "2024-01-15T09:30:00Z"
+        value: 10
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 150
+  http_request_latency_p99:
+    order-service:
+      - timestamp: "2024-01-15T09:00:00Z"
+        value: 0.1
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 30.0
+
+expected_root_cause: "Scaling up replicas without increasing connection pool caused pool exhaustion"
+expected_service: order-service
+expected_runbook: database-connection-pool
+expected_action: "Increase connection pool size per replica, or implement connection pooler like PgBouncer"
+
+max_time_seconds: 120

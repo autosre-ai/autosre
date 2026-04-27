@@ -1,0 +1,100 @@
+name: redis_memory_exhaustion
+description: "Redis cache memory exhausted causing evictions and misses"
+difficulty: medium
+
+setup_steps:
+  - "Cache usage grows beyond maxmemory"
+  - "Keys start getting evicted"
+  - "Cache hit rate drops, database load increases"
+
+alert:
+  name: "RedisMamoryExhausted"
+  severity: high
+  service_name: redis-cache
+  namespace: production
+  summary: "Redis memory usage at 100%"
+  description: "Redis maxmemory reached, evicting keys with allkeys-lru policy"
+  labels:
+    alertname: RedisMemoryExhausted
+    namespace: production
+    instance: redis-cache-0
+    eviction_policy: allkeys-lru
+  annotations:
+    used_memory: "8GB"
+    maxmemory: "8GB"
+    evicted_keys_total: "150000"
+
+services:
+  - name: redis-cache
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    labels:
+      app: redis
+      mode: cluster
+      
+  - name: product-service
+    namespace: production
+    status: degraded
+    replicas: 4
+    ready_replicas: 4
+    labels:
+      app: product-service
+      team: catalog
+    annotations:
+      autosre.io/dependencies: "redis-cache,postgresql"
+      
+  - name: postgresql
+    namespace: production
+    status: degraded
+    replicas: 2
+    ready_replicas: 2
+    labels:
+      app: postgresql
+
+changes:
+  - id: change-redis-001
+    change_type: deployment
+    service_name: product-service
+    description: "Deployed v5.0.0 - Added full product caching"
+    author: perf-team@example.com
+    timestamp: "2024-01-15T05:00:00Z"
+    successful: true
+    
+  - id: change-redis-002
+    change_type: config_change
+    service_name: product-service
+    description: "Changed cache TTL from 1h to 24h"
+    author: perf-team@example.com
+    timestamp: "2024-01-15T05:30:00Z"
+    successful: true
+
+metrics:
+  redis_memory_used_bytes:
+    redis-cache-0:
+      - timestamp: "2024-01-15T05:00:00Z"
+        value: 2147483648
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 6442450944
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 8589934592
+  redis_evicted_keys_total:
+    redis-cache-0:
+      - timestamp: "2024-01-15T05:00:00Z"
+        value: 0
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 150000
+  redis_keyspace_hits_ratio:
+    redis-cache-0:
+      - timestamp: "2024-01-15T05:00:00Z"
+        value: 0.95
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 0.45
+
+expected_root_cause: "Full product caching with 24h TTL exceeded Redis maxmemory"
+expected_service: product-service
+expected_runbook: redis-memory-troubleshooting
+expected_action: "Reduce cache TTL, add cache key prefixes with shorter TTL, or increase Redis memory"
+
+max_time_seconds: 120

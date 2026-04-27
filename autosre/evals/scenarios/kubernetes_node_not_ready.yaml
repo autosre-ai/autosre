@@ -1,0 +1,79 @@
+name: kubernetes_node_not_ready
+description: "Kubernetes node becomes NotReady causing pod evictions"
+difficulty: medium
+
+setup_steps:
+  - "Node kubelet stops reporting"
+  - "Node transitions to NotReady"
+  - "Pods are evicted and rescheduled"
+
+alert:
+  name: "KubeNodeNotReady"
+  severity: critical
+  service_name: kubernetes
+  namespace: kube-system
+  summary: "Node worker-node-3 is not ready"
+  description: "Node has been in NotReady state for more than 5 minutes"
+  labels:
+    alertname: KubeNodeNotReady
+    node: worker-node-3
+    condition: Ready
+    status: "False"
+  annotations:
+    last_heartbeat: "2024-01-15T09:55:00Z"
+    affected_pods: "12"
+
+services:
+  - name: api-gateway
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 2
+    labels:
+      app: api-gateway
+      team: platform
+      
+  - name: order-service
+    namespace: production
+    status: degraded
+    replicas: 4
+    ready_replicas: 3
+    labels:
+      app: order-service
+      team: orders
+
+changes:
+  - id: change-node-001
+    change_type: config_change
+    service_name: kubernetes
+    description: "Applied kernel parameter tuning on worker nodes"
+    author: platform@example.com
+    timestamp: "2024-01-15T09:30:00Z"
+    successful: true
+
+metrics:
+  node_cpu_seconds_total:
+    worker-node-3:
+      - timestamp: "2024-01-15T09:00:00Z"
+        value: 75
+      - timestamp: "2024-01-15T09:50:00Z"
+        value: 100
+  node_memory_MemAvailable_bytes:
+    worker-node-3:
+      - timestamp: "2024-01-15T09:00:00Z"
+        value: 8589934592
+      - timestamp: "2024-01-15T09:50:00Z"
+        value: 104857600
+  kubelet_running_pods:
+    worker-node-3:
+      - timestamp: "2024-01-15T09:00:00Z"
+        value: 35
+      - timestamp: "2024-01-15T09:55:00Z"
+        value: 0
+
+expected_root_cause: "Kernel parameter tuning caused memory pressure, kubelet OOM killed"
+expected_service: kubernetes
+expected_runbook: node-not-ready
+expected_action: "Revert kernel parameters, cordon node, restart kubelet"
+
+max_time_seconds: 120

@@ -1,0 +1,93 @@
+name: packet_loss
+description: "Network packet loss causing request failures and retries"
+difficulty: hard
+
+setup_steps:
+  - "Network interface experiencing packet drops"
+  - "TCP retransmissions increase"
+  - "Service-to-service calls fail intermittently"
+
+alert:
+  name: "HighPacketLoss"
+  severity: high
+  service_name: api-gateway
+  namespace: production
+  summary: "High packet loss detected on api-gateway pods"
+  description: "Packet loss exceeds 5% on network interface"
+  labels:
+    alertname: HighPacketLoss
+    namespace: production
+    pod: api-gateway-xyz789
+    interface: eth0
+  annotations:
+    packet_loss_percent: "8.5"
+    threshold: "1"
+    affected_destinations: "user-service,order-service"
+
+services:
+  - name: api-gateway
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    labels:
+      app: api-gateway
+      team: platform
+      
+  - name: user-service
+    namespace: production
+    status: healthy
+    replicas: 3
+    ready_replicas: 3
+    
+  - name: order-service
+    namespace: production
+    status: healthy
+    replicas: 4
+    ready_replicas: 4
+
+changes:
+  - id: change-pkt-001
+    change_type: config_change
+    service_name: calico
+    description: "Updated Calico CNI to v3.27.0"
+    author: network-team@example.com
+    timestamp: "2024-01-15T05:00:00Z"
+    successful: true
+    
+  - id: change-pkt-002
+    change_type: config_change
+    service_name: api-gateway
+    description: "Enabled jumbo frames (MTU 9000)"
+    author: platform@example.com
+    timestamp: "2024-01-15T06:00:00Z"
+    successful: true
+
+metrics:
+  node_network_receive_drop_total:
+    api-gateway:
+      - timestamp: "2024-01-15T06:00:00Z"
+        value: 100
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 5000
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 50000
+  node_network_transmit_drop_total:
+    api-gateway:
+      - timestamp: "2024-01-15T06:00:00Z"
+        value: 50
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 25000
+  tcp_retransmissions:
+    api-gateway:
+      - timestamp: "2024-01-15T06:00:00Z"
+        value: 10
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 15000
+
+expected_root_cause: "MTU mismatch after enabling jumbo frames - CNI and nodes not configured for 9000 MTU"
+expected_service: api-gateway
+expected_runbook: network-packet-loss
+expected_action: "Revert MTU to 1500, or configure all nodes and CNI for jumbo frames consistently"
+
+max_time_seconds: 180

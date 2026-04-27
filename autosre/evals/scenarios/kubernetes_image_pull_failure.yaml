@@ -1,0 +1,83 @@
+name: kubernetes_image_pull_failure
+description: "Container image pull failures preventing pod scheduling"
+difficulty: easy
+
+setup_steps:
+  - "Image registry credentials expire"
+  - "New pods can't pull images"
+  - "Deployment rollout stalls"
+
+alert:
+  name: "KubePodImagePullBackOff"
+  severity: high
+  service_name: order-service
+  namespace: production
+  summary: "Pods in ImagePullBackOff for order-service"
+  description: "New pods cannot pull container image, deployment stalled"
+  labels:
+    alertname: KubePodImagePullBackOff
+    namespace: production
+    deployment: order-service
+    reason: ImagePullBackOff
+  annotations:
+    image: "registry.example.com/order-service:v3.5.0"
+    error: "unauthorized: authentication required"
+    pending_pods: "3"
+
+services:
+  - name: order-service
+    namespace: production
+    status: degraded
+    replicas: 5
+    ready_replicas: 2
+    labels:
+      app: order-service
+      team: orders
+      
+  - name: payment-service
+    namespace: production
+    status: healthy
+    replicas: 3
+    ready_replicas: 3
+    labels:
+      app: payment-service
+      team: payments
+
+changes:
+  - id: change-img-001
+    change_type: deployment
+    service_name: order-service
+    description: "Deployed order-service v3.5.0"
+    author: dev@example.com
+    timestamp: "2024-01-15T10:00:00Z"
+    successful: false
+    
+  - id: change-img-002
+    change_type: config_change
+    service_name: container-registry
+    description: "Rotated registry service account credentials"
+    author: security@example.com
+    timestamp: "2024-01-15T09:00:00Z"
+    successful: true
+
+metrics:
+  kube_pod_container_status_waiting_reason:
+    order-service:
+      ImagePullBackOff:
+        - timestamp: "2024-01-15T10:00:00Z"
+          value: 0
+        - timestamp: "2024-01-15T10:15:00Z"
+          value: 3
+  deployment_rollout_duration_seconds:
+    order-service:
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 0
+      - timestamp: "2024-01-15T11:00:00Z"
+        value: 3600
+
+expected_root_cause: "Registry credential rotation invalidated imagePullSecret in production namespace"
+expected_service: order-service
+expected_runbook: image-pull-failure
+expected_action: "Update imagePullSecret in production namespace with new credentials"
+
+max_time_seconds: 90

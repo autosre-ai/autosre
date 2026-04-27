@@ -1,0 +1,94 @@
+name: cronjob_failure_cascade
+description: "Failed CronJob causing data inconsistency and alerts"
+difficulty: medium
+
+setup_steps:
+  - "Nightly data sync CronJob fails"
+  - "Data becomes stale"
+  - "Downstream services report inconsistencies"
+
+alert:
+  name: "KubeJobFailed"
+  severity: high
+  service_name: data-sync-job
+  namespace: production
+  summary: "CronJob data-sync-job has failed 3 consecutive times"
+  description: "Nightly data synchronization job failing, data may be stale"
+  labels:
+    alertname: KubeJobFailed
+    namespace: production
+    cronjob: data-sync-job
+    failure_count: "3"
+  annotations:
+    last_success: "2024-01-12T02:00:00Z"
+    last_failure_reason: "Error: ETIMEOUT connecting to external-data-source"
+
+services:
+  - name: data-sync-job
+    namespace: production
+    status: failed
+    labels:
+      app: data-sync
+      team: data-platform
+      
+  - name: analytics-dashboard
+    namespace: production
+    status: degraded
+    replicas: 2
+    ready_replicas: 2
+    labels:
+      app: analytics-dashboard
+      team: analytics
+    annotations:
+      autosre.io/dependencies: "data-warehouse"
+      
+  - name: reporting-service
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    labels:
+      app: reporting-service
+      team: analytics
+
+changes:
+  - id: change-cron-001
+    change_type: config_change
+    service_name: firewall
+    description: "Updated egress firewall rules for compliance"
+    author: security@example.com
+    timestamp: "2024-01-12T18:00:00Z"
+    successful: true
+    
+  - id: change-cron-002
+    change_type: config_change
+    service_name: data-sync-job
+    description: "Updated job timeout from 2h to 1h"
+    author: platform@example.com
+    timestamp: "2024-01-11T10:00:00Z"
+    successful: true
+
+metrics:
+  kube_job_status_succeeded:
+    data-sync-job:
+      - timestamp: "2024-01-12T02:30:00Z"
+        value: 1
+      - timestamp: "2024-01-13T02:30:00Z"
+        value: 0
+      - timestamp: "2024-01-14T02:30:00Z"
+        value: 0
+      - timestamp: "2024-01-15T02:30:00Z"
+        value: 0
+  data_staleness_hours:
+    data-warehouse:
+      - timestamp: "2024-01-12T08:00:00Z"
+        value: 6
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 78
+
+expected_root_cause: "Firewall rule change blocked egress to external-data-source"
+expected_service: firewall
+expected_runbook: cronjob-failure
+expected_action: "Update firewall rules to allow egress to external-data-source, re-run job manually"
+
+max_time_seconds: 120

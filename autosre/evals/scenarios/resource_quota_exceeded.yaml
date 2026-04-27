@@ -1,0 +1,91 @@
+name: resource_quota_exceeded
+description: "Kubernetes resource quota blocking deployments"
+difficulty: easy
+
+setup_steps:
+  - "Namespace resource quota reached"
+  - "New deployments can't schedule pods"
+  - "Scaling operations fail silently"
+
+alert:
+  name: "KubeResourceQuotaExceeded"
+  severity: medium
+  service_name: checkout-service
+  namespace: production
+  summary: "Resource quota exceeded in production namespace"
+  description: "Cannot create new pods - CPU and memory quota exhausted"
+  labels:
+    alertname: KubeResourceQuotaExceeded
+    namespace: production
+    resource: cpu
+    quota_name: production-quota
+  annotations:
+    cpu_used: "100"
+    cpu_limit: "100"
+    memory_used: "200Gi"
+    memory_limit: "200Gi"
+    pending_pods: "5"
+
+services:
+  - name: checkout-service
+    namespace: production
+    status: degraded
+    replicas: 5
+    ready_replicas: 3
+    labels:
+      app: checkout-service
+      team: commerce
+      
+  - name: payment-service
+    namespace: production
+    status: degraded
+    replicas: 4
+    ready_replicas: 2
+    labels:
+      app: payment-service
+      team: payments
+
+changes:
+  - id: change-quota-001
+    change_type: config_change
+    service_name: kubernetes
+    description: "Reduced production namespace quota for cost optimization"
+    author: finops@example.com
+    timestamp: "2024-01-14T16:00:00Z"
+    successful: true
+    
+  - id: change-quota-002
+    change_type: scale_up
+    service_name: checkout-service
+    description: "Attempted to scale checkout-service for flash sale"
+    author: oncall@example.com
+    timestamp: "2024-01-15T09:00:00Z"
+    successful: false
+
+metrics:
+  kube_resourcequota:
+    production:
+      cpu_used:
+        - timestamp: "2024-01-14T12:00:00Z"
+          value: 60
+        - timestamp: "2024-01-15T09:00:00Z"
+          value: 100
+      cpu_hard:
+        - timestamp: "2024-01-14T12:00:00Z"
+          value: 120
+        - timestamp: "2024-01-14T16:00:00Z"
+          value: 100
+  kube_pod_status_phase:
+    checkout-service:
+      Pending:
+        - timestamp: "2024-01-15T09:00:00Z"
+          value: 0
+        - timestamp: "2024-01-15T09:30:00Z"
+          value: 2
+
+expected_root_cause: "Quota reduction didn't account for flash sale scaling requirements"
+expected_service: kubernetes
+expected_runbook: resource-quota
+expected_action: "Increase namespace quota or reduce resource requests on lower-priority workloads"
+
+max_time_seconds: 90

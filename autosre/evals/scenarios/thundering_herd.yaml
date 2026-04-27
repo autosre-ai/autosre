@@ -1,0 +1,99 @@
+name: thundering_herd
+description: "Cache invalidation causing thundering herd on database"
+difficulty: hard
+
+setup_steps:
+  - "Cache TTL expires simultaneously for popular keys"
+  - "All instances hit database at once"
+  - "Database overwhelmed, cascading failures"
+
+alert:
+  name: "DatabaseOverloaded"
+  severity: critical
+  service_name: postgresql
+  namespace: production
+  summary: "Database connection saturation"
+  description: "All database connections in use, queries timing out"
+  labels:
+    alertname: DatabaseOverloaded
+    namespace: production
+    database: products-db
+  annotations:
+    active_connections: "500"
+    max_connections: "500"
+    waiting_queries: "2000"
+    trigger: "cache_miss_spike"
+
+services:
+  - name: postgresql
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    labels:
+      app: postgresql
+      database: products
+      
+  - name: product-service
+    namespace: production
+    status: degraded
+    replicas: 10
+    ready_replicas: 10
+    labels:
+      app: product-service
+      team: catalog
+    annotations:
+      autosre.io/dependencies: "redis-cache,postgresql"
+      
+  - name: redis-cache
+    namespace: production
+    status: healthy
+    replicas: 6
+    ready_replicas: 6
+    labels:
+      app: redis
+      mode: cluster
+
+changes:
+  - id: change-herd-001
+    change_type: config_change
+    service_name: product-service
+    description: "Set uniform cache TTL of 1 hour for all product keys"
+    author: perf-team@example.com
+    timestamp: "2024-01-15T07:00:00Z"
+    successful: true
+    
+  - id: change-herd-002
+    change_type: deployment
+    service_name: product-service
+    description: "Scaled up to 10 replicas for product launch"
+    author: ops@example.com
+    timestamp: "2024-01-15T07:30:00Z"
+    successful: true
+
+metrics:
+  redis_keyspace_misses:
+    redis-cache:
+      - timestamp: "2024-01-15T07:55:00Z"
+        value: 100
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 500000
+  pg_stat_activity_count:
+    postgresql:
+      - timestamp: "2024-01-15T07:55:00Z"
+        value: 50
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 500
+  http_request_duration_seconds_p99:
+    product-service:
+      - timestamp: "2024-01-15T07:55:00Z"
+        value: 0.1
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 30.0
+
+expected_root_cause: "Uniform 1h TTL caused mass cache expiry at top of hour across 10 replicas"
+expected_service: product-service
+expected_runbook: thundering-herd
+expected_action: "Add jitter to cache TTL, implement cache stampede protection (singleflight/lock)"
+
+max_time_seconds: 150

@@ -1,0 +1,99 @@
+name: database_replication_lag
+description: "Database replica lag causing stale reads and inconsistency"
+difficulty: hard
+
+setup_steps:
+  - "Heavy write load on primary database"
+  - "Replicas fall behind"
+  - "Read-after-write consistency failures"
+
+alert:
+  name: "PostgreSQLReplicationLag"
+  severity: high
+  service_name: postgresql
+  namespace: production
+  summary: "Replication lag exceeds 30 seconds on postgresql-replica"
+  description: "Replica is more than 30 seconds behind primary, read consistency compromised"
+  labels:
+    alertname: PostgreSQLReplicationLag
+    namespace: production
+    instance: postgresql-replica-0
+    primary: postgresql-primary-0
+  annotations:
+    lag_bytes: "536870912"
+    lag_seconds: "45"
+    threshold: "30"
+
+services:
+  - name: postgresql
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    labels:
+      app: postgresql
+      cluster: main-db
+      
+  - name: user-service
+    namespace: production
+    status: healthy
+    replicas: 3
+    ready_replicas: 3
+    annotations:
+      autosre.io/dependencies: "postgresql"
+      
+  - name: analytics-service
+    namespace: production
+    status: degraded
+    replicas: 2
+    ready_replicas: 2
+    annotations:
+      autosre.io/dependencies: "postgresql"
+
+changes:
+  - id: change-rep-001
+    change_type: deployment
+    service_name: analytics-service
+    description: "Deployed analytics batch job v3.0 with new bulk insert logic"
+    author: data-team@example.com
+    timestamp: "2024-01-15T08:00:00Z"
+    successful: true
+    
+  - id: change-rep-002
+    change_type: config_change
+    service_name: postgresql
+    description: "Reduced wal_sender_timeout from 60s to 30s"
+    author: dba@example.com
+    timestamp: "2024-01-15T07:00:00Z"
+    successful: true
+
+metrics:
+  pg_replication_lag_bytes:
+    postgresql-replica-0:
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 1048576
+      - timestamp: "2024-01-15T09:00:00Z"
+        value: 134217728
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 536870912
+  pg_stat_replication_replay_lag:
+    postgresql-replica-0:
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 1
+      - timestamp: "2024-01-15T09:00:00Z"
+        value: 15
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 45
+  pg_stat_bgwriter_buffers_checkpoint:
+    postgresql-primary:
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 1000
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 50000
+
+expected_root_cause: "Analytics batch job v3.0 bulk inserts overwhelming replication"
+expected_service: analytics-service
+expected_runbook: database-replication-lag
+expected_action: "Rate-limit analytics batch job, increase replica resources, or pause non-critical read traffic"
+
+max_time_seconds: 180

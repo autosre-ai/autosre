@@ -1,0 +1,90 @@
+name: disk_io_saturation
+description: "Disk I/O saturation causing database slowdowns"
+difficulty: medium
+
+setup_steps:
+  - "Database write load increases"
+  - "Disk I/O becomes saturated"
+  - "Query latency spikes"
+
+alert:
+  name: "HighDiskIOWait"
+  severity: high
+  service_name: postgresql
+  namespace: production
+  summary: "High disk I/O wait on postgresql-0"
+  description: "Disk I/O wait time exceeds 50%, causing query delays"
+  labels:
+    alertname: HighDiskIOWait
+    namespace: production
+    pod: postgresql-0
+    device: sda
+  annotations:
+    iowait_percent: "65"
+    threshold: "30"
+    disk_utilization: "98%"
+
+services:
+  - name: postgresql
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    labels:
+      app: postgresql
+      cluster: main-db
+      
+  - name: analytics-pipeline
+    namespace: production
+    status: healthy
+    replicas: 5
+    ready_replicas: 5
+    labels:
+      app: analytics-pipeline
+      team: data
+
+changes:
+  - id: change-io-001
+    change_type: deployment
+    service_name: analytics-pipeline
+    description: "Deployed analytics-pipeline v4.0 - Increased batch size 10x"
+    author: data-team@example.com
+    timestamp: "2024-01-15T06:00:00Z"
+    successful: true
+    
+  - id: change-io-002
+    change_type: config_change
+    service_name: postgresql
+    description: "Disabled synchronous_commit for performance"
+    author: dba@example.com
+    timestamp: "2024-01-14T18:00:00Z"
+    successful: true
+
+metrics:
+  node_disk_io_time_seconds_total:
+    postgresql-0:
+      - timestamp: "2024-01-15T06:00:00Z"
+        value: 10
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 45
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 65
+  node_disk_written_bytes_total:
+    postgresql-0:
+      - timestamp: "2024-01-15T06:00:00Z"
+        value: 1073741824
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 107374182400
+  pg_stat_activity_active:
+    postgresql:
+      - timestamp: "2024-01-15T06:00:00Z"
+        value: 20
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 150
+
+expected_root_cause: "Analytics pipeline 10x batch size combined with disabled synchronous_commit causing write amplification"
+expected_service: analytics-pipeline
+expected_runbook: disk-io-troubleshooting
+expected_action: "Reduce batch size, re-enable synchronous_commit, or upgrade to faster storage"
+
+max_time_seconds: 150

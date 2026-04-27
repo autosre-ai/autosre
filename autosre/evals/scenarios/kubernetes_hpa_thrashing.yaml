@@ -1,0 +1,98 @@
+name: kubernetes_hpa_thrashing
+description: "HPA rapidly scaling up and down causing instability"
+difficulty: hard
+
+setup_steps:
+  - "HPA targets are set too sensitively"
+  - "Traffic fluctuations cause rapid scaling"
+  - "Pod churn affects service stability"
+
+alert:
+  name: "HPAScalingThrashing"
+  severity: medium
+  service_name: checkout-service
+  namespace: production
+  summary: "HPA for checkout-service is thrashing"
+  description: "HPA has scaled up and down more than 10 times in the last 30 minutes"
+  labels:
+    alertname: HPAScalingThrashing
+    namespace: production
+    hpa: checkout-service-hpa
+    deployment: checkout-service
+  annotations:
+    scale_events: "15"
+    min_replicas: "2"
+    max_replicas: "20"
+    current_replicas: "8"
+
+services:
+  - name: checkout-service
+    namespace: production
+    status: degraded
+    replicas: 8
+    ready_replicas: 5
+    labels:
+      app: checkout-service
+      team: commerce
+    annotations:
+      autosre.io/dependencies: "cart-service,payment-service"
+      
+  - name: cart-service
+    namespace: production
+    status: healthy
+    replicas: 4
+    ready_replicas: 4
+    
+  - name: payment-service
+    namespace: production
+    status: healthy
+    replicas: 3
+    ready_replicas: 3
+
+changes:
+  - id: change-hpa-001
+    change_type: config_change
+    service_name: checkout-service
+    description: "Updated HPA to use custom metric: requests_per_second"
+    author: platform@example.com
+    timestamp: "2024-01-15T07:00:00Z"
+    successful: true
+    
+  - id: change-hpa-002
+    change_type: config_change
+    service_name: checkout-service
+    description: "Set HPA target to 10 RPS per pod"
+    author: platform@example.com
+    timestamp: "2024-01-15T07:05:00Z"
+    successful: true
+
+metrics:
+  kube_hpa_status_current_replicas:
+    checkout-service:
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 4
+      - timestamp: "2024-01-15T08:05:00Z"
+        value: 12
+      - timestamp: "2024-01-15T08:10:00Z"
+        value: 3
+      - timestamp: "2024-01-15T08:15:00Z"
+        value: 15
+      - timestamp: "2024-01-15T08:20:00Z"
+        value: 5
+  http_requests_per_second:
+    checkout-service:
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 45
+      - timestamp: "2024-01-15T08:05:00Z"
+        value: 120
+      - timestamp: "2024-01-15T08:10:00Z"
+        value: 25
+      - timestamp: "2024-01-15T08:15:00Z"
+        value: 150
+
+expected_root_cause: "HPA target of 10 RPS too sensitive for bursty checkout traffic pattern"
+expected_service: checkout-service
+expected_runbook: hpa-troubleshooting
+expected_action: "Increase HPA stabilization window, raise target to 50 RPS, add cooldown period"
+
+max_time_seconds: 120

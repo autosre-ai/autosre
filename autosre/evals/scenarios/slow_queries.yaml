@@ -1,0 +1,84 @@
+name: slow_queries
+description: "Slow database queries causing application timeouts"
+difficulty: medium
+
+setup_steps:
+  - "Missing index on frequently queried column"
+  - "Query performance degrades with data growth"
+  - "Application response times spike"
+
+alert:
+  name: "HighP99Latency"
+  severity: high
+  service_name: search-service
+  namespace: production
+  summary: "P99 latency above 5s for search-service"
+  description: "Search requests are timing out, P99 latency has exceeded SLO threshold"
+  labels:
+    alertname: HighP99Latency
+    namespace: production
+    service: search-service
+    slo: "latency"
+  annotations:
+    p99_latency: "8.5s"
+    threshold: "2s"
+    affected_endpoints: "/api/v1/search"
+
+services:
+  - name: search-service
+    namespace: production
+    status: degraded
+    replicas: 4
+    ready_replicas: 4
+    labels:
+      app: search-service
+      team: discovery
+    annotations:
+      autosre.io/dependencies: "products-db"
+      
+  - name: products-db
+    namespace: production
+    status: healthy
+    replicas: 2
+    ready_replicas: 2
+    labels:
+      app: postgresql
+      database: products
+
+changes:
+  - id: change-query-001
+    change_type: deployment
+    service_name: search-service
+    description: "Deployed v4.2.0 - Added category filtering to search"
+    author: search-team@example.com
+    timestamp: "2024-01-15T06:00:00Z"
+    successful: true
+
+metrics:
+  http_request_duration_seconds_p99:
+    search-service:
+      - timestamp: "2024-01-15T06:30:00Z"
+        value: 0.8
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 3.5
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 8.5
+  pg_stat_activity_queries_waiting:
+    products-db:
+      - timestamp: "2024-01-15T06:30:00Z"
+        value: 2
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 45
+  pg_slow_queries_total:
+    products-db:
+      - timestamp: "2024-01-15T06:30:00Z"
+        value: 5
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 2500
+
+expected_root_cause: "v4.2.0 added category filter query without corresponding database index"
+expected_service: search-service
+expected_runbook: database-slow-queries
+expected_action: "Add index on category column, or rollback to v4.1.x while index is created"
+
+max_time_seconds: 150

@@ -1,0 +1,94 @@
+name: gradual_memory_leak
+description: "Slow memory leak manifesting over days"
+difficulty: hard
+
+setup_steps:
+  - "Service accumulates memory slowly over time"
+  - "Memory pressure builds over 48-72 hours"
+  - "Eventually triggers OOM or degradation"
+
+alert:
+  name: "HighMemoryUsage"
+  severity: medium
+  service_name: session-service
+  namespace: production
+  summary: "Memory usage above 85% for session-service"
+  description: "Container memory has been steadily increasing, approaching limits"
+  labels:
+    alertname: HighMemoryUsage
+    namespace: production
+    pod: session-service-abc123
+    container: session-service
+  annotations:
+    current_usage: "87%"
+    threshold: "80%"
+    trend: "increasing"
+
+services:
+  - name: session-service
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    labels:
+      app: session-service
+      team: identity
+    annotations:
+      autosre.io/dependencies: "redis-cluster"
+      
+  - name: redis-cluster
+    namespace: production
+    status: healthy
+    replicas: 6
+    ready_replicas: 6
+    labels:
+      app: redis
+      mode: cluster
+
+changes:
+  - id: change-leak-001
+    change_type: deployment
+    service_name: session-service
+    description: "Deployed v2.8.0 - Added session analytics tracking"
+    author: analytics@example.com
+    timestamp: "2024-01-12T10:00:00Z"
+    successful: true
+    
+  - id: change-leak-002
+    change_type: config_change
+    service_name: session-service
+    description: "Increased session TTL from 1h to 24h"
+    author: product@example.com
+    timestamp: "2024-01-13T14:00:00Z"
+    successful: true
+
+metrics:
+  container_memory_usage_bytes:
+    session-service:
+      - timestamp: "2024-01-12T10:00:00Z"
+        value: 1073741824  # 1GB
+      - timestamp: "2024-01-13T10:00:00Z"
+        value: 2147483648  # 2GB
+      - timestamp: "2024-01-14T10:00:00Z"
+        value: 3221225472  # 3GB
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 3865470566  # 3.6GB (limit 4GB)
+  session_analytics_cache_size:
+    session-service:
+      - timestamp: "2024-01-12T10:00:00Z"
+        value: 10000
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 5000000
+  gc_pause_duration_seconds:
+    session-service:
+      - timestamp: "2024-01-12T10:00:00Z"
+        value: 0.05
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 2.5
+
+expected_root_cause: "Session analytics cache not bounded, 24h TTL caused cache to grow unbounded"
+expected_service: session-service
+expected_runbook: memory-leak-investigation
+expected_action: "Add cache eviction policy, reduce session TTL, or add memory limit to analytics cache"
+
+max_time_seconds: 180

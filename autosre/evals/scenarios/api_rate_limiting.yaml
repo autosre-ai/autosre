@@ -1,0 +1,98 @@
+name: api_rate_limiting
+description: "External API rate limiting causing cascading failures"
+difficulty: medium
+
+setup_steps:
+  - "Traffic spike hits service"
+  - "External API starts rate limiting requests"
+  - "Queued requests timeout, errors propagate"
+
+alert:
+  name: "HighErrorRate"
+  severity: high
+  service_name: notification-service
+  namespace: production
+  summary: "Error rate above 30% for notification-service"
+  description: "notification-service is returning errors for external API calls"
+  labels:
+    alertname: HighErrorRate
+    namespace: production
+    service: notification-service
+    error_code: "429"
+  annotations:
+    error_rate: "35%"
+    external_api: "twilio.com"
+    rate_limit: "100/min"
+
+services:
+  - name: notification-service
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    labels:
+      app: notification-service
+      team: communications
+    annotations:
+      autosre.io/dependencies: "user-service,twilio-api"
+      
+  - name: user-service
+    namespace: production
+    status: healthy
+    replicas: 3
+    ready_replicas: 3
+    
+  - name: order-service
+    namespace: production
+    status: degraded
+    replicas: 4
+    ready_replicas: 4
+    annotations:
+      autosre.io/dependencies: "notification-service"
+
+changes:
+  - id: change-rate-001
+    change_type: deployment
+    service_name: notification-service
+    description: "Deployed v3.0.0 - Added real-time order notifications"
+    author: product@example.com
+    timestamp: "2024-01-15T07:00:00Z"
+    successful: true
+    
+  - id: change-rate-002
+    change_type: config_change
+    service_name: notification-service
+    description: "Removed notification batching for lower latency"
+    author: dev@example.com
+    timestamp: "2024-01-15T07:30:00Z"
+    successful: true
+
+metrics:
+  http_client_requests_total:
+    notification-service:
+      - timestamp: "2024-01-15T07:00:00Z"
+        value: 50
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 150
+      - timestamp: "2024-01-15T09:00:00Z"
+        value: 500
+  http_client_response_code:
+    notification-service:
+      429:
+        - timestamp: "2024-01-15T07:00:00Z"
+          value: 0
+        - timestamp: "2024-01-15T09:00:00Z"
+          value: 175
+  external_api_calls_per_minute:
+    twilio:
+      - timestamp: "2024-01-15T07:00:00Z"
+        value: 30
+      - timestamp: "2024-01-15T09:00:00Z"
+        value: 500
+
+expected_root_cause: "Removing notification batching caused API calls to exceed Twilio rate limit"
+expected_service: notification-service
+expected_runbook: external-api-rate-limit
+expected_action: "Re-enable notification batching, implement exponential backoff, request rate limit increase"
+
+max_time_seconds: 120
