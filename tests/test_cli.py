@@ -33,6 +33,31 @@ class TestCLIBasics:
         assert "0.1.0" in result.output
 
 
+class TestCLIStatus:
+    """Test status command."""
+    
+    def test_status_runs(self, runner):
+        """Test status command runs."""
+        result = runner.invoke(cli, ["status"])
+        assert result.exit_code == 0
+        assert "Status" in result.output
+    
+    def test_status_shows_config(self, runner):
+        """Test status shows configuration."""
+        result = runner.invoke(cli, ["status"])
+        assert "Configuration" in result.output
+    
+    def test_status_shows_context(self, runner):
+        """Test status shows context store."""
+        result = runner.invoke(cli, ["status"])
+        assert "Context Store" in result.output
+    
+    def test_status_shows_llm(self, runner):
+        """Test status shows LLM provider."""
+        result = runner.invoke(cli, ["status"])
+        assert "LLM Provider" in result.output
+
+
 class TestCLIInit:
     """Test init command."""
     

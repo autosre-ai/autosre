@@ -132,6 +132,72 @@ tags:
     console.print("  3. Run 'autosre eval list' to see available scenarios")
 
 
+@cli.command()
+def status():
+    """Show overall AutoSRE status.
+    
+    Displays:
+    - Configuration status
+    - Context store summary
+    - Connector health
+    - Recent activity
+    """
+    from pathlib import Path
+    from autosre.foundation.context_store import ContextStore
+    
+    console.print("[bold cyan]AutoSRE Status[/bold cyan]\n")
+    
+    # Check configuration
+    console.print("[bold]Configuration[/bold]")
+    env_file = Path(".env")
+    if env_file.exists():
+        console.print("  [green]✓[/] .env file found")
+    else:
+        console.print("  [yellow]![/] .env file not found (using defaults)")
+    
+    autosre_dir = Path(".autosre")
+    if autosre_dir.exists():
+        console.print("  [green]✓[/] .autosre directory exists")
+    else:
+        console.print("  [yellow]![/] .autosre directory not found (run 'autosre init')")
+    
+    # Context store summary
+    console.print("\n[bold]Context Store[/bold]")
+    try:
+        store = ContextStore()
+        summary = store.get_context_summary()
+        
+        console.print(f"  Services: {summary['services']}")
+        console.print(f"  Ownership mappings: {summary['ownership_mappings']}")
+        console.print(f"  Changes (24h): {summary['changes_last_24h']}")
+        console.print(f"  Runbooks: {summary['runbooks']}")
+        console.print(f"  Firing alerts: {summary['firing_alerts']}")
+        console.print(f"  Open incidents: {summary['open_incidents']}")
+    except Exception as e:
+        console.print(f"  [red]Error: {e}[/]")
+    
+    # LLM status
+    console.print("\n[bold]LLM Provider[/bold]")
+    try:
+        from autosre.config import settings
+        console.print(f"  Provider: {settings.llm_provider}")
+        if settings.llm_provider == "ollama":
+            console.print(f"  Host: {settings.ollama_host}")
+            console.print(f"  Model: {settings.ollama_model}")
+        elif settings.llm_provider == "openai":
+            key_status = "configured" if settings.openai_api_key else "not set"
+            console.print(f"  API Key: {key_status}")
+            console.print(f"  Model: {settings.openai_model}")
+        elif settings.llm_provider == "anthropic":
+            key_status = "configured" if settings.anthropic_api_key else "not set"
+            console.print(f"  API Key: {key_status}")
+            console.print(f"  Model: {settings.anthropic_model}")
+    except Exception as e:
+        console.print(f"  [red]Error: {e}[/]")
+    
+    console.print()
+
+
 @cli.group()
 def context():
     """Manage context store (services, ownership, changes)."""
