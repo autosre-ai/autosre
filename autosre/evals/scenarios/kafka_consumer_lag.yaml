@@ -1,0 +1,53 @@
+name: kafka_consumer_lag
+description: Kafka consumer lag spike causing message backlog
+difficulty: medium
+
+alert:
+  name: KafkaConsumerLagHigh
+  summary: Consumer group 'order-processor' lag exceeds 10000 messages
+  severity: warning
+  labels:
+    consumer_group: order-processor
+    topic: orders
+    namespace: production
+    service: order-service
+
+services:
+  - name: order-service
+    status: healthy
+    replicas: 3
+    ready_replicas: 3
+    dependencies:
+      - kafka-broker
+      - database
+  - name: kafka-broker
+    status: healthy
+    replicas: 3
+    ready_replicas: 3
+
+changes:
+  - timestamp: "10 minutes ago"
+    type: deployment
+    service: order-service
+    description: "Deploy v3.2.0 with new order validation"
+    author: ci-bot
+    successful: true
+
+metrics:
+  kafka_consumer_lag:
+    value: 15000
+    trend: increasing
+  order_service_processing_time_p99:
+    value: 500ms
+    baseline: 50ms
+    trend: increasing
+  kafka_messages_per_second:
+    value: 1000
+    trend: stable
+
+expected_root_cause: "Recent deployment introduced inefficient order validation causing slow message processing"
+expected_service: order-service
+expected_runbook: kafka-lag-troubleshooting
+expected_action: "Scale order-service consumers or rollback deployment"
+
+max_time_seconds: 300

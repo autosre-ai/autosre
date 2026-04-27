@@ -1,0 +1,57 @@
+name: s3_bucket_permissions
+description: Application failing to write to S3 due to IAM permission changes
+difficulty: medium
+
+alert:
+  name: S3WriteFailures
+  summary: Service 'upload-service' experiencing high S3 AccessDenied errors
+  severity: critical
+  labels:
+    bucket: user-uploads-prod
+    namespace: production
+    service: upload-service
+    error_type: AccessDenied
+
+services:
+  - name: upload-service
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    dependencies:
+      - s3-user-uploads
+      - api-gateway
+
+changes:
+  - timestamp: "45 minutes ago"
+    type: infrastructure
+    service: aws-iam
+    description: "Update IAM policy for upload-service role - tightened permissions"
+    author: security-team
+    successful: true
+  - timestamp: "1 hour ago"
+    type: config_change
+    service: upload-service
+    description: "Added new upload path /v2/uploads"
+    author: backend-team
+    successful: true
+
+metrics:
+  s3_put_errors:
+    value: 500
+    trend: spiking
+  s3_put_success:
+    value: 0
+    baseline: 100
+  upload_api_error_rate:
+    value: 100%
+    baseline: 0.5%
+  user_complaints:
+    value: 50
+    trend: increasing
+
+expected_root_cause: "IAM policy update removed s3:PutObject permission for new /v2/ prefix path"
+expected_service: upload-service
+expected_runbook: aws-permissions-troubleshooting
+expected_action: "Update IAM policy to include s3:PutObject for /v2/* prefix"
+
+max_time_seconds: 300

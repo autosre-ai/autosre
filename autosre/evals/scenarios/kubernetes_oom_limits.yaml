@@ -1,0 +1,58 @@
+name: kubernetes_resource_limits_oom
+description: Pod OOMKilled due to inadequate memory limits after workload increase
+difficulty: medium
+
+alert:
+  name: PodOOMKilled
+  summary: Pod 'analytics-worker-7db4f5c89d-xyz12' terminated due to OOM
+  severity: high
+  labels:
+    pod: analytics-worker-7db4f5c89d-xyz12
+    namespace: production
+    deployment: analytics-worker
+    reason: OOMKilled
+
+services:
+  - name: analytics-worker
+    status: degraded
+    replicas: 5
+    ready_replicas: 3
+    dependencies:
+      - redis-cache
+      - postgres
+
+changes:
+  - timestamp: "2 hours ago"
+    type: deployment
+    service: analytics-worker
+    description: "Add new report generation feature"
+    author: analytics-team
+    successful: true
+  - timestamp: "1 day ago"
+    type: config_change
+    service: analytics-worker
+    description: "Set memory limits to 512Mi"
+    author: platform-team
+    successful: true
+
+metrics:
+  container_memory_usage_bytes:
+    value: 510Mi
+    limit: 512Mi
+    trend: increasing_to_limit
+  pod_restarts:
+    value: 15
+    trend: increasing
+  analytics_job_queue_size:
+    value: 5000
+    baseline: 100
+  analytics_job_duration_p99:
+    value: 300s
+    baseline: 30s
+
+expected_root_cause: "New report generation feature requires more memory than current 512Mi limit allows"
+expected_service: analytics-worker
+expected_runbook: kubernetes-oom-troubleshooting
+expected_action: "Increase memory limits to 1Gi or optimize report generation memory usage"
+
+max_time_seconds: 300

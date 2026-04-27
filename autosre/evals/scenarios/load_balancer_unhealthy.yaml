@@ -1,0 +1,64 @@
+name: load_balancer_unhealthy_hosts
+description: Load balancer removing healthy backend hosts incorrectly
+difficulty: hard
+
+alert:
+  name: ALBUnhealthyHosts
+  summary: ALB 'api-gateway-alb' has 50% unhealthy hosts
+  severity: critical
+  labels:
+    load_balancer: api-gateway-alb
+    namespace: production
+    service: api-gateway
+
+services:
+  - name: api-gateway
+    status: degraded
+    replicas: 6
+    ready_replicas: 6
+    dependencies:
+      - user-service
+      - auth-service
+  - name: user-service
+    status: healthy
+    replicas: 3
+    ready_replicas: 3
+  - name: auth-service
+    status: healthy
+    replicas: 2
+    ready_replicas: 2
+
+changes:
+  - timestamp: "30 minutes ago"
+    type: config_change
+    service: api-gateway
+    description: "Update health check path from /health to /healthz"
+    author: platform-team
+    successful: true
+  - timestamp: "25 minutes ago"
+    type: infrastructure
+    service: api-gateway-alb
+    description: "ALB health check settings updated"
+    author: terraform-bot
+    successful: true
+
+metrics:
+  alb_healthy_host_count:
+    value: 3
+    baseline: 6
+  alb_health_check_failures:
+    value: 150
+    trend: increasing
+  api_gateway_response_time_p50:
+    value: 200ms
+    baseline: 50ms
+  api_gateway_5xx_rate:
+    value: 45%
+    baseline: 0.1%
+
+expected_root_cause: "Health check path mismatch - application uses /health but ALB configured for /healthz"
+expected_service: api-gateway
+expected_runbook: load-balancer-health-check
+expected_action: "Update ALB health check path to match application endpoint /health"
+
+max_time_seconds: 300
