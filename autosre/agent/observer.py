@@ -9,9 +9,14 @@ The observer layer is responsible for:
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Callable, Any
 from collections import deque
+
+
+def utcnow() -> datetime:
+    """Return timezone-aware UTC datetime."""
+    return datetime.now(timezone.utc)
 
 from autosre.foundation.context_store import ContextStore
 from autosre.foundation.models import Alert, ChangeEvent, Severity
@@ -119,7 +124,7 @@ class MetricAnalyzer:
         """
         results = {
             "service": service_name,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utcnow().isoformat(),
             "anomalies": [],
             "metrics": {},
         }
