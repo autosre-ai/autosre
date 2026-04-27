@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to OpenSRE will be documented in this file.
+All notable changes to AutoSRE will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -8,20 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Comprehensive documentation overhaul
-- New website landing page at opensre.dev
-- CLI reference documentation
-- Skill documentation for prometheus, kubernetes, slack
-- Deployment guides for Docker, Kubernetes, systemd
-- Security documentation with RBAC details
-- Troubleshooting guide
+- **Testing Sprint (Iterations 1-10)**
+  - 109 new tests (154 total) - from 7% to 18% coverage
+  - CLI command tests (15 tests)
+  - Connector base class tests (14 tests)
+  - Feedback tracker tests (10 tests)
+  - RBAC security tests (31 tests)
+  - Observer module tests (18 tests)
+  - Guardrails module tests (21 tests)
+- Updated GitHub Actions CI to use uv for faster builds
+- Added Python 3.13 to test matrix
 
 ### Changed
-- README.md redesign with better architecture diagram
-- Improved getting-started guide with clearer examples
+- Replaced deprecated `datetime.utcnow()` with timezone-aware alternative throughout codebase
 
 ### Fixed
-- Documentation links and cross-references
+- All deprecation warnings for datetime handling
+
+---
+
+### Previous Changes
 
 ## [0.1.0] - 2024-03-15
 
