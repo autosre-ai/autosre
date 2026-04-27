@@ -199,14 +199,14 @@ class PatternRecognizer:
 
     def analyze_trends(self, namespace: str = None, days: int = 30) -> dict:
         """Analyze incident trends over time."""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
 
         incidents = self.store.find_recent(limit=1000)
 
         if namespace:
             incidents = [inc for inc in incidents if inc.namespace == namespace]
 
-        cutoff = datetime.now() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         recent = [inc for inc in incidents if inc.created_at and inc.created_at > cutoff]
 
         if not recent:

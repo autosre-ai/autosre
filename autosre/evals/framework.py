@@ -19,6 +19,7 @@ def utcnow() -> datetime:
 
 class Scenario(BaseModel):
     """A synthetic incident scenario for evaluation."""
+    id: str = Field(default="", description="Unique scenario ID")
     name: str = Field(..., description="Scenario identifier")
     description: str = Field(..., description="What this scenario tests")
     difficulty: str = Field(default="medium", description="easy/medium/hard")
@@ -77,6 +78,25 @@ class ScenarioResult(BaseModel):
         if not valid_scores:
             return 0.0
         return sum(valid_scores) / len(valid_scores)
+    
+    @property
+    def score(self) -> float:
+        """Alias for accuracy."""
+        return self.accuracy
+    
+    @property
+    def passed(self) -> bool:
+        """Whether the scenario passed."""
+        return self.success
+    
+    @property
+    def errors(self) -> list[str]:
+        """List of errors, if any."""
+        return []  # Placeholder
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary."""
+        return self.model_dump()
 
 
 class EvalStore:
@@ -303,3 +323,87 @@ async def run_scenario(name: str, verbose: bool = False) -> dict:
 def get_results(scenario: Optional[str] = None, limit: int = 100) -> list[dict]:
     """Get evaluation results."""
     return get_eval_store().get_results(scenario=scenario, limit=limit)
+
+
+def get_all_scenarios() -> list[Scenario]:
+    """Get all available scenarios as Scenario objects."""
+    scenarios = []
+    
+    # Built-in scenarios
+    scenarios_dir = Path(__file__).parent / "scenarios"
+    if scenarios_dir.exists():
+        for path in scenarios_dir.glob("*.yaml"):
+            try:
+                with open(path) as f:
+                    data = yaml.safe_load(f)
+                    if data:
+                        # Add id field from filename if not present
+                        if "id" not in data:
+                            data["id"] = path.stem
+                        scenarios.append(Scenario(**data))
+            except Exception:
+                pass  # Skip invalid files
+    
+    # Custom scenarios
+    custom_dir = Path.home() / ".autosre" / "scenarios"
+    if custom_dir.exists():
+        for path in custom_dir.glob("*.yaml"):
+            try:
+                with open(path) as f:
+                    data = yaml.safe_load(f)
+                    if data:
+                        if "id" not in data:
+                            data["id"] = path.stem
+                        scenarios.append(Scenario(**data))
+            except Exception:
+                pass
+    
+    return scenarios
+
+
+def get_scenario(scenario_id: str) -> Optional[Scenario]:
+    """Get a specific scenario by ID."""
+    for scenario in get_all_scenarios():
+        if getattr(scenario, 'id', scenario.name) == scenario_id:
+            return scenario
+    return None
+
+
+class EvalRunner:
+    """Runner for evaluation scenarios."""
+    
+    def __init__(self):
+        self.store = get_eval_store()
+    
+    def run_scenario(self, scenario: Scenario) -> ScenarioResult:
+        """Run a single scenario and return results."""
+        import time
+        
+        start_time = time.time()
+        
+        # TODO: Actually run the agent against the scenario
+        # For now, return a stub result
+        result = ScenarioResult(
+            scenario=scenario.name,
+            success=False,
+            time_to_root_cause=time.time() - start_time,
+            root_cause_correct=False,
+            service_correct=False,
+            runbook_correct=False,
+            action_correct=False,
+            agent_root_cause="Agent not yet implemented",
+            agent_confidence=0.0,
+            agent_reasoning="Placeholder - agent implementation coming soon",
+        )
+        
+        result.accuracy = result.compute_accuracy()
+        self.store.save_result(result)
+        
+        return result
+    
+    def run_all(self) -> list[ScenarioResult]:
+        """Run all scenarios and return results."""
+        results = []
+        for scenario in get_all_scenarios():
+            results.append(self.run_scenario(scenario))
+        return results

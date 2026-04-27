@@ -242,11 +242,13 @@ class IncidentStore:
         resolved_at: datetime = None,
     ) -> bool:
         """Update incident outcome and feedback."""
+        from datetime import timezone as tz
+        
         incident = self.get(incident_id)
         if not incident:
             return False
 
-        resolved_at = resolved_at or datetime.now()
+        resolved_at = resolved_at or datetime.now(tz.utc)
 
         # Calculate resolution time
         resolution_time = None
