@@ -8,16 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Testing Sprint (Iterations 1-10)**
-  - 109 new tests (154 total) - from 7% to 18% coverage
+- **Testing Sprint (Iterations 1-20)**
+  - 211 new tests (256 total) - from 7% to 20% coverage
   - CLI command tests (15 tests)
   - Connector base class tests (14 tests)
   - Feedback tracker tests (10 tests)
   - RBAC security tests (31 tests)
   - Observer module tests (18 tests)
   - Guardrails module tests (21 tests)
+  - Actor module tests (15 tests)
+  - Learning pipeline tests (9 tests)
+  - Evals integration tests (15 tests)
+  - Configuration tests (21 tests)
+  - Audit logging tests (17 tests)
+  - Input sanitization tests (25 tests)
+  - Shared test fixtures in conftest.py
 - Updated GitHub Actions CI to use uv for faster builds
 - Added Python 3.13 to test matrix
+- Added pydantic-settings and python-dotenv dependencies
 
 ### Changed
 - Replaced deprecated `datetime.utcnow()` with timezone-aware alternative throughout codebase
