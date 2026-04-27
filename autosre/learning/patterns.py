@@ -50,7 +50,7 @@ class PatternRecognizer:
     def find_matching_pattern(
         self,
         observations: list[dict],
-        namespace: str = None,
+        namespace: Optional[str] = None,
     ) -> Optional[PatternMatch]:
         """Find if current observations match a known pattern."""
         # Extract key signals from observations
@@ -73,7 +73,7 @@ class PatternRecognizer:
             return None
 
         # Count actions from executed actions
-        actions = Counter()
+        actions: Counter[str] = Counter()
         for inc in similar:
             for action in (inc.actions_executed or []):
                 if isinstance(action, str):
@@ -109,7 +109,7 @@ class PatternRecognizer:
     def suggest_runbook(
         self,
         root_cause: str,
-        namespace: str = None,
+        namespace: Optional[str] = None,
     ) -> Optional[RunbookSuggestion]:
         """Suggest runbook based on past success."""
         similar = self.store.find_by_root_cause(root_cause, limit=20)
@@ -155,7 +155,7 @@ class PatternRecognizer:
             avg_resolution_time=avg_resolution,
         )
 
-    def get_common_root_causes(self, namespace: str = None, limit: int = 10) -> list[dict]:
+    def get_common_root_causes(self, namespace: Optional[str] = None, limit: int = 10) -> list[dict]:
         """Get most common root causes."""
         stats = self.store.get_statistics(namespace)
         return stats.get("top_root_causes", [])[:limit]
@@ -163,7 +163,7 @@ class PatternRecognizer:
     def predict_resolution_time(
         self,
         root_cause: str,
-        namespace: str = None,
+        namespace: Optional[str] = None,
     ) -> Optional[float]:
         """Predict resolution time based on similar incidents."""
         similar = self.store.find_by_root_cause(root_cause, limit=20)
@@ -197,7 +197,7 @@ class PatternRecognizer:
 
         return list(signals)
 
-    def analyze_trends(self, namespace: str = None, days: int = 30) -> dict:
+    def analyze_trends(self, namespace: Optional[str] = None, days: int = 30) -> dict:
         """Analyze incident trends over time."""
         from datetime import datetime, timedelta, timezone
 

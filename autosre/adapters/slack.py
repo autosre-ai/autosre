@@ -273,8 +273,10 @@ class SlackAdapter:
 
         return blocks
 
-    async def update_message(self, channel: str, ts: str, text: str, blocks: list = None):
+    async def update_message(self, channel: str, ts: str, text: str, blocks: Optional[list] = None) -> None:
         """Update an existing Slack message."""
+        if not self.client:
+            return
         try:
             self.client.chat_update(
                 channel=channel,
@@ -285,8 +287,10 @@ class SlackAdapter:
         except SlackApiError as e:
             print(f"Slack update error: {e.response['error']}")
 
-    async def send_action_result(self, channel: str, thread_ts: str, action, success: bool):
+    async def send_action_result(self, channel: str, thread_ts: str, action, success: bool) -> None:
         """Send action execution result as a thread reply."""
+        if not self.client:
+            return
 
         if success:
             text = f"✅ *Action completed successfully*\n```{action.command}```"

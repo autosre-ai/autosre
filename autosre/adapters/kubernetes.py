@@ -4,7 +4,7 @@ Kubernetes Adapter - Interact with K8s cluster
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Optional
 
 from kubernetes import client, config
 from kubernetes.client.exceptions import ApiException
@@ -65,7 +65,7 @@ class KubernetesAdapter:
         elif settings.kubeconfig_path:
             self.kubeconfig = str(settings.kubeconfig_path)
         else:
-            self.kubeconfig = None
+            self.kubeconfig: Optional[str] = None
         self._v1: client.CoreV1Api | None = None
         self._apps_v1: client.AppsV1Api | None = None
         self._initialized = False
@@ -160,7 +160,7 @@ class KubernetesAdapter:
     ) -> str:
         """Get pod logs."""
         try:
-            logs = self.v1.read_namespaced_pod_log(
+            logs: str = self.v1.read_namespaced_pod_log(
                 name=name,
                 namespace=namespace,
                 container=container,
@@ -485,10 +485,10 @@ class KubernetesAdapter:
             Tuple of (memory_limit, memory_request, cpu_limit, cpu_request)
             Memory in bytes, CPU in cores (e.g., 0.5 = 500m)
         """
-        memory_limit = 0
-        memory_request = 0
-        cpu_limit = 0.0
-        cpu_request = 0.0
+        memory_limit: int | float = 0
+        memory_request: int | float = 0
+        cpu_limit: float = 0.0
+        cpu_request: float = 0.0
         has_limits = False
         has_requests = False
 
