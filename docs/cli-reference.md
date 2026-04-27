@@ -1,35 +1,209 @@
-# CLI Reference
+# AutoSRE CLI Reference
 
-Complete command-line interface documentation for OpenSRE.
+Complete reference for all AutoSRE command-line commands.
 
-## Overview
-
-The `opensre` CLI provides commands for managing skills, agents, and investigations.
+## Global Options
 
 ```bash
-opensre [OPTIONS] COMMAND [ARGS]...
+autosre [OPTIONS] COMMAND [ARGS]...
 ```
-
-### Global Options
 
 | Option | Description |
 |--------|-------------|
 | `--version` | Show version and exit |
-| `--help` | Show help and exit |
-| `--config PATH` | Path to config file |
+| `-q, --quiet` | Suppress non-essential output |
 | `--debug` | Enable debug logging |
-| `--quiet` | Suppress non-essential output |
+| `--help` | Show help message |
 
 ---
 
-## Core Commands
+## Commands Overview
 
-### `opensre status`
+| Command | Description |
+|---------|-------------|
+| `init` | Initialize AutoSRE in current directory |
+| `status` | Show overall status and health |
+| `context` | Manage context store |
+| `eval` | Run evaluation scenarios |
+| `sandbox` | Manage sandbox environments |
+| `agent` | Run the AI SRE agent |
+| `feedback` | Manage learning and feedback |
 
-Show system status and connection health.
+---
+
+## `autosre init`
+
+Initialize AutoSRE in a directory.
 
 ```bash
-opensre status [OPTIONS]
+autosre init [OPTIONS]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-d, --dir` | `.` | Directory to initialize |
+
+**Example:**
+
+```bash
+autosre init
+autosre init --dir ./my-project
+```
+
+**Creates:**
+- `.autosre/` - Data directory
+- `runbooks/` - Runbook files
+- `.env.example` - Configuration template
+
+---
+
+## `autosre status`
+
+Show AutoSRE status and health.
+
+```bash
+autosre status
+```
+
+**Output includes:**
+- Configuration file status
+- Context store summary
+- LLM provider connectivity
+- Integration status (Kubernetes, Prometheus, etc.)
+
+---
+
+## `autosre context`
+
+Manage the context store (services, ownership, changes, runbooks).
+
+### `autosre context show`
+
+Display context store contents.
+
+```bash
+autosre context show [OPTIONS]
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `-s, --services` | Show services |
+| `-c, --changes` | Show recent changes |
+| `-a, --alerts` | Show firing alerts |
+| `-r, --runbooks` | Show runbooks |
+| `--json` | Output as JSON |
+
+**Examples:**
+
+```bash
+autosre context show                    # Summary
+autosre context show --services         # List services
+autosre context show -sc                # Services and changes
+autosre context show --services --json  # JSON output
+```
+
+### `autosre context sync`
+
+Sync context from external sources.
+
+```bash
+autosre context sync [OPTIONS]
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `-k, --kubernetes` | Sync from Kubernetes |
+| `-p, --prometheus` | Sync from Prometheus |
+| `-g, --github` | Sync from GitHub |
+| `-a, --all` | Sync from all sources |
+| `--dry-run` | Preview without syncing |
+
+**Examples:**
+
+```bash
+autosre context sync --all
+autosre context sync --kubernetes --prometheus
+autosre context sync --dry-run --all
+```
+
+### `autosre context add`
+
+Add items to the context store.
+
+#### `autosre context add service`
+
+```bash
+autosre context add service [OPTIONS]
+```
+
+**Options:**
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `-n, --name` | Yes | Service name |
+| `--namespace` | No | Kubernetes namespace (default: `default`) |
+| `--cluster` | No | Cluster name (default: `default`) |
+| `-t, --team` | No | Owning team |
+| `-d, --dependencies` | No | Dependencies (repeatable) |
+
+**Example:**
+
+```bash
+autosre context add service \
+  --name frontend \
+  --namespace production \
+  --team platform \
+  -d api \
+  -d redis
+```
+
+#### `autosre context add runbook`
+
+```bash
+autosre context add runbook --file <path>
+```
+
+**Options:**
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `-f, --file` | Yes | Runbook YAML file path |
+
+### `autosre context list`
+
+List items from the context store.
+
+```bash
+autosre context list <type> [OPTIONS]
+```
+
+**Types:** `services`, `changes`, `alerts`, `runbooks`, `incidents`
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-l, --limit` | 20 | Maximum items |
+| `--json` | - | Output as JSON |
+
+---
+
+## `autosre eval`
+
+Run evaluation scenarios and track results.
+
+### `autosre eval list`
+
+List available scenarios.
+
+```bash
+autosre eval list [OPTIONS]
 ```
 
 **Options:**
@@ -37,595 +211,377 @@ opensre status [OPTIONS]
 | Option | Description |
 |--------|-------------|
 | `--json` | Output as JSON |
-| `--verbose` | Show detailed status |
+| `-v, --verbose` | Show additional details |
 
-**Example:**
+### `autosre eval run`
+
+Run an evaluation scenario.
 
 ```bash
-$ opensre status
-
-OpenSRE v0.1.0
-
-✓ Prometheus    http://prometheus:9090    Connected
-✓ Kubernetes    ~/.kube/config            Connected (3 nodes)
-✓ LLM           ollama/llama3.1:8b        Ready
-✓ Slack         #incidents                Connected
-
-Agents: 3 active | Investigations: 0 running
+autosre eval run [OPTIONS]
 ```
 
-### `opensre start`
+**Options:**
 
-Start the OpenSRE daemon.
+| Option | Required | Description |
+|--------|----------|-------------|
+| `-s, --scenario` | Yes | Scenario name |
+| `-v, --verbose` | No | Detailed output |
+| `-t, --timeout` | No | Timeout in seconds (default: 300) |
+| `-m, --model` | No | Override LLM model |
+| `--json` | No | Output as JSON |
+
+**Examples:**
 
 ```bash
-opensre start [OPTIONS]
+autosre eval run --scenario high_cpu
+autosre eval run -s cascading_failure --verbose
+autosre eval run -s memory_leak --model gpt-4
+```
+
+### `autosre eval create`
+
+Create a new scenario.
+
+```bash
+autosre eval create [OPTIONS]
 ```
 
 **Options:**
 
 | Option | Description |
 |--------|-------------|
-| `--foreground` | Run in foreground (don't daemonize) |
-| `--host HOST` | API server host (default: 0.0.0.0) |
-| `--port PORT` | API server port (default: 8000) |
-| `--workers N` | Number of worker processes |
-| `--reload` | Auto-reload on file changes (dev mode) |
+| `-f, --file` | Output file path |
+| `-t, --template` | Interactive wizard |
+| `-n, --name` | Scenario name |
+| `-d, --description` | Description |
 
-**Example:**
+**Examples:**
 
 ```bash
-# Start as daemon
-opensre start
-
-# Start in foreground with auto-reload
-opensre start --foreground --reload
-
-# Start on specific port
-opensre start --port 9000
+autosre eval create --template
+autosre eval create -f scenarios/custom.yaml -n my-scenario
 ```
 
-### `opensre stop`
+### `autosre eval report`
 
-Stop the OpenSRE daemon.
+Show evaluation results.
 
 ```bash
-opensre stop [OPTIONS]
+autosre eval report [OPTIONS]
 ```
 
 **Options:**
 
-| Option | Description |
-|--------|-------------|
-| `--force` | Force immediate stop |
-
-### `opensre investigate`
-
-Manually trigger an investigation.
-
-```bash
-opensre investigate [OPTIONS] DESCRIPTION
-```
-
-**Options:**
-
-| Option | Description |
-|--------|-------------|
-| `--namespace NS` | Target Kubernetes namespace |
-| `--service SVC` | Target service name |
-| `--json` | Output as JSON |
-| `--watch` | Watch investigation progress |
-| `--timeout SECONDS` | Investigation timeout |
-
-**Example:**
-
-```bash
-# Simple investigation
-opensre investigate "high error rate on checkout service"
-
-# With context
-opensre investigate "pods crashing" --namespace production --service payment
-
-# Watch progress
-opensre investigate "memory leak" --watch
-```
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-s, --scenario` | - | Filter by scenario |
+| `-l, --limit` | 20 | Number of results |
+| `-f, --format` | `table` | Output format (`table`, `json`, `summary`) |
 
 ---
 
-## Skill Commands
+## `autosre sandbox`
 
-### `opensre skill list`
+Manage sandbox Kubernetes environments.
 
-List all available skills.
+### `autosre sandbox start`
+
+Create and start a sandbox cluster.
 
 ```bash
-opensre skill list [OPTIONS]
+autosre sandbox start [OPTIONS]
 ```
 
 **Options:**
 
-| Option | Description |
-|--------|-------------|
-| `--installed` | Show only installed skills |
-| `--available` | Show only available (not installed) |
-| `--json` | Output as JSON |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-n, --name` | `autosre-sandbox` | Cluster name |
+| `--nodes` | 1 | Worker nodes (1-3) |
+| `--k8s-version` | `v1.29.0` | Kubernetes version |
+| `--skip-observability` | - | Skip Prometheus/Grafana |
+| `--skip-sample-apps` | - | Skip sample apps |
 
-**Example:**
+**Examples:**
 
 ```bash
-$ opensre skill list
-
-Installed Skills:
-┌─────────────┬─────────┬─────────────────────────────────────────┐
-│ Name        │ Version │ Description                             │
-├─────────────┼─────────┼─────────────────────────────────────────┤
-│ prometheus  │ 1.0.0   │ Query metrics and manage alerts         │
-│ kubernetes  │ 1.0.0   │ Kubernetes cluster management           │
-│ slack       │ 1.0.0   │ Send notifications to Slack             │
-└─────────────┴─────────┴─────────────────────────────────────────┘
-
-Available Skills:
-┌─────────────┬─────────┬─────────────────────────────────────────┐
-│ aws         │ 1.0.0   │ AWS cloud operations                    │
-│ datadog     │ 1.0.0   │ Datadog metrics and monitors            │
-│ pagerduty   │ 1.0.0   │ PagerDuty incident management           │
-└─────────────┴─────────┴─────────────────────────────────────────┘
+autosre sandbox start
+autosre sandbox start --nodes 2 --name my-test
 ```
 
-### `opensre skill install`
+### `autosre sandbox stop`
 
-Install a skill.
+Destroy a sandbox cluster.
 
 ```bash
-opensre skill install [OPTIONS] SKILL_NAME...
+autosre sandbox stop [OPTIONS]
 ```
 
 **Options:**
 
-| Option | Description |
-|--------|-------------|
-| `--version VERSION` | Install specific version |
-| `--upgrade` | Upgrade if already installed |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-n, --name` | `autosre-sandbox` | Cluster name |
+| `-f, --force` | - | Skip confirmation |
 
-**Example:**
+### `autosre sandbox status`
 
-```bash
-# Install single skill
-opensre skill install aws
-
-# Install multiple skills
-opensre skill install aws gcp pagerduty
-
-# Install specific version
-opensre skill install prometheus --version 1.2.0
-```
-
-### `opensre skill uninstall`
-
-Uninstall a skill.
+Show sandbox status.
 
 ```bash
-opensre skill uninstall [OPTIONS] SKILL_NAME
+autosre sandbox status [OPTIONS]
 ```
 
 **Options:**
 
-| Option | Description |
-|--------|-------------|
-| `--force` | Skip confirmation |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-n, --name` | `autosre-sandbox` | Cluster name |
+| `--json` | - | Output as JSON |
 
-### `opensre skill info`
+### `autosre sandbox inject`
 
-Show detailed skill information.
-
-```bash
-opensre skill info SKILL_NAME
-```
-
-**Example:**
+Inject chaos for testing.
 
 ```bash
-$ opensre skill info prometheus
-
-Skill: prometheus
-Version: 1.0.0
-Description: Query Prometheus metrics and manage alerts
-
-Actions:
-┌───────────────┬────────────────────────────────────────────────┐
-│ Action        │ Description                                    │
-├───────────────┼────────────────────────────────────────────────┤
-│ query         │ Execute instant PromQL query                   │
-│ query_range   │ Execute range PromQL query                     │
-│ alerts        │ Get active alerts                              │
-│ silence       │ Create or update silence                       │
-│ targets       │ List scrape targets                            │
-└───────────────┴────────────────────────────────────────────────┘
-
-Configuration:
-  url: Prometheus server URL (required)
-  auth: Authentication type (none, basic, bearer)
-
-Dependencies:
-  - prometheus-client>=0.19.0
+autosre sandbox inject <chaos_type> [OPTIONS]
 ```
 
-### `opensre skill test`
+**Chaos Types:**
 
-Test skill connectivity and configuration.
-
-```bash
-opensre skill test SKILL_NAME
-```
-
-**Example:**
-
-```bash
-$ opensre skill test prometheus
-
-Testing prometheus skill...
-✓ Connection to http://prometheus:9090
-✓ Query execution
-✓ Alerts endpoint
-✓ Targets endpoint
-
-All tests passed!
-```
-
----
-
-## Agent Commands
-
-### `opensre agent list`
-
-List all agents.
-
-```bash
-opensre agent list [OPTIONS]
-```
-
-**Options:**
-
-| Option | Description |
-|--------|-------------|
-| `--running` | Show only running agents |
-| `--json` | Output as JSON |
-
-**Example:**
-
-```bash
-$ opensre agent list
-
-┌──────────────────────┬─────────┬─────────────────────────────┬─────────┐
-│ Name                 │ Status  │ Triggers                    │ Last Run│
-├──────────────────────┼─────────┼─────────────────────────────┼─────────┤
-│ incident-responder   │ running │ webhook: pagerduty          │ 5m ago  │
-│ pod-crash-handler    │ running │ webhook: kubernetes         │ 1h ago  │
-│ cert-checker         │ idle    │ schedule: 0 8 * * *         │ 23h ago │
-└──────────────────────┴─────────┴─────────────────────────────┴─────────┘
-```
-
-### `opensre agent run`
-
-Run an agent manually.
-
-```bash
-opensre agent run [OPTIONS] AGENT_NAME
-```
-
-**Options:**
-
-| Option | Description |
-|--------|-------------|
-| `--params JSON` | Input parameters as JSON |
-| `--dry-run` | Execute in dry-run mode |
-| `--watch` | Watch execution progress |
-| `--timeout SECONDS` | Execution timeout |
-
-**Example:**
-
-```bash
-# Run agent with default params
-opensre agent run incident-responder
-
-# Run with parameters
-opensre agent run pod-crash-handler --params '{"namespace": "production"}'
-
-# Dry-run mode
-opensre agent run deploy-validator --dry-run
-```
-
-### `opensre agent deploy`
-
-Deploy an agent from a template.
-
-```bash
-opensre agent deploy [OPTIONS] AGENT_PATH
-```
-
-**Options:**
-
-| Option | Description |
-|--------|-------------|
-| `--all` | Deploy all agents from catalog |
-| `--set KEY=VALUE` | Override configuration |
-
-**Example:**
-
-```bash
-# Deploy single agent
-opensre agent deploy incident-responder/
-
-# Deploy all agents
-opensre agent deploy --all
-
-# Deploy with config overrides
-opensre agent deploy cert-checker/ --set pagerduty_on_critical=true
-```
-
-### `opensre agent config`
-
-Configure an agent.
-
-```bash
-opensre agent config AGENT_NAME [OPTIONS]
-```
-
-**Options:**
-
-| Option | Description |
-|--------|-------------|
-| `--set KEY=VALUE` | Set configuration value |
-| `--unset KEY` | Remove configuration value |
-| `--show` | Show current configuration |
-
-**Example:**
-
-```bash
-# Show config
-opensre agent config incident-responder --show
-
-# Set config
-opensre agent config incident-responder --set slack_channel="#sre-alerts"
-
-# Multiple settings
-opensre agent config deploy-validator \
-  --set auto_rollback=false \
-  --set error_threshold=2.0
-```
-
-### `opensre agent logs`
-
-View agent execution logs.
-
-```bash
-opensre agent logs [OPTIONS] AGENT_NAME
-```
-
-**Options:**
-
-| Option | Description |
-|--------|-------------|
-| `--follow` | Follow log output |
-| `--tail N` | Show last N lines |
-| `--since DURATION` | Show logs since duration (e.g., 1h, 30m) |
-
-**Example:**
-
-```bash
-# View recent logs
-opensre agent logs incident-responder
-
-# Follow logs
-opensre agent logs incident-responder --follow
-
-# Last 50 lines from past hour
-opensre agent logs incident-responder --tail 50 --since 1h
-```
-
-### `opensre agent status`
-
-Show agent status.
-
-```bash
-opensre agent status AGENT_NAME
-```
-
-**Example:**
-
-```bash
-$ opensre agent status incident-responder
-
-Agent: incident-responder
-Status: running
-Uptime: 4h 32m
-Last Execution: 5m ago (success)
-
-Triggers:
-  - webhook: pagerduty (active)
-  - prometheus_alert: severity=critical (active)
-
-Recent Executions:
-┌─────────────────────┬─────────┬──────────┬────────────┐
-│ Timestamp           │ Trigger │ Duration │ Result     │
-├─────────────────────┼─────────┼──────────┼────────────┤
-│ 2024-03-15 14:32:05 │ webhook │ 45s      │ ✓ success  │
-│ 2024-03-15 12:15:22 │ alert   │ 1m 12s   │ ✓ success  │
-│ 2024-03-15 08:45:10 │ webhook │ 32s      │ ✗ timeout  │
-└─────────────────────┴─────────┴──────────┴────────────┘
-```
-
----
-
-## Configuration Commands
-
-### `opensre config show`
-
-Show resolved configuration.
-
-```bash
-opensre config show [OPTIONS]
-```
-
-**Options:**
-
-| Option | Description |
-|--------|-------------|
-| `--secrets` | Show secret values |
-| `--json` | Output as JSON |
-
-### `opensre config validate`
-
-Validate configuration.
-
-```bash
-opensre config validate [OPTIONS]
-```
-
-**Options:**
-
-| Option | Description |
-|--------|-------------|
-| `--strict` | Fail on warnings |
-
-**Example:**
-
-```bash
-$ opensre config validate
-
-Validating configuration...
-
-✓ Core configuration
-✓ LLM provider (ollama)
-✓ Prometheus connection
-✓ Kubernetes access
-⚠ Slack not configured (notifications disabled)
-
-Configuration valid with 1 warning.
-```
-
-### `opensre config init`
-
-Initialize configuration interactively.
-
-```bash
-opensre config init [OPTIONS]
-```
-
-**Options:**
-
-| Option | Description |
-|--------|-------------|
-| `--force` | Overwrite existing config |
-| `--minimal` | Create minimal config |
-
----
-
-## Testing Commands
-
-### `opensre test`
-
-Run connectivity tests.
-
-```bash
-opensre test [OPTIONS] [COMPONENT...]
-```
-
-**Components:** `all`, `prometheus`, `kubernetes`, `llm`, `slack`
-
-**Example:**
-
-```bash
-# Test all components
-opensre test all
-
-# Test specific components
-opensre test prometheus kubernetes
-
-# Test LLM
-opensre test llm
-```
-
----
-
-## Utility Commands
-
-### `opensre init`
-
-Initialize a new OpenSRE project.
-
-```bash
-opensre init [OPTIONS] [NAME]
-```
-
-**Options:**
-
-| Option | Description |
-|--------|-------------|
-| `--template TEMPLATE` | Project template |
-| `--minimal` | Minimal project structure |
-
-**Example:**
-
-```bash
-opensre init my-sre-project
-cd my-sre-project
-```
-
-### `opensre version`
-
-Show version information.
-
-```bash
-opensre version
-```
-
----
-
-## Exit Codes
-
-| Code | Description |
+| Type | Description |
 |------|-------------|
-| 0 | Success |
-| 1 | General error |
-| 2 | Configuration error |
-| 3 | Connection error |
-| 4 | Authentication error |
-| 5 | Timeout |
+| `cpu-hog` | Consume CPU |
+| `memory-hog` | Consume memory |
+| `io-stress` | Stress disk I/O |
+| `network-latency` | Add network delay |
+| `pod-kill` | Kill a pod |
+| `pod-failure` | Fail health checks |
+| `disk-fill` | Fill disk space |
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `-t, --target` | Target service/pod |
+| `-n, --namespace` | Target namespace (default: `default`) |
+| `-d, --duration` | Duration (default: `60s`) |
+| `--dry-run` | Preview only |
+
+**Examples:**
+
+```bash
+autosre sandbox inject cpu-hog
+autosre sandbox inject pod-kill --target frontend
+autosre sandbox inject network-latency --duration 120s
+```
+
+### `autosre sandbox list`
+
+List all sandbox clusters.
+
+```bash
+autosre sandbox list [OPTIONS]
+```
+
+---
+
+## `autosre agent`
+
+Run and manage the AI SRE agent.
+
+### `autosre agent run`
+
+Start the agent in watch mode.
+
+```bash
+autosre agent run [OPTIONS]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-i, --interval` | 30 | Poll interval (seconds) |
+| `--once` | - | Run once and exit |
+| `--dry-run` | - | Don't execute remediation |
+| `-m, --model` | - | Override LLM model |
+| `-v, --verbose` | - | Verbose output |
+
+**Examples:**
+
+```bash
+autosre agent run
+autosre agent run --interval 60 --dry-run
+autosre agent run --once
+```
+
+### `autosre agent analyze`
+
+Analyze an alert.
+
+```bash
+autosre agent analyze [OPTIONS]
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `-a, --alert` | Alert JSON file path |
+| `--alert-name` | Alert name from context store |
+| `-s, --service` | Service to analyze |
+| `-v, --verbose` | Detailed output |
+| `--json` | Output as JSON |
+| `-m, --model` | Override LLM model |
+
+**Examples:**
+
+```bash
+autosre agent analyze --alert alert.json
+autosre agent analyze --alert-name HighCPUUsage
+autosre agent analyze --service frontend --verbose
+```
+
+### `autosre agent config`
+
+View agent configuration.
+
+```bash
+autosre agent config [OPTIONS]
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Output as JSON |
+| `--set KEY VALUE` | Set config value (repeatable) |
+
+### `autosre agent history`
+
+Show analysis history.
+
+```bash
+autosre agent history [OPTIONS]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-l, --limit` | 20 | Number of entries |
+| `-s, --service` | - | Filter by service |
+| `--json` | - | Output as JSON |
+
+---
+
+## `autosre feedback`
+
+Manage learning and feedback.
+
+### `autosre feedback submit`
+
+Submit feedback on an analysis.
+
+```bash
+autosre feedback submit [OPTIONS]
+```
+
+**Options:**
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `-i, --incident` | Yes | Incident ID |
+| `--correct` | - | Mark as correct |
+| `--incorrect` | - | Mark as incorrect |
+| `--partial` | - | Mark as partially correct |
+| `--actual-cause` | - | Actual root cause |
+| `-n, --notes` | - | Additional notes |
+
+**Examples:**
+
+```bash
+autosre feedback submit -i INC-123 --correct
+autosre feedback submit -i INC-123 --incorrect --actual-cause "DNS timeout"
+autosre feedback submit -i INC-456 --partial --notes "Right service, wrong cause"
+```
+
+### `autosre feedback report`
+
+Show feedback statistics.
+
+```bash
+autosre feedback report [OPTIONS]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-d, --days` | 30 | Days to include |
+| `--json` | - | Output as JSON |
+
+### `autosre feedback list`
+
+List feedback entries.
+
+```bash
+autosre feedback list [OPTIONS]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-l, --limit` | 20 | Number of entries |
+| `-r, --rating` | - | Filter by rating |
+| `--json` | - | Output as JSON |
+
+### `autosre feedback export`
+
+Export feedback data.
+
+```bash
+autosre feedback export [OPTIONS]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-o, --output` | `feedback-export.json` | Output file |
+| `-f, --format` | `json` | Format (`json`, `csv`) |
 
 ---
 
 ## Environment Variables
 
-All CLI options can be set via environment variables:
+All configuration can be set via environment variables:
 
-| Variable | CLI Option |
-|----------|------------|
-| `OPENSRE_CONFIG` | `--config` |
-| `OPENSRE_DEBUG` | `--debug` |
-| `OPENSRE_QUIET` | `--quiet` |
+| Variable | Description |
+|----------|-------------|
+| `OPENSRE_LLM_PROVIDER` | LLM provider (ollama, openai, anthropic, azure) |
+| `OPENSRE_OLLAMA_HOST` | Ollama server URL |
+| `OPENSRE_OLLAMA_MODEL` | Ollama model name |
+| `OPENSRE_OPENAI_API_KEY` | OpenAI API key |
+| `OPENSRE_OPENAI_MODEL` | OpenAI model name |
+| `OPENSRE_ANTHROPIC_API_KEY` | Anthropic API key |
+| `OPENSRE_PROMETHEUS_URL` | Prometheus server URL |
+| `OPENSRE_K8S_NAMESPACES` | Kubernetes namespaces (comma-separated) |
+| `OPENSRE_REQUIRE_APPROVAL` | Require approval for actions |
+| `OPENSRE_CONFIDENCE_THRESHOLD` | Minimum confidence for actions |
 
----
-
-## Shell Completion
-
-Enable shell completion:
-
-```bash
-# Bash
-opensre --install-completion bash
-
-# Zsh
-opensre --install-completion zsh
-
-# Fish
-opensre --install-completion fish
-```
+See [Configuration Guide](CONFIGURATION.md) for complete list.
 
 ---
 
-## Next Steps
+## Exit Codes
 
-- **[Getting Started](getting-started.md)** — First investigation
-- **[Skills Overview](skills/overview.md)** — Available skills
-- **[Agent Catalog](../agents/CATALOG.md)** — Pre-built agents
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | General error |
+| 2 | Command-line usage error |
+| 130 | Interrupted (Ctrl+C) |
