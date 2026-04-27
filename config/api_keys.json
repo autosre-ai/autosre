@@ -1,0 +1,32 @@
+{
+  "api_keys": {
+    "296ccaae2409767a40a6088819c5aa1bb93e991e85a7b4896bdc5c3876a561cf": {
+      "user": "testuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-27T14:55:57.822603"
+    },
+    "91604dccf9893cdab2aa3d4c57a23b20ef4e346a65f3e8916c8fef0495eb2aab": {
+      "user": "testuser",
+      "roles": [
+        "viewer"
+      ],
+      "created_at": "2026-04-27T14:55:57.823768"
+    },
+    "827928114336cc72d9643dbc265ce4618d23bd98e91927c8a2fec5cbb4dc79d4": {
+      "user": "adminuser",
+      "roles": [
+        "admin"
+      ],
+      "created_at": "2026-04-27T14:55:57.824312"
+    },
+    "0424bbbdf6712f1cd4ff25443e975ef558d6ee1bcc9242aee40b6d60c429a27c": {
+      "user": "asyncuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-27T14:55:57.825196"
+    }
+  }
+}

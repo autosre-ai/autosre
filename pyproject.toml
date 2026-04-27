@@ -7,7 +7,7 @@ name = "autosre"
 version = "0.1.0"
 description = "Open-source AI SRE agent - foundation-first incident investigation, root cause analysis, and auto-remediation"
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [
     { name = "OpenSRE Community" }
@@ -20,7 +20,7 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
