@@ -8,10 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Testing Sprint (Iterations 1-20)**
-  - 211 new tests (256 total) - from 7% to 20% coverage
-  - CLI command tests (15 tests)
+- **Testing Sprint (Iterations 1-25)**
+  - 236 new tests (281 total) - from 7% to 21% coverage
+  - CLI command tests (21 tests)
   - Connector base class tests (14 tests)
+  - Prometheus connector tests (10 tests)
+  - Kubernetes connector tests (9 tests)
   - Feedback tracker tests (10 tests)
   - RBAC security tests (31 tests)
   - Observer module tests (18 tests)
@@ -23,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Audit logging tests (17 tests)
   - Input sanitization tests (25 tests)
   - Shared test fixtures in conftest.py
+
+- **New CLI Commands**
+  - `autosre init` - Initialize AutoSRE in a directory
+  - `autosre status` - Show overall system status
+
 - Updated GitHub Actions CI to use uv for faster builds
 - Added Python 3.13 to test matrix
 - Added pydantic-settings and python-dotenv dependencies
