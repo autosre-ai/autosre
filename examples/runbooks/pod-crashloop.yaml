@@ -1,0 +1,86 @@
+# Pod CrashLoopBackOff Resolution Runbook
+id: pod-crashloop
+title: Pod CrashLoopBackOff Resolution
+description: Steps to diagnose and fix pods stuck in CrashLoopBackOff
+
+alerts:
+  - PodCrashLooping
+  - CrashLoopBackOff
+  - ContainerRestartingFrequently
+
+services: []
+
+keywords:
+  - crash
+  - restart
+  - crashloop
+  - backoff
+  - failed
+
+steps:
+  - name: Identify crashing pods
+    command: kubectl get pods -n {{ namespace }} | grep -E "CrashLoop|Error|Failed"
+    description: Find all pods in bad state
+    expected: Identify affected pods
+    
+  - name: Get pod events
+    command: kubectl describe pod {{ pod }} -n {{ namespace }} | tail -30
+    description: Check events for crash reason
+    expected: Look for error messages and events
+    
+  - name: Check previous container logs
+    command: kubectl logs {{ pod }} -n {{ namespace }} --previous --tail=100
+    description: Get logs from crashed container
+    expected: Find crash cause in logs
+    
+  - name: Check current container logs
+    command: kubectl logs {{ pod }} -n {{ namespace }} --tail=50
+    description: Get recent logs
+    expected: Understand startup issues
+    
+  - name: Check readiness/liveness probes
+    command: kubectl get pod {{ pod }} -n {{ namespace }} -o jsonpath='{.spec.containers[*].readinessProbe}'
+    description: Check if probes are misconfigured
+    expected: Probes should be correctly configured
+    
+  - name: Check image pull status
+    command: kubectl describe pod {{ pod }} -n {{ namespace }} | grep -A5 "Image:"
+    description: Verify image is pulling correctly
+    expected: No ImagePullBackOff
+    
+  - name: Check config/secrets
+    command: kubectl get pod {{ pod }} -n {{ namespace }} -o jsonpath='{.spec.containers[*].env[*].name}'
+    description: List environment variables
+    expected: Required configs should exist
+    
+  - name: Check resource constraints
+    command: kubectl describe pod {{ pod }} -n {{ namespace }} | grep -A10 "Resources:"
+    description: Check if resources are too restrictive
+    expected: Resources should be adequate
+
+remediation:
+  - name: Delete and recreate pod
+    command: kubectl delete pod {{ pod }} -n {{ namespace }}
+    risk: low
+    requires_approval: false
+    description: Simple restart (ReplicaSet will recreate)
+    
+  - name: Rollback to previous version
+    command: kubectl rollout undo deployment/{{ deployment }} -n {{ namespace }}
+    risk: medium
+    requires_approval: true
+    description: Rollback if recent deploy caused crash
+    
+  - name: Scale to zero and back
+    command: kubectl scale deployment/{{ deployment }} -n {{ namespace }} --replicas=0 && sleep 5 && kubectl scale deployment/{{ deployment }} -n {{ namespace }} --replicas={{ replicas }}
+    risk: medium
+    requires_approval: true
+    description: Full restart of all pods
+
+automated: false
+requires_approval: true
+author: SRE Team
+tags:
+  - crash
+  - restart
+  - troubleshooting

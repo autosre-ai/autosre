@@ -1,0 +1,102 @@
+# Scenario: Deployment Gone Wrong
+# Tests the agent's ability to identify a bad deployment and suggest rollback
+
+name: deployment-gone-wrong
+description: A new deployment caused service degradation, needs rollback
+difficulty: medium
+
+# The alert that triggers investigation
+alert:
+  name: ServiceDegraded
+  severity: high
+  source: prometheus
+  service_name: checkout-service
+  namespace: production
+  summary: "Checkout service error rate > 5%"
+  description: "The checkout-service is returning errors for more than 5% of requests"
+  labels:
+    alertname: ServiceDegraded
+    namespace: production
+    service: checkout-service
+    team: payments
+  annotations:
+    current_value: "12.5%"
+    threshold: "5%"
+    dashboard: "https://grafana/d/checkout-errors"
+
+# Services in the scenario
+services:
+  - name: checkout-service
+    namespace: production
+    status: degraded
+    replicas: 5
+    ready_replicas: 5
+    labels:
+      app: checkout-service
+      version: v2.3.1
+      team: payments
+    dependencies:
+      - payment-gateway
+      - inventory-service
+      - user-service
+    annotations:
+      autosre.io/tier: "1"
+      
+  - name: payment-gateway
+    namespace: production
+    status: healthy
+    replicas: 3
+    ready_replicas: 3
+    labels:
+      app: payment-gateway
+      version: v1.8.0
+      
+  - name: inventory-service
+    namespace: production
+    status: healthy
+    replicas: 4
+    ready_replicas: 4
+
+# Recent changes (the root cause is here)
+changes:
+  - id: change-001
+    change_type: deployment
+    service_name: checkout-service
+    description: "Deploy v2.3.1 - Add new payment validation"
+    author: dev@example.com
+    commit_sha: abc123def
+    pr_number: 1234
+    pr_url: "https://github.com/org/checkout/pull/1234"
+    previous_version: v2.3.0
+    new_version: v2.3.1
+    timestamp: "2024-01-15T10:30:00Z"
+    successful: true
+    
+  - id: change-002
+    change_type: config_change
+    service_name: payment-gateway
+    description: "Update rate limits"
+    author: ops@example.com
+    timestamp: "2024-01-14T15:00:00Z"
+    successful: true
+
+# Metrics data (simulated)
+metrics:
+  http_requests_error_rate:
+    checkout-service:
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 0.5
+      - timestamp: "2024-01-15T10:30:00Z"
+        value: 1.2
+      - timestamp: "2024-01-15T10:45:00Z"
+        value: 8.5
+      - timestamp: "2024-01-15T11:00:00Z"
+        value: 12.5
+
+# Expected outcomes for evaluation
+expected_root_cause: "Deployment v2.3.1 introduced a bug in payment validation, causing errors for certain payment types"
+expected_service: checkout-service
+expected_runbook: deployment-rollback
+expected_action: "Rollback checkout-service to v2.3.0"
+
+max_time_seconds: 120
