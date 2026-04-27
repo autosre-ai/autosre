@@ -6,10 +6,15 @@ to pull data from their respective sources.
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field
+
+
+def utcnow() -> datetime:
+    """Return timezone-aware UTC datetime."""
+    return datetime.now(timezone.utc)
 
 
 class ConnectorConfig(BaseModel):
@@ -116,7 +121,7 @@ class BaseConnector(ABC):
         """
         try:
             count = await self.sync(context_store)
-            self._last_sync = datetime.utcnow()
+            self._last_sync = utcnow()
             self._last_error = None
             self._items_synced = count
             return count
