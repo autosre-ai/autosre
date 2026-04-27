@@ -7,7 +7,7 @@ This connector provides:
 - Release information
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Any, Optional
 from urllib.parse import urljoin
 
@@ -189,7 +189,7 @@ class GitHubConnector(BaseConnector):
             return []
         
         changes = []
-        since = (datetime.utcnow() - timedelta(hours=since_hours)).isoformat() + "Z"
+        since = (datetime.now(timezone.utc) - timedelta(hours=since_hours)).isoformat() + "Z"
         
         try:
             # Try main first, fall back to master
@@ -216,7 +216,7 @@ class GitHubConnector(BaseConnector):
                     description=commit_data.get("message", "").split("\n")[0][:100],
                     author=author.get("name", "unknown"),
                     commit_sha=commit["sha"],
-                    timestamp=datetime.fromisoformat(author.get("date", datetime.utcnow().isoformat()).replace("Z", "+00:00")),
+                    timestamp=datetime.fromisoformat(author.get("date", datetime.now(timezone.utc).isoformat()).replace("Z", "+00:00")),
                 )
                 changes.append(change)
                 

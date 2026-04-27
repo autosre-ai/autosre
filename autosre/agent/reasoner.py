@@ -6,7 +6,7 @@ to analyze incidents and determine root cause.
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Any
 
 from pydantic import BaseModel, Field

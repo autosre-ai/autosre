@@ -8,7 +8,7 @@ This connector discovers:
 - Recent events
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from autosre.foundation.connectors.base import BaseConnector
@@ -206,7 +206,7 @@ class KubernetesConnector(BaseConnector):
             labels=meta.labels or {},
             annotations=meta.annotations or {},
             created_at=meta.creation_timestamp,
-            last_updated=datetime.utcnow(),
+            last_updated=datetime.now(timezone.utc),
         )
     
     def _statefulset_to_service(self, sts, namespace: str, cluster: str) -> Service:
@@ -242,7 +242,7 @@ class KubernetesConnector(BaseConnector):
             labels=meta.labels or {},
             annotations=meta.annotations or {},
             created_at=meta.creation_timestamp,
-            last_updated=datetime.utcnow(),
+            last_updated=datetime.now(timezone.utc),
         )
     
     def _daemonset_to_service(self, ds, namespace: str, cluster: str) -> Service:
@@ -277,7 +277,7 @@ class KubernetesConnector(BaseConnector):
             labels=meta.labels or {},
             annotations=meta.annotations or {},
             created_at=meta.creation_timestamp,
-            last_updated=datetime.utcnow(),
+            last_updated=datetime.now(timezone.utc),
         )
     
     async def get_recent_events(self, namespace: str = "default", limit: int = 50) -> list[ChangeEvent]:
@@ -303,7 +303,7 @@ class KubernetesConnector(BaseConnector):
                     service_name=event.involved_object.name,
                     description=f"{event.reason}: {event.message}",
                     author="kubernetes",
-                    timestamp=event.last_timestamp or event.first_timestamp or datetime.utcnow(),
+                    timestamp=event.last_timestamp or event.first_timestamp or datetime.now(timezone.utc),
                 )
                 events.append(change)
                 

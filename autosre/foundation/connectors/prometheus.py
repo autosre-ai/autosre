@@ -7,7 +7,7 @@ This connector provides:
 - Alert rule definitions
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 from urllib.parse import urljoin
 
@@ -192,8 +192,8 @@ class PrometheusConnector(BaseConnector):
                 description=annotations.get("description"),
                 labels=labels,
                 annotations=annotations,
-                fired_at=datetime.fromisoformat(data.get("activeAt", datetime.utcnow().isoformat()).replace("Z", "+00:00")),
-                resolved_at=None if data.get("state") == "firing" else datetime.utcnow(),
+                fired_at=datetime.fromisoformat(data.get("activeAt", datetime.now(timezone.utc).isoformat()).replace("Z", "+00:00")),
+                resolved_at=None if data.get("state") == "firing" else datetime.now(timezone.utc),
             )
         except Exception:
             return None
@@ -221,7 +221,7 @@ class PrometheusConnector(BaseConnector):
                 labels.get("job")
             )
             
-            starts_at = data.get("startsAt", datetime.utcnow().isoformat())
+            starts_at = data.get("startsAt", datetime.now(timezone.utc).isoformat())
             ends_at = data.get("endsAt")
             
             return Alert(

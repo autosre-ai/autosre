@@ -8,7 +8,7 @@ This connector provides:
 - Service ownership
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Any, Optional
 from urllib.parse import urljoin
 
@@ -199,7 +199,7 @@ class PagerDutyConnector(BaseConnector):
             return []
         
         incidents = []
-        since = (datetime.utcnow() - timedelta(hours=since_hours)).isoformat() + "Z"
+        since = (datetime.now(timezone.utc) - timedelta(hours=since_hours)).isoformat() + "Z"
         
         try:
             url = f"{self._base_url}/incidents"

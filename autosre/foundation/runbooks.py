@@ -8,7 +8,7 @@ This module:
 - Tracks runbook effectiveness
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 import re
@@ -97,7 +97,7 @@ class RunbookIndexer:
                 automation_script=data.get("automation_script"),
                 requires_approval=data.get("requires_approval", True),
                 author=data.get("author"),
-                last_updated=datetime.utcnow(),
+                last_updated=datetime.now(timezone.utc),
             )
         except Exception:
             return None
@@ -142,7 +142,7 @@ class RunbookIndexer:
                 automation_script=frontmatter.get("automation_script"),
                 requires_approval=frontmatter.get("requires_approval", True),
                 author=frontmatter.get("author"),
-                last_updated=datetime.utcnow(),
+                last_updated=datetime.now(timezone.utc),
             )
         except Exception:
             return None
@@ -270,5 +270,5 @@ class RunbookIndexer:
         new_rate = (current_rate * 0.9) + (1.0 if successful else 0.0) * 0.1
         
         runbook.success_rate = new_rate
-        runbook.last_updated = datetime.utcnow()
+        runbook.last_updated = datetime.now(timezone.utc)
         self.add_runbook(runbook)
