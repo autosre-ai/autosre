@@ -1,0 +1,162 @@
+# Scenario: HashiCorp Vault Sealed
+# Category: Secrets Management
+# Description: Vault is sealed and cannot provide secrets
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: vault-unsealed-error
+  labels:
+    category: security
+    subcategory: secrets-management
+    severity: critical
+    service: vault
+spec:
+  description: |
+    HashiCorp Vault is in a sealed state and cannot serve secret requests.
+    All services depending on Vault for secrets at startup or runtime are
+    failing.
+  
+  symptoms:
+    - type: error
+      source: vault
+      message: "Vault is sealed"
+    - type: error
+      source: vault-agent
+      message: "Error making API request: 503 Service Unavailable - Vault is sealed"
+    - type: log
+      source: bookstore-api
+      pattern: "Failed to fetch secrets from Vault: sealed"
+    - type: metric
+      name: vault_core_unsealed
+      value: 0
+    - type: pod-status
+      pattern: "Init:CrashLoopBackOff"
+      description: "Pods with vault-agent init containers failing"
+
+  affectedServices:
+    - name: "*"
+      namespace: "*"
+      impact: "Any service using Vault for secrets cannot start or refresh credentials"
+
+  rootCause:
+    type: vault-lifecycle
+    component: vault-seal
+    possibleCauses:
+      - "Vault pods restarted without auto-unseal configured"
+      - "Auto-unseal KMS/HSM unavailable"
+      - "Vault manually sealed for maintenance"
+      - "Disaster recovery scenario"
+      - "Vault storage backend failure requiring reseal"
+
+  detection:
+    - method: vault-api
+      command: |
+        vault status
+    - method: prometheus
+      query: |
+        vault_core_unsealed == 0
+    - method: kubernetes
+      command: |
+        kubectl get pods -n vault -l app.kubernetes.io/name=vault -o wide
+
+  remediation:
+    automated: conditional
+    conditions:
+      - "Auto-unseal configured and KMS available"
+      - "Recovery keys available (manual unseal)"
+    steps:
+      - action: check-vault-status
+        command: |
+          kubectl exec -n vault vault-0 -- vault status
+      - action: check-auto-unseal
+        description: "If auto-unseal configured, check KMS connectivity"
+        command: |
+          # For AWS KMS
+          kubectl exec -n vault vault-0 -- \
+            aws kms describe-key --key-id ${KMS_KEY_ID}
+      - action: manual-unseal
+        description: "If manual unseal required"
+        requiresApproval: vault-admin
+        command: |
+          # Requires threshold number of unseal keys
+          kubectl exec -n vault vault-0 -- vault operator unseal ${UNSEAL_KEY_1}
+          kubectl exec -n vault vault-0 -- vault operator unseal ${UNSEAL_KEY_2}
+          kubectl exec -n vault vault-0 -- vault operator unseal ${UNSEAL_KEY_3}
+      - action: verify-unsealed
+        command: |
+          kubectl exec -n vault vault-0 -- vault status | grep Sealed
+        expected: "Sealed          false"
+      - action: restart-dependent-pods
+        command: |
+          # Restart pods that failed to get secrets
+          kubectl get pods --all-namespaces -o json | \
+            jq -r '.items[] | select(.status.initContainerStatuses[]?.state.waiting.reason=="CrashLoopBackOff") | "\(.metadata.namespace)/\(.metadata.name)"' | \
+            xargs -I {} kubectl delete pod {}
+
+  autoUnsealRecovery:
+    description: "Recovery steps when auto-unseal fails"
+    awsKms:
+      - action: check-iam-role
+        command: |
+          kubectl exec -n vault vault-0 -- \
+            aws sts get-caller-identity
+      - action: check-kms-key
+        command: |
+          kubectl exec -n vault vault-0 -- \
+            aws kms describe-key --key-id ${KMS_KEY_ID}
+      - action: verify-permissions
+        command: |
+          kubectl exec -n vault vault-0 -- \
+            aws kms encrypt --key-id ${KMS_KEY_ID} --plaintext "test"
+    gcpKms:
+      - action: check-service-account
+        command: |
+          kubectl exec -n vault vault-0 -- \
+            gcloud auth list
+      - action: check-key
+        command: |
+          kubectl exec -n vault vault-0 -- \
+            gcloud kms keys describe ${KEY_NAME} --keyring=${KEYRING} --location=${LOCATION}
+
+  prevention:
+    - type: auto-unseal
+      description: "Configure auto-unseal with cloud KMS"
+      config: |
+        seal "awskms" {
+          region     = "us-east-1"
+          kms_key_id = "alias/vault-unseal-key"
+        }
+    - type: ha-deployment
+      description: "Deploy Vault in HA mode"
+      config: |
+        ha:
+          enabled: true
+          replicas: 3
+          raft:
+            enabled: true
+    - type: monitoring
+      description: "Alert immediately on seal status"
+      rule: |
+        vault_core_unsealed == 0
+      severity: critical
+      responseTime: immediate
+
+  verification:
+    - type: vault-status
+      command: vault status
+      expected: "Sealed: false"
+    - type: secret-access
+      command: |
+        vault read secret/data/test
+      expected: "Secret data returned"
+    - type: pod-status
+      command: |
+        kubectl get pods -n bookstore -l app=bookstore-api
+      expected: "Running"
+
+  references:
+    - url: https://www.vaultproject.io/docs/concepts/seal
+      title: "Vault Seal/Unseal"
+    - url: https://www.vaultproject.io/docs/configuration/seal/awskms
+      title: "AWS KMS Auto-unseal"

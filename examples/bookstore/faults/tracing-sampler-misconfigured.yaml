@@ -1,0 +1,97 @@
+# Scenario: Tracing Sampler Misconfigured - Missing Traces
+# Category: Observability Infrastructure
+# Severity: Medium
+# Description: Tracing sampler configured incorrectly, traces being dropped
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: tracing-sampler-misconfigured
+  labels:
+    category: observability-infrastructure
+    severity: medium
+    component: tracing
+spec:
+  description: |
+    Distributed tracing sampler is misconfigured. Too many or too few
+    traces are being collected, making debugging difficult.
+    
+  symptoms:
+    - type: trace-search
+      description: "Cannot find traces for known requests"
+    - type: trace-gaps
+      description: "Spans missing from trace"
+    - type: sampling-rate
+      description: "Sampling rate too low or zero"
+      
+  affectedResources:
+    - kind: Deployment
+      name: jaeger-collector
+      namespace: tracing
+    - kind: ConfigMap
+      name: otel-collector-config
+      description: "Sampler configuration"
+    - kind: Deployment
+      description: "Applications with tracing"
+        
+  metrics:
+    - name: otelcol_exporter_sent_spans
+      rate: 0  # No spans exported
+    - name: jaeger_collector_spans_received_total
+      rate: 10  # Very few spans
+    - name: otelcol_processor_batch_batch_send_size
+      value: 0
+      
+  logs:
+    - source: otel-collector
+      level: warning
+      patterns:
+        - "span dropped"
+        - "sampling decision: not sampled"
+        - "rate limit exceeded"
+    - source: jaeger
+      level: info
+      patterns:
+        - "span received"
+        - "sampling at rate 0.01"
+        
+  rootCause:
+    component: tracing-sampler
+    type: misconfiguration
+    details: |
+      Sampler misconfiguration. Common causes:
+      - Sampling rate set too low (0.01 = 1%)
+      - Head-based sampling dropping parent spans
+      - Different sampling config across services
+      - Collector rate limiting
+      - Trace context not propagated
+      - Wrong sampling strategy (always-off)
+      
+  remediation:
+    steps:
+      - action: check-sampler-config
+        command: "kubectl get configmap otel-collector-config -n tracing -o yaml | grep -A20 sampler"
+        description: "Review sampler configuration"
+      - action: check-collector-logs
+        command: "kubectl logs -n tracing -l app=otel-collector --tail=100"
+        description: "Review collector logs"
+      - action: check-span-count
+        command: "curl -s http://jaeger:16686/api/services | jq"
+        description: "List services with traces"
+      - action: increase-sampling
+        command: |
+          kubectl patch configmap otel-collector-config -n tracing --type=merge -p '
+          {
+            "data": {
+              "config.yaml": "processors:\n  probabilistic_sampler:\n    sampling_percentage: 100"
+            }
+          }'
+        description: "Increase sampling rate"
+      - action: verify-propagation
+        command: "kubectl exec -it app-pod -- curl -H 'traceparent: 00-xxx-01' http://backend"
+        description: "Test trace context propagation"
+    
+  detection:
+    promql: 'rate(otelcol_exporter_sent_spans[5m]) == 0'
+    alertName: TracingSpansNotExported
+    severity: warning

@@ -1,0 +1,115 @@
+# Scenario: Service Mesh Sidecar Crash
+# Expected: OpenSRE detects Envoy/Istio sidecar crashes, mTLS failures
+# Remediation: Check sidecar logs, verify Istio config, restart pods
+# Root Cause: Sidecar proxy crashes due to misconfiguration
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rating-service-sidecar-crash
+  namespace: bookstore
+  labels:
+    app: rating-service
+    tier: api
+    fault: service-mesh-sidecar-crash
+  annotations:
+    sidecar.istio.io/inject: "true"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rating-service
+      fault: service-mesh-sidecar-crash
+  template:
+    metadata:
+      labels:
+        app: rating-service
+        tier: api
+        fault: service-mesh-sidecar-crash
+      annotations:
+        sidecar.istio.io/inject: "true"
+        # Invalid proxy configuration that will cause sidecar issues
+        proxy.istio.io/config: |
+          proxyMetadata:
+            INVALID_KEY: "this-will-cause-issues"
+          concurrency: -1
+        # Resource constraints that may cause OOM
+        sidecar.istio.io/proxyCPU: "1m"
+        sidecar.istio.io/proxyMemory: "8Mi"
+        sidecar.istio.io/proxyCPULimit: "5m"
+        sidecar.istio.io/proxyMemoryLimit: "16Mi"
+    spec:
+      containers:
+      # Simulated crashing sidecar
+      - name: istio-proxy-simulator
+        image: busybox:1.36
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "[envoy] Starting Istio sidecar proxy..."
+          echo "[envoy] Loading configuration..."
+          sleep 10
+          echo "[envoy] ERROR: Invalid configuration detected"
+          echo "[envoy] FATAL: concurrency must be >= 0"
+          exit 1
+        resources:
+          requests:
+            memory: "8Mi"
+            cpu: "1m"
+          limits:
+            memory: "16Mi"
+            cpu: "5m"
+      - name: rating
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+          
+          ratings = {"book_1": 4.5, "book_2": 3.8, "book_3": 4.9}
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path == '/health':
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                  elif self.path == '/ready':
+                      # Check if sidecar is healthy (it won't be)
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'READY')
+                  elif self.path.startswith('/ratings'):
+                      self.send_response(200)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      self.wfile.write(json.dumps(ratings).encode())
+                  else:
+                      self.send_response(404)
+                      self.end_headers()
+              def log_message(self, format, *args):
+                  print(f"[rating-service] {args[0]}")
+          
+          print("Rating service starting on port 8080...")
+          print("[WARN] Istio sidecar will crash - mTLS traffic will fail")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+# In a real Istio setup, pod would show:
+# READY: 1/2 (main container ready, sidecar crashed)
+# Events: Back-off restarting failed container istio-proxy

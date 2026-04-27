@@ -1,0 +1,97 @@
+# Scenario: Log Rotation Failed - Disk Filling Up
+# Category: Observability Infrastructure
+# Severity: Medium
+# Description: Log rotation not working, disk filling up with logs
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: log-rotation-failed
+  labels:
+    category: observability-infrastructure
+    severity: medium
+    component: logging
+spec:
+  description: |
+    Log rotation is not functioning. Container logs are growing unbounded
+    and filling up node disk space.
+    
+  symptoms:
+    - type: disk-pressure
+      description: "Node entering DiskPressure"
+    - type: log-size
+      description: "Individual log files in GB"
+    - type: pod-eviction
+      description: "Pods being evicted for disk"
+      
+  affectedResources:
+    - kind: Node
+      condition: DiskPressure
+    - kind: Pod
+      description: "Pods generating excessive logs"
+    - kind: ConfigMap
+      name: kubelet-config
+      description: "Container log rotation config"
+        
+  metrics:
+    - name: node_filesystem_avail_bytes
+      labels:
+        mountpoint: /var/log
+      value: 1073741824  # Only 1GB left
+    - name: kubelet_container_log_filesystem_used_bytes
+      value: 50000000000  # 50GB of logs
+    - name: node_disk_io_time_seconds_total
+      rate: 0.9  # High I/O wait
+      
+  logs:
+    - source: kubelet
+      level: warning
+      patterns:
+        - "disk pressure condition detected"
+        - "evicting pod due to disk pressure"
+    - source: logrotate
+      level: error
+      patterns:
+        - "error: failed to rotate"
+        - "cannot rename"
+        
+  rootCause:
+    component: log-rotation
+    type: misconfiguration
+    details: |
+      Log rotation failure. Common causes:
+      - containerLogMaxSize not set
+      - containerLogMaxFiles not set
+      - Application logging too verbose
+      - Log rotation service stopped
+      - Disk too small for log volume
+      - Log files locked by process
+      
+  remediation:
+    steps:
+      - action: check-log-sizes
+        command: "du -sh /var/log/containers/* | sort -hr | head -20"
+        description: "Find largest container logs"
+      - action: check-kubelet-config
+        command: "kubectl get configmap -n kube-system kubelet-config -o yaml | grep -i log"
+        description: "Check kubelet log rotation settings"
+      - action: configure-log-rotation
+        command: |
+          # Update kubelet config:
+          # containerLogMaxSize: "10Mi"
+          # containerLogMaxFiles: 5
+        description: "Configure container log rotation"
+      - action: truncate-logs
+        command: "truncate -s 0 /var/log/containers/large-log-file.log"
+        description: "Emergency truncate oversized log"
+      - action: restart-kubelet
+        command: "systemctl restart kubelet"
+        description: "Restart kubelet to apply config"
+      - action: reduce-app-logging
+        command: "kubectl set env deployment/verbose-app LOG_LEVEL=warn"
+        description: "Reduce application log verbosity"
+    
+  detection:
+    promql: 'kubelet_container_log_filesystem_used_bytes > 10000000000'
+    alertName: ContainerLogTooLarge
+    severity: warning

@@ -1,0 +1,140 @@
+# Scenario: Circular Dependency Deadlock
+# Expected: OpenSRE detects services stuck waiting for each other
+# Remediation: Break circular dependency, use async init, add retries
+# Root Cause: Services depend on each other, creating startup deadlock
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-a-circular-dep
+  namespace: bookstore
+  labels:
+    app: service-a
+    tier: api
+    fault: circular-dependency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service-a
+      fault: circular-dependency
+  template:
+    metadata:
+      labels:
+        app: service-a
+        tier: api
+        fault: circular-dependency
+    spec:
+      initContainers:
+      - name: wait-for-service-b
+        image: busybox:1.36
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "Waiting for service-b to be ready..."
+          until nc -z service-b-circular-dep 80; do
+            echo "service-b not ready, waiting..."
+            sleep 2
+          done
+          echo "service-b is ready!"
+      containers:
+      - name: service-a
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          print("Service A starting...")
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  self.send_response(200)
+                  self.end_headers()
+                  self.wfile.write(b'Service A')
+          
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-a-circular-dep
+  namespace: bookstore
+spec:
+  selector:
+    app: service-a
+    fault: circular-dependency
+  ports:
+  - port: 80
+    targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-b-circular-dep
+  namespace: bookstore
+  labels:
+    app: service-b
+    tier: api
+    fault: circular-dependency
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service-b
+      fault: circular-dependency
+  template:
+    metadata:
+      labels:
+        app: service-b
+        tier: api
+        fault: circular-dependency
+    spec:
+      initContainers:
+      - name: wait-for-service-a
+        image: busybox:1.36
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "Waiting for service-a to be ready..."
+          until nc -z service-a-circular-dep 80; do
+            echo "service-a not ready, waiting..."
+            sleep 2
+          done
+          echo "service-a is ready!"
+      containers:
+      - name: service-b
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          print("Service B starting...")
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  self.send_response(200)
+                  self.end_headers()
+                  self.wfile.write(b'Service B')
+          
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-b-circular-dep
+  namespace: bookstore
+spec:
+  selector:
+    app: service-b
+    fault: circular-dependency
+  ports:
+  - port: 80
+    targetPort: 8080
+---
+# Both services stuck in Init:0/1 forever:
+# - Service A waits for Service B
+# - Service B waits for Service A
+# Neither can start

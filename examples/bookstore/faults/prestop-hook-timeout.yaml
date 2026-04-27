@@ -1,0 +1,92 @@
+# Scenario: PreStop Hook Timeout Blocking Shutdown
+# Expected: OpenSRE detects slow pod termination, PreStop hook issues
+# Remediation: Reduce PreStop work, increase terminationGracePeriod, fix hook
+# Root Cause: PreStop hook takes too long, delaying pod shutdown
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-prestop-timeout
+  namespace: bookstore
+  labels:
+    app: graceful-service
+    tier: api
+    fault: prestop-hook-timeout
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: graceful-service
+      fault: prestop-hook-timeout
+  template:
+    metadata:
+      labels:
+        app: graceful-service
+        tier: api
+        fault: prestop-hook-timeout
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: service
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  self.send_response(200)
+                  self.end_headers()
+                  self.wfile.write(b'OK')
+              def log_message(self, format, *args):
+                  pass
+          
+          print("Graceful service starting on port 8080...")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - |
+                echo "[PRESTOP] Starting graceful shutdown..."
+                echo "[PRESTOP] Draining connections..."
+                sleep 10
+                echo "[PRESTOP] Deregistering from service mesh..."
+                sleep 10
+                echo "[PRESTOP] Flushing caches to disk..."
+                sleep 10
+                echo "[PRESTOP] Notifying load balancer..."
+                # This will timeout because 40s > 30s grace period
+                sleep 15
+                echo "[PRESTOP] Cleanup complete"
+                # Total: 45 seconds, but grace period is only 30
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+# During rolling update:
+# 1. New pod starts
+# 2. Old pod begins termination
+# 3. PreStop hook runs (needs 45s)
+# 4. After 30s, SIGKILL sent (hook incomplete)
+# 5. Deployment slowed by stuck terminations

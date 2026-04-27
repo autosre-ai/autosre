@@ -1,0 +1,97 @@
+# Scenario: DNS TTL Cache Stale - Stale DNS Records
+# Category: Networking Infrastructure
+# Severity: Medium
+# Description: Stale DNS cache entries causing traffic to old endpoints
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: dns-ttl-cache-stale
+  labels:
+    category: networking-infrastructure
+    severity: medium
+    component: dns
+spec:
+  description: |
+    DNS records changed but clients are using cached stale entries.
+    Traffic is going to old/invalid endpoints causing connection failures.
+    
+  symptoms:
+    - type: connection-error
+      description: "Some clients succeed, others fail"
+    - type: inconsistent-behavior
+      description: "Different pods reach different endpoints"
+    - type: external-service
+      description: "External service moved but still hitting old IP"
+      
+  affectedResources:
+    - kind: Pod
+      description: "Pods with stale DNS cache"
+    - kind: Service
+      type: ExternalName
+      description: "ExternalName pointing to changed DNS"
+    - kind: ConfigMap
+      name: coredns
+      description: "CoreDNS cache settings"
+        
+  metrics:
+    - name: coredns_cache_hits_total
+      rate: 1000  # High cache hits
+    - name: coredns_dns_request_duration_seconds
+      percentile: p50
+      value: 0.001  # Fast = cached
+    - name: external_api_errors_total
+      labels:
+        error: "connection_refused"
+      rate: 50
+      
+  logs:
+    - source: application
+      level: error
+      patterns:
+        - "connection refused"
+        - "no such host"
+        - "address already in use"
+    - source: coredns
+      level: debug
+      patterns:
+        - "cache hit"
+        - "serving from cache"
+        
+  rootCause:
+    component: dns-cache
+    type: stale-data
+    details: |
+      Stale DNS cache. Common causes:
+      - DNS record changed, TTL not expired
+      - High TTL set on DNS records
+      - Application caching DNS independently
+      - CoreDNS cache too aggressive
+      - JVM DNS caching (infinite by default)
+      - External DNS provider propagation delay
+      
+  remediation:
+    steps:
+      - action: check-dns-resolution
+        command: "kubectl exec -it test-pod -- nslookup external-api.example.com"
+        description: "Check current DNS resolution"
+      - action: check-expected-ip
+        command: "dig +short external-api.example.com @8.8.8.8"
+        description: "Get authoritative DNS answer"
+      - action: check-coredns-cache
+        command: "kubectl get configmap coredns -n kube-system -o yaml | grep cache"
+        description: "Check CoreDNS cache settings"
+      - action: flush-coredns-cache
+        command: "kubectl rollout restart deployment coredns -n kube-system"
+        description: "Restart CoreDNS to flush cache"
+      - action: restart-app-pods
+        command: "kubectl rollout restart deployment my-app"
+        description: "Restart application pods to clear their DNS cache"
+      - action: reduce-ttl
+        command: "kubectl patch configmap coredns -n kube-system -p '{\"data\":{\"Corefile\":\"... cache 30 ...\"}}'"
+        description: "Reduce DNS cache TTL"
+    
+  detection:
+    promql: 'rate(external_api_errors_total{error="connection_refused"}[5m]) > 10'
+    alertName: DNSCacheStale
+    severity: warning

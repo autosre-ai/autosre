@@ -1,0 +1,215 @@
+# Scenario: Data Residency Violation
+# Category: Compliance
+# Description: Data stored or processed in unauthorized geographic region
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: data-residency-violation
+  labels:
+    category: security
+    subcategory: compliance
+    severity: critical
+    service: data-platform
+spec:
+  description: |
+    Data subject to geographic restrictions has been stored or processed in
+    an unauthorized region. This violates data residency requirements from
+    regulations, contracts, or internal policies.
+  
+  symptoms:
+    - type: compliance-alert
+      source: data-governance
+      message: "EU customer data detected in us-east-1 S3 bucket"
+    - type: audit-finding
+      source: compliance-scan
+      message: "GDPR violation: Personal data transferred outside EEA without SCCs"
+    - type: contract-violation
+      description: "Customer contract requires data in Frankfurt region only"
+
+  complianceContext:
+    requirements:
+      - framework: "GDPR"
+        articles: ["44-49"]
+        requirement: "Data transfers outside EEA require adequate safeguards"
+      - framework: "Data Localization Laws"
+        jurisdictions:
+          - country: "Russia"
+            law: "Federal Law 242-FZ"
+            requirement: "Russian citizens' data must be stored in Russia"
+          - country: "China"
+            law: "Cybersecurity Law"
+            requirement: "Critical data must remain in China"
+          - country: "Germany"
+            law: "BDSG"
+            requirement: "Stricter rules for sensitive data"
+      - framework: "Customer Contracts"
+        common: "Data residency clauses specifying allowed regions"
+
+  affectedData:
+    - type: "EU customer PII"
+      expectedLocation: "eu-west-1 (Ireland)"
+      actualLocation: "us-east-1 (Virginia)"
+      recordCount: 15000
+    - type: "Healthcare records"
+      expectedLocation: "eu-central-1 (Frankfurt)"
+      actualLocation: "ap-southeast-1 (Singapore)"
+      recordCount: 500
+
+  detection:
+    - method: data-discovery
+      command: |
+        # Scan for EU PII in non-EU regions
+        aws macie2 create-classification-job \
+          --s3-job-definition '{"bucketDefinitions":[{"accountId":"123","buckets":["us-data-*"]}]}' \
+          --managed-data-identifier-ids '["EU_PASSPORT_NUMBER","GERMANY_NATIONAL_IDENTIFICATION_NUMBER"]'
+    - method: traffic-analysis
+      command: |
+        # Check where data is being sent
+        kubectl exec -n monitoring deploy/traffic-analyzer -- \
+          analyze --source=eu-workloads --destination-regions
+    - method: resource-inventory
+      command: |
+        # List resources by region
+        for region in $(aws ec2 describe-regions --query 'Regions[].RegionName' --output text); do
+          echo "=== $region ==="
+          aws s3api list-buckets --query "Buckets[?contains(Name, 'customer')]" --region $region
+        done
+
+  immediateActions:
+    - action: stop-processing
+      description: "Halt data processing in unauthorized region"
+      command: |
+        # Scale down non-compliant workloads
+        kubectl scale deployment/customer-processor --replicas=0 -n us-east-1
+      priority: critical
+    - action: assess-scope
+      description: "Determine full scope of violation"
+      tasks:
+        - "Which datasets are affected"
+        - "How long has data been in wrong region"
+        - "Who accessed the data"
+        - "Any data transfers to third parties"
+    - action: notify-legal
+      description: "Alert legal/compliance team"
+      priority: critical
+
+  remediation:
+    automated: false
+    requiresApproval: legal-team
+    steps:
+      - action: data-inventory
+        description: "Complete inventory of misplaced data"
+        command: |
+          aws macie2 get-findings --finding-ids ${FINDING_IDS} | \
+            jq '.findings[] | {bucket, key, dataTypes}'
+      - action: migrate-data
+        description: "Move data to compliant region"
+        process:
+          - "Create destination resources in correct region"
+          - "Encrypt data in transit"
+          - "Copy data to correct region"
+          - "Verify integrity"
+          - "Delete from unauthorized region"
+          - "Update application configuration"
+        command: |
+          # Cross-region copy with encryption
+          aws s3 sync s3://us-bucket/eu-data/ s3://eu-bucket/data/ \
+            --source-region us-east-1 --region eu-west-1 \
+            --sse aws:kms --sse-kms-key-id alias/eu-data-key
+      - action: update-routing
+        description: "Ensure data flows to correct region"
+        config: |
+          # Route EU traffic to EU cluster
+          apiVersion: networking.istio.io/v1beta1
+          kind: VirtualService
+          spec:
+            http:
+            - match:
+              - headers:
+                  x-user-region:
+                    exact: EU
+              route:
+              - destination:
+                  host: bookstore-api
+                  subset: eu-west-1
+      - action: delete-unauthorized
+        description: "Remove data from unauthorized region"
+        command: |
+          aws s3 rm s3://us-bucket/eu-data/ --recursive
+        requiresApproval: true
+        warning: "Verify migration complete before deletion"
+
+  dataResidencyArchitecture:
+    patterns:
+      - name: "Regional Isolation"
+        description: "Separate infrastructure per region"
+        pros: ["Clear boundaries", "Simple compliance"]
+        cons: ["Higher cost", "Operational complexity"]
+      - name: "Data Classification"
+        description: "Tag data with residency requirements"
+        pros: ["Flexible", "Single infrastructure"]
+        cons: ["Complex routing", "Risk of misclassification"]
+      - name: "Edge Processing"
+        description: "Process data at edge, aggregate anonymized"
+        pros: ["Privacy preserving", "Reduced transfer"]
+        cons: ["Limited analytics", "Complex architecture"]
+
+  prevention:
+    - type: infrastructure-design
+      description: "Design for data residency from start"
+      implementation: |
+        - Separate clusters per region
+        - Regional data stores
+        - Data classification tags
+    - type: policy-enforcement
+      description: "Block non-compliant resource creation"
+      aws-scp: |
+        {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Sid": "DenyNonEURegions",
+            "Effect": "Deny",
+            "Action": "s3:CreateBucket",
+            "Resource": "*",
+            "Condition": {
+              "StringNotEquals": {
+                "s3:LocationConstraint": ["eu-west-1", "eu-central-1"]
+              },
+              "ForAnyValue:StringEquals": {
+                "aws:RequestTag/DataClassification": "EU-PII"
+              }
+            }
+          }]
+        }
+    - type: data-governance
+      description: "Implement data governance program"
+      components:
+        - "Data classification"
+        - "Data lineage tracking"
+        - "Automated residency scanning"
+
+  verification:
+    - type: region-check
+      command: |
+        aws s3api get-bucket-location --bucket eu-customer-data | jq '.LocationConstraint'
+      expected: "eu-west-1"
+    - type: data-scan
+      command: |
+        # No EU PII in non-EU buckets
+        aws macie2 list-findings \
+          --finding-criteria '{"criterion":{"region":{"neq":["eu-west-1","eu-central-1"]}}}' \
+          --query 'findingIds'
+      expected: "[]"
+    - type: policy-test
+      command: |
+        aws s3api create-bucket --bucket test-eu-data --region us-east-1 2>&1
+      expected: "Access Denied (blocked by SCP)"
+
+  references:
+    - url: https://ec.europa.eu/info/law/law-topic/data-protection/international-dimension-data-protection_en
+      title: "EU Data Transfer Requirements"
+    - url: https://aws.amazon.com/compliance/data-residency/
+      title: "AWS Data Residency"
+    - url: https://cloud.google.com/architecture/framework/security/data-residency-sovereignty
+      title: "GCP Data Residency"

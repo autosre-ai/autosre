@@ -1,0 +1,113 @@
+# Scenario: SSL Certificate Expired
+# Expected: OpenSRE detects TLS handshake failures, certificate errors
+# Remediation: Renew certificate, check cert-manager, update secrets
+# Root Cause: TLS certificate has expired
+apiVersion: v1
+kind: Secret
+metadata:
+  name: expired-tls-cert
+  namespace: bookstore
+  labels:
+    fault: ssl-certificate-expired
+type: kubernetes.io/tls
+data:
+  # Self-signed expired certificate (created in past, already expired)
+  # This is a dummy base64 encoded placeholder - in real scenario use actual expired cert
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJrVENDQVRlZ0F3SUJBZ0lKQUxpMHpqRlVDdE1ITUFvR0NDcUdTTTQ5QkFNQ01COHhIVEFiQmdOVkJBTU0KRkdWNGNHbHlaV1F0WTJWeWRDMWxlR0Z0Y0d4bE1CNFhEVEU1TURFeE1UQXdNREF3TUZvWERUSXdNREV4TVRBdwpNREF3TUZvd0h6RWRNQnNHQTFVRUF3d1VaWGh3YVhKbFpDMWpaWEowTFdWNFlXMXdiR1V3V1RBVEJnY3Foa2pPClBRSUJCZ2dxaGtqT1BRTUJCd05DQUFSdGVzdC1rZXktZGF0YS1oZXJlLXRlc3Qta2V5LWRhdGEtaGVyZS10ZXN0CmtleS1kYXRhLWhlcmUtdGVzdC1rZXktZGF0YS1oZXJlLXRlc3Rrbw0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
+  tls.key: LS0tLS1CRUdJTiBFQyBQUklWQVRFIEtFWS0tLS0tCk1IUUNBUUVFSUVkdW1teS1wcml2YXRlLWtleS1kYXRhLWhlcmUtZHVtbXktcHJpdmF0ZS1rZXktZGF0YS1oZXJlCmR1bW15LXByaXZhdGUta2V5LWRhdGEtaGVyZS1kdW1teS1wcml2YXRlLWtleS1kYXRhLWhlcmUtZHVtbXkKLS0tLS1FTkQgRUMgUFJJVkFURSBLRVktLS0tLQo=
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: secure-api-ssl-expired
+  namespace: bookstore
+  labels:
+    app: secure-api
+    tier: api
+    fault: ssl-certificate-expired
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: secure-api
+      fault: ssl-certificate-expired
+  template:
+    metadata:
+      labels:
+        app: secure-api
+        tier: api
+        fault: ssl-certificate-expired
+    spec:
+      containers:
+      - name: secure-api
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import ssl
+          import urllib.request
+          import json
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path == '/health':
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                  elif self.path.startswith('/secure'):
+                      # Simulate calling HTTPS endpoint with expired cert
+                      try:
+                          # This will fail SSL verification
+                          ctx = ssl.create_default_context()
+                          response = urllib.request.urlopen(
+                              'https://expired.badssl.com/',
+                              context=ctx,
+                              timeout=10
+                          )
+                          self.send_response(200)
+                          self.end_headers()
+                          self.wfile.write(b'OK')
+                      except ssl.SSLCertVerificationError as e:
+                          print(f"[SSL-EXPIRED] Certificate verification failed: {e}")
+                          self.send_response(502)
+                          self.send_header('Content-Type', 'application/json')
+                          self.end_headers()
+                          error = {"error": "SSL_CERTIFICATE_EXPIRED",
+                                   "message": "TLS handshake failed - certificate expired",
+                                   "detail": str(e)}
+                          self.wfile.write(json.dumps(error).encode())
+                      except Exception as e:
+                          print(f"[ERROR] {e}")
+                          self.send_response(500)
+                          self.end_headers()
+                          self.wfile.write(str(e).encode())
+                  else:
+                      self.send_response(404)
+                      self.end_headers()
+              def log_message(self, format, *args):
+                  print(f"[secure-api] {args[0]}")
+          
+          print("Secure API (SSL-EXPIRED variant) starting on port 8080...")
+          print("[WARN] TLS certificate is expired - HTTPS requests will fail")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 8443
+          name: https
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        volumeMounts:
+        - name: tls-certs
+          mountPath: /etc/tls
+          readOnly: true
+      volumes:
+      - name: tls-certs
+        secret:
+          secretName: expired-tls-cert

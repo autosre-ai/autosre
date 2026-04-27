@@ -1,0 +1,129 @@
+# Connection Leak
+# Simulates database/HTTP connections not being properly closed
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service-connection-leak
+  namespace: bookstore
+  labels:
+    app: order-service
+    tier: api
+    fault: connection-leak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: order-service
+  template:
+    metadata:
+      labels:
+        app: order-service
+        tier: api
+        fault: connection-leak
+    spec:
+      containers:
+      - name: order
+        image: python:3.11-alpine
+        env:
+        - name: FAULT_MODE
+          value: "connection-leak"
+        - name: LEAK_RATE
+          value: "0.3"
+        - name: MAX_CONNECTIONS
+          value: "100"
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+          import random
+          import os
+          
+          LEAK_RATE = float(os.environ.get('LEAK_RATE', 0.3))
+          MAX_CONNS = int(os.environ.get('MAX_CONNECTIONS', 100))
+          
+          leaked_connections = 0
+          
+          class Handler(BaseHTTPRequestHandler):
+              global leaked_connections
+              
+              def do_GET(self):
+                  global leaked_connections
+                  
+                  if self.path in ['/health', '/ready']:
+                      if leaked_connections > MAX_CONNS * 0.9:
+                          self.send_response(503)
+                          self.end_headers()
+                          self.wfile.write(b'Connection pool critical')
+                          return
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                      return
+                  
+                  # Simulate connection leak
+                  if random.random() < LEAK_RATE:
+                      leaked_connections += 1
+                      print(f"[leak] Connection leaked! Total leaked: {leaked_connections}/{MAX_CONNS}")
+                  
+                  if leaked_connections >= MAX_CONNS:
+                      print(f"[leak] CRITICAL: No connections available!")
+                      self.send_response(503)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      error = {
+                          "error": "ConnectionPoolExhausted",
+                          "message": "No connections available - possible connection leak",
+                          "details": {
+                              "leaked_connections": leaked_connections,
+                              "max_connections": MAX_CONNS,
+                              "suggestion": "Restart pod to reclaim connections, then fix code"
+                          }
+                      }
+                      self.wfile.write(json.dumps(error).encode())
+                  else:
+                      self.send_response(200)
+                      self.send_header('Content-Type', 'application/json')
+                      self.send_header('X-Connections-In-Use', str(leaked_connections))
+                      self.end_headers()
+                      response = {
+                          "orders": [],
+                          "connection_stats": {
+                              "active": leaked_connections,
+                              "max": MAX_CONNS,
+                              "available": MAX_CONNS - leaked_connections,
+                              "warning": "Connection count growing" if leaked_connections > 50 else None
+                          }
+                      }
+                      self.wfile.write(json.dumps(response).encode())
+                      
+              def do_POST(self):
+                  return self.do_GET()
+                  
+              def log_message(self, format, *args):
+                  print(f"[order-leak] {args[0]}")
+          
+          print(f"Order service (CONNECTION LEAK) starting - leak_rate={LEAK_RATE}")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15

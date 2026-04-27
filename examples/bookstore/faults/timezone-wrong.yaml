@@ -1,0 +1,99 @@
+# Scenario: Incorrect Timezone Configuration
+# Expected: OpenSRE detects scheduled jobs running at wrong times
+# Remediation: Set correct TZ environment variable, verify timezone
+# Root Cause: Container using wrong timezone for scheduled operations
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scheduler-config-wrong-tz
+  namespace: bookstore
+  labels:
+    fault: timezone-wrong
+data:
+  TZ: "Pacific/Kiritimati"  # UTC+14, very different from expected UTC
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler-service-wrong-tz
+  namespace: bookstore
+  labels:
+    app: scheduler
+    tier: batch
+    fault: timezone-wrong
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scheduler
+      fault: timezone-wrong
+  template:
+    metadata:
+      labels:
+        app: scheduler
+        tier: batch
+        fault: timezone-wrong
+    spec:
+      containers:
+      - name: scheduler
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          import os
+          import time
+          from datetime import datetime
+          import threading
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          
+          # Read timezone from environment
+          tz = os.environ.get('TZ', 'UTC')
+          print(f"Scheduler starting with timezone: {tz}")
+          
+          def scheduled_task():
+              """Run 'daily' task - but timezone is wrong"""
+              while True:
+                  now = datetime.now()
+                  print(f"[SCHEDULER] Current time (TZ={tz}): {now}")
+                  print(f"[SCHEDULER] Expected: 09:00 UTC, Actual: {now.strftime('%H:%M')}")
+                  
+                  # This check will fire at wrong times due to TZ offset
+                  if now.hour == 9 and now.minute == 0:
+                      print("[SCHEDULER] Running daily cleanup task...")
+                      print("[WARN] But this is 14 hours off from UTC 09:00!")
+                  
+                  time.sleep(60)
+          
+          threading.Thread(target=scheduled_task, daemon=True).start()
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path == '/time':
+                      now = datetime.now()
+                      self.send_response(200)
+                      self.end_headers()
+                      response = f"Container time: {now}, TZ: {tz}"
+                      self.wfile.write(response.encode())
+                  else:
+                      self.send_response(200)
+                      self.end_headers()
+              def log_message(self, format, *args):
+                  pass
+          
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: TZ
+          valueFrom:
+            configMapKeyRef:
+              name: scheduler-config-wrong-tz
+              key: TZ
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"

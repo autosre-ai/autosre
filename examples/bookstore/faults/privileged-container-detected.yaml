@@ -1,0 +1,185 @@
+# Scenario: Privileged Container Detected
+# Category: Container Security
+# Description: Container running with privileged flag enabled
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: privileged-container-detected
+  labels:
+    category: security
+    subcategory: container-security
+    severity: critical
+    service: bookstore-api
+spec:
+  description: |
+    A container is running in privileged mode, which gives it full access to
+    the host system. This is a critical security violation that could allow
+    container escape.
+  
+  symptoms:
+    - type: security-alert
+      source: falco
+      message: "Privileged container started (user=root command=container:xxxx)"
+    - type: compliance-alert
+      source: kube-bench
+      message: "5.2.1 Minimize the admission of privileged containers"
+    - type: policy-violation
+      source: opa-gatekeeper
+      message: "Privileged containers are not allowed"
+
+  securityRisk:
+    severity: critical
+    description: |
+      Privileged containers have:
+      - Full access to host devices
+      - Can load kernel modules
+      - Can modify host network
+      - Can escape container isolation
+      - Essentially root on the host
+    attackScenarios:
+      - "Container escape via device access"
+      - "Kernel module loading for persistence"
+      - "Network sniffing of other containers"
+      - "Access to secrets from other containers"
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "Host system potentially compromised"
+
+  detection:
+    - method: kubectl
+      command: |
+        kubectl get pods -A -o json | jq -r '.items[] | select(.spec.containers[].securityContext.privileged==true) | "\(.metadata.namespace)/\(.metadata.name)"'
+    - method: falco
+      rule: |
+        - rule: Launch Privileged Container
+          desc: Detect the launch of a privileged container
+          condition: >
+            container_started and container.privileged=true
+          output: >
+            Privileged container started (user=%user.name container=%container.name image=%container.image.repository)
+          priority: CRITICAL
+    - method: opa-gatekeeper
+      constraint: |
+        apiVersion: constraints.gatekeeper.sh/v1beta1
+        kind: K8sPSPPrivilegedContainer
+        metadata:
+          name: psp-privileged-container
+        spec:
+          match:
+            kinds:
+            - apiGroups: [""]
+              kinds: ["Pod"]
+
+  immediateActions:
+    - action: identify-reason
+      description: "Determine why container is privileged"
+      command: |
+        kubectl get pod ${POD_NAME} -n ${NAMESPACE} -o yaml | grep -A5 securityContext
+    - action: assess-necessity
+      description: "Is privileged mode actually required?"
+      checklist:
+        - "Does workload need device access?"
+        - "Can specific capabilities replace privileged?"
+        - "Is this a CNI/CSI component?"
+    - action: terminate-if-unnecessary
+      description: "Remove unauthorized privileged pods"
+      command: |
+        kubectl delete pod ${POD_NAME} -n ${NAMESPACE}
+
+  remediation:
+    automated: false
+    requiresApproval: security-team
+    steps:
+      - action: identify-requirements
+        description: "Determine actual host access needs"
+        tasks:
+          - "List devices needed"
+          - "List capabilities needed"
+          - "Review if workload can run unprivileged"
+      - action: use-specific-capabilities
+        description: "Replace privileged with specific capabilities"
+        example: |
+          securityContext:
+            privileged: false  # REMOVED
+            capabilities:
+              add:
+              - NET_ADMIN  # Only what's needed
+              - SYS_PTRACE
+      - action: use-device-mounts
+        description: "Mount specific devices instead of privileged"
+        example: |
+          volumes:
+          - name: dev-fuse
+            hostPath:
+              path: /dev/fuse
+          volumeMounts:
+          - name: dev-fuse
+            mountPath: /dev/fuse
+      - action: enforce-policy
+        description: "Add admission controller to prevent future violations"
+        command: |
+          kubectl apply -f privileged-container-constraint.yaml
+
+  legitimateUseCases:
+    description: "Rare cases where privileged may be needed"
+    examples:
+      - workload: "CNI plugins (Calico, Cilium)"
+        reason: "Network namespace setup"
+        mitigation: "Runs in kube-system with restricted access"
+      - workload: "CSI drivers"
+        reason: "Block device access"
+        mitigation: "Limited to storage nodes"
+      - workload: "Node monitoring (Falco)"
+        reason: "Kernel syscall access"
+        mitigation: "DaemonSet with node affinity"
+    policy: |
+      If privileged is legitimately needed:
+      1. Document the requirement
+      2. Security team approval
+      3. Use Pod Security Standards exception
+      4. Additional monitoring for the workload
+
+  prevention:
+    - type: pod-security-standards
+      description: "Enable restricted PSS"
+      command: |
+        kubectl label namespace bookstore \
+          pod-security.kubernetes.io/enforce=restricted \
+          pod-security.kubernetes.io/warn=restricted
+    - type: opa-gatekeeper
+      description: "Block privileged containers"
+      constraint: |
+        apiVersion: constraints.gatekeeper.sh/v1beta1
+        kind: K8sPSPPrivilegedContainer
+        metadata:
+          name: deny-privileged
+        spec:
+          match:
+            kinds:
+            - apiGroups: [""]
+              kinds: ["Pod"]
+            excludedNamespaces:
+            - kube-system
+    - type: admission-webhook
+      description: "Custom webhook to block privileged"
+
+  verification:
+    - type: pod-check
+      command: |
+        kubectl get pods -A -o json | jq '[.items[] | select(.spec.containers[].securityContext.privileged==true)] | length'
+      expected: "0 (or only allowed namespaces)"
+    - type: policy-test
+      command: |
+        kubectl apply --dry-run=server -f privileged-pod.yaml
+      expected: "Rejected by admission policy"
+
+  references:
+    - url: https://kubernetes.io/docs/concepts/security/pod-security-standards/
+      title: "Pod Security Standards"
+    - url: https://learn.microsoft.com/en-us/azure/aks/use-psa
+      title: "Pod Security Admission"
+    - url: https://sysdig.com/blog/kubernetes-security-psp-network-policy/
+      title: "Container Security Best Practices"

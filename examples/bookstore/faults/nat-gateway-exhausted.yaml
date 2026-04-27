@@ -1,0 +1,92 @@
+# Scenario: NAT Gateway Exhausted - Port Exhaustion
+# Category: Networking Infrastructure
+# Severity: High
+# Description: NAT gateway port exhaustion causing outbound connection failures
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: nat-gateway-exhausted
+  labels:
+    category: networking-infrastructure
+    severity: high
+    component: nat-gateway
+spec:
+  description: |
+    NAT gateway has exhausted available source ports. Pods cannot establish
+    new outbound connections to external services.
+    
+  symptoms:
+    - type: connection-error
+      error: "cannot assign requested address"
+    - type: external-connectivity
+      description: "Pods cannot reach external APIs"
+    - type: dns-resolution
+      description: "External DNS queries failing"
+      
+  affectedResources:
+    - kind: Pod
+      all: true
+      symptom: "Cannot reach external services"
+    - kind: Job
+      status: Failed
+      reason: "External API unreachable"
+        
+  metrics:
+    - name: nat_gateway_allocated_ports
+      value: 64512  # Near max
+    - name: nat_gateway_dropped_connections_count
+      rate: 500
+    - name: nat_gateway_sent_bytes_count
+      value: 0  # Dropping
+      
+  logs:
+    - source: application
+      level: error
+      patterns:
+        - "connect: cannot assign requested address"
+        - "connection refused"
+        - "network is unreachable"
+    - source: cloud-audit
+      level: warning
+      patterns:
+        - "NAT_PORT_ALLOCATION_FAILED"
+        - "port exhaustion"
+        
+  rootCause:
+    component: nat-gateway
+    type: resource-exhaustion
+    details: |
+      NAT port exhaustion. Common causes:
+      - Too many concurrent outbound connections
+      - Connections not being closed properly
+      - Single NAT gateway for large cluster
+      - Connection pooling not used
+      - Many pods connecting to same destination
+      - TIME_WAIT connections accumulating
+      
+  remediation:
+    steps:
+      - action: check-nat-status
+        command: "gcloud compute routers nats describe my-nat --router=my-router --region=us-central1"
+        description: "Check NAT gateway status"
+      - action: check-port-usage
+        command: "gcloud compute routers nats describe my-nat --router=my-router | grep -A10 'natIpAllocateOption'"
+        description: "Check port allocation"
+      - action: add-nat-ips
+        command: "gcloud compute routers nats update my-nat --router=my-router --nat-external-ip-pool=nat-ip-1,nat-ip-2"
+        description: "Add more external IPs to NAT"
+      - action: increase-port-range
+        command: "gcloud compute routers nats update my-nat --router=my-router --min-ports-per-vm=4096"
+        description: "Increase minimum ports per VM"
+      - action: review-app-connections
+        command: "kubectl exec app-pod -- ss -tnp | wc -l"
+        description: "Check connection count per pod"
+      - action: enable-connection-pooling
+        command: "# Configure connection pooling in application"
+        description: "Reduce connection churn"
+    
+  detection:
+    promql: 'nat_gateway_allocated_ports / nat_gateway_max_ports > 0.9'
+    alertName: NATGatewayPortExhaustion
+    severity: warning

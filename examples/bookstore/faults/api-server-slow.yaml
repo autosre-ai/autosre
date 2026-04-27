@@ -1,0 +1,100 @@
+# Scenario: API Server Slow - Control Plane Latency
+# Category: Cluster Issues
+# Severity: Critical
+# Description: Kubernetes API server experiencing high latency
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: api-server-slow
+  labels:
+    category: cluster-issues
+    severity: critical
+    component: kube-apiserver
+spec:
+  description: |
+    API server requests are taking significantly longer than normal.
+    This impacts all cluster operations including kubectl commands,
+    controller reconciliation, and pod scheduling.
+    
+  symptoms:
+    - type: api-latency
+      percentile: p99
+      value: 5000ms  # 5 seconds
+      threshold: 200ms
+    - type: kubectl-behavior
+      description: "kubectl commands hanging or timing out"
+    - type: controller-lag
+      description: "Controllers falling behind on reconciliation"
+    - type: pod-events
+      delay: "Events appearing minutes after actions"
+      
+  affectedResources:
+    - kind: APIServer
+      component: kube-apiserver
+    - kind: Controller
+      all: true
+    - kind: Scheduler
+      description: "Scheduling decisions delayed"
+        
+  metrics:
+    - name: apiserver_request_duration_seconds_bucket
+      labels:
+        le: "5"
+        verb: GET
+      value: 0.95  # 95% of requests taking 5s+
+    - name: apiserver_current_inflight_requests
+      value: 400  # High in-flight
+    - name: etcd_request_duration_seconds_bucket
+      labels:
+        le: "1"
+      value: 0.5  # 50% of etcd requests > 1s
+      
+  logs:
+    - source: kube-apiserver
+      level: warning
+      patterns:
+        - "request took too long"
+        - "etcd request slow"
+        - "timeout waiting for response"
+        - "rejected by rate limiter"
+    - source: kube-controller-manager
+      level: warning
+      patterns:
+        - "observed a panic"
+        - "API request failed"
+        
+  rootCause:
+    component: kube-apiserver
+    type: performance-degradation
+    details: |
+      API server slowdown. Common causes:
+      - etcd latency (disk I/O, compaction)
+      - High request volume (noisy controllers, operators)
+      - Expensive LIST operations (large configmaps/secrets)
+      - Admission webhook slow responses
+      - Insufficient API server replicas/resources
+      - Network latency to etcd
+      
+  remediation:
+    steps:
+      - action: check-apiserver-metrics
+        command: "kubectl get --raw /metrics | grep apiserver_request_duration"
+        description: "Review API server latency metrics"
+      - action: check-etcd-health
+        command: "kubectl exec -n kube-system etcd-0 -- etcdctl endpoint health"
+        description: "Verify etcd health"
+      - action: check-inflight-requests
+        command: "kubectl get --raw /metrics | grep apiserver_current_inflight"
+        description: "Check current request load"
+      - action: identify-noisy-clients
+        command: "kubectl top --raw /metrics | grep apiserver_request_total | sort -t',' -k2 -rn | head"
+        description: "Find clients making most requests"
+      - action: scale-apiserver
+        command: "kubectl scale deployment kube-apiserver --replicas=5"
+        description: "Add more API server replicas"
+    
+  detection:
+    promql: 'histogram_quantile(0.99, sum(rate(apiserver_request_duration_seconds_bucket{verb!="WATCH"}[5m])) by (le)) > 1'
+    alertName: KubeAPILatencyHigh
+    severity: critical

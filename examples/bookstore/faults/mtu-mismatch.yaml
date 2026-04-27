@@ -1,0 +1,93 @@
+# Scenario: MTU Mismatch - Packet Fragmentation
+# Category: Networking Infrastructure
+# Severity: Medium
+# Description: MTU size mismatch causing packet fragmentation and drops
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: mtu-mismatch
+  labels:
+    category: networking-infrastructure
+    severity: medium
+    component: network
+spec:
+  description: |
+    MTU (Maximum Transmission Unit) mismatch between network segments
+    causing packet fragmentation, dropped packets, and connection issues.
+    
+  symptoms:
+    - type: connection-behavior
+      description: "Connections hang after initial handshake"
+    - type: large-packets
+      description: "Large data transfers fail, small ones succeed"
+    - type: icmp-fragmentation
+      description: "ICMP fragmentation needed but blocked"
+      
+  affectedResources:
+    - kind: Node
+      description: "Cross-node communication affected"
+    - kind: Service
+      description: "Services with large payloads failing"
+    - kind: Pod
+      description: "Pods timing out on large responses"
+        
+  metrics:
+    - name: node_network_receive_errs_total
+      rate: 100
+    - name: node_network_transmit_drop_total
+      rate: 50
+    - name: container_network_receive_errors_total
+      rate: 75
+      
+  logs:
+    - source: kernel
+      level: info
+      patterns:
+        - "ICMP redirect"
+        - "fragmentation needed"
+        - "DF flag set but fragment needed"
+    - source: application
+      level: error
+      patterns:
+        - "connection reset"
+        - "broken pipe"
+        - "message too long"
+        
+  rootCause:
+    component: network-mtu
+    type: misconfiguration
+    details: |
+      MTU mismatch. Common causes:
+      - VPN/tunnel overhead not accounted for
+      - Cloud provider MTU different from on-prem
+      - CNI plugin MTU misconfigured
+      - Jumbo frames not supported end-to-end
+      - PMTU discovery blocked (ICMP filtered)
+      - Mixed network environments
+      
+  remediation:
+    steps:
+      - action: check-interface-mtu
+        command: "ip link show | grep mtu"
+        description: "Check MTU on node interfaces"
+      - action: test-mtu
+        command: "ping -M do -s 1472 destination-ip"
+        description: "Test MTU with don't fragment flag"
+      - action: check-cni-mtu
+        command: "kubectl get configmap -n kube-system calico-config -o yaml | grep mtu"
+        description: "Check CNI MTU configuration"
+      - action: fix-cni-mtu
+        command: "kubectl patch configmap calico-config -n kube-system -p '{\"data\":{\"veth_mtu\":\"1400\"}}'"
+        description: "Reduce CNI MTU to account for overhead"
+      - action: restart-cni
+        command: "kubectl rollout restart daemonset -n kube-system calico-node"
+        description: "Restart CNI to apply MTU changes"
+      - action: fix-node-mtu
+        command: "ip link set dev eth0 mtu 1400"
+        description: "Adjust node interface MTU"
+    
+  detection:
+    promql: 'rate(node_network_receive_errs_total[5m]) > 10'
+    alertName: NetworkMTUMismatch
+    severity: warning

@@ -1,0 +1,104 @@
+# Scenario: CRD Validation Failed - Custom Resource Rejected
+# Category: Cluster Issues
+# Severity: Medium
+# Description: Custom Resource creation failing due to validation errors
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: crd-validation-failed
+  labels:
+    category: cluster-issues
+    severity: medium
+    component: apiextensions
+spec:
+  description: |
+    Custom Resource Definition (CRD) validation is rejecting resources due to
+    schema violations or webhook validation failures. Operators depending on
+    these CRDs cannot function properly.
+    
+  symptoms:
+    - type: api-error
+      error: "spec.field: Invalid value"
+    - type: api-error
+      error: "admission webhook denied the request"
+    - type: operator-status
+      condition: Degraded
+      reason: "CRD validation failure"
+    - type: kubectl-output
+      contains: "The CustomResourceDefinition is invalid"
+      
+  affectedResources:
+    - kind: CustomResourceDefinition
+      name: certificates.cert-manager.io
+    - kind: Certificate
+      status: "Creation rejected"
+    - kind: Deployment
+      name: cert-manager
+      status: "Operator unhealthy"
+        
+  metrics:
+    - name: apiserver_request_total
+      labels:
+        code: "422"
+        resource: certificates
+      rate: 15
+    - name: controller_runtime_reconcile_errors_total
+      labels:
+        controller: certificate
+      rate: 20
+    - name: apiserver_admission_webhook_rejection_count
+      labels:
+        operation: CREATE
+        name: webhook.cert-manager.io
+      rate: 10
+      
+  logs:
+    - source: kube-apiserver
+      level: warning
+      patterns:
+        - "Invalid value"
+        - "Required field missing"
+        - "must be one of"
+        - "CRD validation failed"
+    - source: cert-manager
+      level: error
+      patterns:
+        - "failed to create Certificate"
+        - "validation error"
+        - "spec.issuerRef is required"
+        
+  rootCause:
+    component: crd-validation
+    type: misconfiguration
+    details: |
+      CRD validation failures. Common causes:
+      - Schema changed in CRD version upgrade
+      - Required field missing in resource spec
+      - Invalid enum value
+      - Type mismatch (string vs integer)
+      - CRD webhook rejecting resources
+      - Incompatible CRD and operator versions
+      
+  remediation:
+    steps:
+      - action: view-validation-error
+        command: "kubectl apply -f certificate.yaml 2>&1"
+        description: "Get the exact validation error"
+      - action: check-crd-schema
+        command: "kubectl get crd certificates.cert-manager.io -o yaml | yq '.spec.versions[].schema'"
+        description: "Review CRD OpenAPI schema"
+      - action: validate-locally
+        command: "kubectl apply --dry-run=server -f certificate.yaml"
+        description: "Validate resource without creating"
+      - action: check-operator-version
+        command: "kubectl get deployment cert-manager -o jsonpath='{.spec.template.spec.containers[0].image}'"
+        description: "Verify operator version matches CRD"
+      - action: fix-resource
+        command: "kubectl patch certificate my-cert --type=merge --patch '{\"spec\":{\"issuerRef\":{\"name\":\"letsencrypt\",\"kind\":\"ClusterIssuer\"}}}'"
+        description: "Add missing required fields"
+    
+  detection:
+    promql: 'sum(rate(apiserver_request_total{code="422",resource=~".*"}[5m])) > 5'
+    alertName: CRDValidationFailures
+    severity: warning

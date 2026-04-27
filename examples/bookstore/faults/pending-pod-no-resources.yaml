@@ -1,0 +1,46 @@
+# Scenario: Pending Pod - Insufficient Resources
+# Expected: OpenSRE detects pods stuck in Pending with FailedScheduling events
+# Remediation: Scale down workloads, add nodes, reduce resource requests
+# Root Cause: Resource requests exceed cluster capacity
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-service-pending-resources
+  namespace: bookstore
+  labels:
+    app: analytics-service
+    tier: batch
+    fault: pending-no-resources
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: analytics-service
+      fault: pending-no-resources
+  template:
+    metadata:
+      labels:
+        app: analytics-service
+        tier: batch
+        fault: pending-no-resources
+    spec:
+      containers:
+      - name: analytics
+        image: python:3.11-alpine
+        command: ["python", "-c", "import time; time.sleep(3600)"]
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            # Extremely high requests that no node can satisfy
+            memory: "128Gi"
+            cpu: "64"
+          limits:
+            memory: "256Gi"
+            cpu: "128"
+---
+# Also create an event-style comment for reference
+# kubectl get events -n bookstore will show:
+# Warning  FailedScheduling  pod/analytics-service-pending-xxx  
+# 0/3 nodes are available: 3 Insufficient cpu, 3 Insufficient memory

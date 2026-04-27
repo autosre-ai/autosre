@@ -1,0 +1,111 @@
+# Scenario: Node Kernel Panic - Simulated Crash (Drain)
+# Category: Node Issues
+# Severity: Critical
+# Description: Node experienced kernel panic and is being drained
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: node-kernel-panic
+  labels:
+    category: node-issues
+    severity: critical
+    component: kernel
+spec:
+  description: |
+    Node experienced a kernel panic or critical system failure. The node
+    is being drained and workloads are being rescheduled to healthy nodes.
+    This may be detected via node auto-repair or monitoring systems.
+    
+  symptoms:
+    - type: node-condition
+      condition: Ready
+      status: "Unknown"
+      reason: "NodeStatusUnknown"
+      message: "Kubelet stopped posting node status"
+    - type: event
+      reason: NodeNotReady
+      message: "Node worker-node-9 status is now: NotReady"
+    - type: event
+      reason: NodeDrain
+      message: "Draining node due to kernel panic"
+    - type: pod-disruption
+      count: 15
+      reason: NodeUnreachable
+      
+  affectedResources:
+    - kind: Node
+      name: worker-node-9
+    - kind: Pod
+      selector:
+        spec.nodeName: worker-node-9
+        status.phase: Running
+    - kind: PodDisruptionBudget
+      status: Violated
+        
+  metrics:
+    - name: kube_node_status_condition
+      labels:
+        condition: Ready
+        status: "unknown"
+      value: 1
+    - name: node_up
+      labels:
+        instance: worker-node-9
+      value: 0
+    - name: kube_pod_status_phase
+      labels:
+        phase: Unknown
+      value: 15
+      
+  logs:
+    - source: kernel
+      level: emergency
+      patterns:
+        - "Kernel panic - not syncing"
+        - "BUG: unable to handle page fault"
+        - "general protection fault"
+    - source: kube-controller-manager
+      level: warning
+      patterns:
+        - "node worker-node-9 is unreachable"
+        - "Deleting all Pods from Node worker-node-9"
+    - source: cloud-controller
+      level: info
+      patterns:
+        - "Node worker-node-9 marked for repair"
+        
+  rootCause:
+    component: kernel
+    type: system-crash
+    details: |
+      Kernel panic on node. Common causes:
+      - Hardware failure (RAM, CPU, disk)
+      - Kernel bug triggered by workload
+      - Out of memory with no swap
+      - Driver incompatibility
+      - Corrupted filesystem
+      - Security exploit
+      
+  remediation:
+    steps:
+      - action: verify-node-down
+        command: "kubectl get node worker-node-9"
+        description: "Confirm node status"
+      - action: check-cloud-console
+        command: "gcloud compute instances describe worker-node-9"
+        description: "Check cloud provider status"
+      - action: force-delete-pods
+        command: "kubectl delete pods --field-selector spec.nodeName=worker-node-9 --force --grace-period=0"
+        description: "Force delete stuck pods"
+      - action: remove-node
+        command: "kubectl delete node worker-node-9"
+        description: "Remove node from cluster"
+      - action: trigger-replacement
+        command: "gcloud compute instances reset worker-node-9 || gcloud container node-pools rollback"
+        description: "Request node replacement"
+    
+  detection:
+    promql: 'up{job="kubelet"} == 0'
+    alertName: KubeNodeUnreachable
+    severity: critical

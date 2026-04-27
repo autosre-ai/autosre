@@ -1,0 +1,194 @@
+# Scenario: Audit Log Gap
+# Category: Compliance
+# Description: Missing audit records in compliance-required logging
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: audit-log-gap
+  labels:
+    category: security
+    subcategory: compliance
+    severity: high
+    service: audit-service
+spec:
+  description: |
+    A gap has been detected in the audit log stream. Required audit events
+    are missing, which violates compliance requirements and could indicate
+    tampering or system failure.
+  
+  symptoms:
+    - type: compliance-alert
+      source: audit-monitor
+      message: "Audit log gap detected: no events from 14:00-14:30 UTC"
+    - type: metric
+      name: audit_events_per_minute
+      condition: "dropped to 0 for >5 minutes"
+    - type: audit-finding
+      source: compliance-check
+      message: "SOC2 CC7.2: Audit logging continuity requirement not met"
+
+  complianceContext:
+    affectedFrameworks:
+      - framework: "SOC2"
+        control: "CC7.2"
+        requirement: "Monitor system components for anomalies and audit log integrity"
+      - framework: "PCI-DSS"
+        requirement: "10.7"
+        description: "Retain audit trail history for at least one year"
+      - framework: "HIPAA"
+        rule: "164.312(b)"
+        description: "Audit controls on PHI access"
+      - framework: "GDPR"
+        article: "Article 30"
+        description: "Records of processing activities"
+
+  affectedServices:
+    - name: audit-service
+      namespace: logging
+      impact: "Audit trail incomplete"
+    - name: all-services
+      namespace: "*"
+      impact: "Actions during gap unrecorded"
+
+  detection:
+    - method: event-rate
+      command: |
+        # Check for gaps in event flow
+        kubectl exec -n monitoring deploy/prometheus -- \
+          promql 'changes(audit_events_total[5m]) == 0 for 5m'
+    - method: timestamp-analysis
+      command: |
+        # Find gaps in event timestamps
+        curl -s "elasticsearch:9200/audit-*/_search" -H 'Content-Type: application/json' -d'
+        {
+          "size": 0,
+          "aggs": {
+            "events_over_time": {
+              "date_histogram": {
+                "field": "@timestamp",
+                "fixed_interval": "1m"
+              }
+            }
+          }
+        }' | jq '.aggregations.events_over_time.buckets[] | select(.doc_count == 0)'
+    - method: service-health
+      command: |
+        kubectl get pods -n logging -l app=audit-service
+
+  rootCause:
+    type: logging-failure
+    possibleCauses:
+      - "Audit service crashed or became unavailable"
+      - "Log forwarder (Fluentd/Fluent Bit) failure"
+      - "Elasticsearch/log storage unavailable"
+      - "Network partition between services and logging"
+      - "Buffer overflow causing log loss"
+      - "Malicious actor tampering with audit logs"
+
+  immediateActions:
+    - action: restore-logging
+      description: "Ensure audit logging is running"
+      command: |
+        kubectl rollout restart deployment/audit-service -n logging
+        kubectl rollout status deployment/audit-service -n logging
+    - action: assess-gap
+      description: "Determine gap timeline and scope"
+      command: |
+        # Find first and last event around gap
+        curl -s "elasticsearch:9200/audit-*/_search?size=1&sort=@timestamp:asc&q=@timestamp:>2024-01-15T14:00:00"
+        curl -s "elasticsearch:9200/audit-*/_search?size=1&sort=@timestamp:desc&q=@timestamp:<2024-01-15T14:00:00"
+    - action: check-for-tampering
+      description: "Look for signs of log manipulation"
+      indicators:
+        - "Selective deletion patterns"
+        - "Timestamp anomalies"
+        - "Unusual access to log storage"
+
+  remediation:
+    automated: partial
+    steps:
+      - action: identify-cause
+        command: |
+          # Check audit service status during gap
+          kubectl get events -n logging --sort-by='.lastTimestamp'
+      - action: recover-from-buffer
+        description: "Check for buffered logs not yet shipped"
+        command: |
+          kubectl exec -n logging deploy/fluentd -- \
+            ls -la /var/log/fluentd-buffers/
+      - action: reconstruct-from-sources
+        description: "Attempt to reconstruct audit trail"
+        sources:
+          - "Application-level logs"
+          - "Kubernetes audit logs"
+          - "Cloud provider activity logs"
+          - "Network flow logs"
+      - action: document-gap
+        description: "Document the gap for auditors"
+        template: |
+          Gap Period: [start] to [end]
+          Duration: [X] minutes
+          Cause: [root cause]
+          Impact: [what events may be missing]
+          Recovery Actions: [steps taken]
+          Prevention Measures: [improvements]
+      - action: notify-compliance
+        description: "Inform compliance team of gap"
+
+  prevention:
+    - type: redundant-logging
+      description: "Multiple logging paths"
+      implementation: |
+        Send audit events to:
+        1. Primary: Elasticsearch
+        2. Secondary: Cloud audit logs (CloudWatch, Stackdriver)
+        3. Tertiary: S3/GCS for long-term retention
+    - type: buffer-management
+      description: "Persistent buffering with overflow handling"
+      config: |
+        # Fluentd persistent buffer
+        <buffer>
+          @type file
+          path /var/log/fluentd-buffers/audit
+          overflow_action block
+          flush_interval 5s
+          retry_max_times 10
+        </buffer>
+    - type: monitoring
+      description: "Alert on audit gaps immediately"
+      rule: |
+        - alert: AuditLogGap
+          expr: changes(audit_events_total[5m]) == 0
+          for: 2m
+          labels:
+            severity: critical
+    - type: integrity-checking
+      description: "Log integrity verification"
+      implementation: |
+        - Hash chain for log entries
+        - Immutable log storage (WORM)
+        - Regular integrity audits
+
+  verification:
+    - type: event-flow
+      command: |
+        # Verify events are flowing
+        watch -n5 'curl -s "elasticsearch:9200/audit-*/_count" | jq .count'
+      expected: "Count increasing"
+    - type: gap-check
+      command: |
+        # No gaps in last hour
+        curl -s "elasticsearch:9200/audit-*/_search" -d'...' | \
+          jq '.aggregations.events_over_time.buckets | map(select(.doc_count == 0)) | length'
+      expected: "0"
+    - type: service-health
+      command: |
+        kubectl get pods -n logging -l app=audit-service -o jsonpath='{.items[0].status.phase}'
+      expected: "Running"
+
+  references:
+    - url: https://www.aicpa.org/soc-suite-of-services
+      title: "SOC2 Requirements"
+    - url: https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/
+      title: "Kubernetes Audit Logging"

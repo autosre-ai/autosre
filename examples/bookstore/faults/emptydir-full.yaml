@@ -1,0 +1,110 @@
+# Scenario: EmptyDir Volume Full
+# Expected: OpenSRE detects pod issues due to emptyDir filling up
+# Remediation: Add sizeLimit to emptyDir, clean up files, use PVC instead
+# Root Cause: emptyDir volume fills up affecting pod stability
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cache-emptydir-full
+  namespace: bookstore
+  labels:
+    app: file-cache
+    tier: cache
+    fault: emptydir-full
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: file-cache
+      fault: emptydir-full
+  template:
+    metadata:
+      labels:
+        app: file-cache
+        tier: cache
+        fault: emptydir-full
+    spec:
+      containers:
+      - name: cache
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          import os
+          import time
+          import threading
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          
+          cache_dir = '/cache'
+          
+          def fill_cache():
+              """Continuously fill cache directory"""
+              file_num = 0
+              while True:
+                  try:
+                      file_path = f'{cache_dir}/cache_{file_num}.dat'
+                      # Write 20MB per file
+                      with open(file_path, 'wb') as f:
+                          f.write(b'X' * (20 * 1024 * 1024))
+                      file_num += 1
+                      total_mb = file_num * 20
+                      print(f"[CACHE] Written {total_mb}MB to cache")
+                      time.sleep(2)
+                  except OSError as e:
+                      print(f"[CACHE] Disk full: {e}")
+                      time.sleep(10)
+          
+          threading.Thread(target=fill_cache, daemon=True).start()
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path == '/health':
+                      # Check if we can still write
+                      try:
+                          test_file = f'{cache_dir}/.health_check'
+                          with open(test_file, 'w') as f:
+                              f.write('test')
+                          os.remove(test_file)
+                          self.send_response(200)
+                          self.end_headers()
+                          self.wfile.write(b'OK')
+                      except OSError:
+                          self.send_response(500)
+                          self.end_headers()
+                          self.wfile.write(b'UNHEALTHY: Cache volume full')
+                  else:
+                      self.send_response(200)
+                      self.end_headers()
+              def log_message(self, format, *args):
+                  pass
+          
+          print("File cache service starting on port 8080...")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        volumeMounts:
+        - name: cache-volume
+          mountPath: /cache
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+      volumes:
+      - name: cache-volume
+        emptyDir:
+          sizeLimit: 100Mi  # Limit to 100Mi, will be exceeded quickly
+---
+# When sizeLimit is exceeded:
+# - Pod may be evicted (depending on k8s version and config)
+# - Health check fails as writes fail
+# - Application functionality degrades

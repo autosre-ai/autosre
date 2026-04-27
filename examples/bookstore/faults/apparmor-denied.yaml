@@ -1,0 +1,203 @@
+# Scenario: AppArmor Denied
+# Category: Container Security
+# Description: Container action blocked by AppArmor Linux Security Module
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: apparmor-denied
+  labels:
+    category: security
+    subcategory: container-security
+    severity: medium
+    service: bookstore-api
+spec:
+  description: |
+    An application action was blocked by the AppArmor Linux Security Module.
+    This could indicate the AppArmor profile is too restrictive for the
+    application's legitimate needs, or potentially malicious activity.
+  
+  symptoms:
+    - type: log
+      source: kernel
+      pattern: "audit: type=1400 audit(.*): apparmor=\"DENIED\" operation=\".*\" profile=\"docker-default\" name=\"/etc/passwd\""
+    - type: error
+      source: application
+      message: "Permission denied: /etc/resolv.conf"
+    - type: alert
+      source: auditd
+      message: "AppArmor DENIED for container bookstore-api"
+    - type: application-error
+      description: "Application unable to perform expected operation"
+
+  securityContext:
+    expectedBehavior: |
+      AppArmor profiles restrict what files, capabilities, and network
+      access containers can use. Denials indicate:
+      - Profile too restrictive
+      - Application attempting unauthorized access
+      - Potential security violation
+    commonDenials:
+      - operation: "file read"
+        path: "/etc/*"
+        reason: "Accessing system configuration"
+      - operation: "file write"
+        path: "/var/log/*"
+        reason: "Writing outside allowed paths"
+      - operation: "network"
+        reason: "Network access not allowed by profile"
+      - operation: "capability"
+        capability: "CAP_NET_RAW"
+        reason: "Creating raw sockets"
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "Application functionality blocked"
+
+  detection:
+    - method: kernel-logs
+      command: |
+        dmesg | grep -i apparmor | tail -20
+    - method: audit-log
+      command: |
+        ausearch -m AVC,USER_AVC -ts recent | grep DENIED
+    - method: aa-status
+      command: |
+        aa-status | grep -A5 "processes are in"
+    - method: journalctl
+      command: |
+        journalctl -k | grep apparmor | grep DENIED | tail -20
+
+  remediation:
+    automated: partial
+    steps:
+      - action: identify-denial
+        command: |
+          # Find specific denial details
+          dmesg | grep "apparmor.*DENIED" | tail -10
+      - action: analyze-profile
+        command: |
+          # View current profile
+          cat /etc/apparmor.d/docker-default
+      - action: determine-necessity
+        description: "Is this access legitimately needed?"
+        checklist:
+          - "What application function requires this access?"
+          - "Is there an alternative approach?"
+          - "Is this expected behavior?"
+      - action: use-complain-mode
+        description: "Switch to complain mode for debugging"
+        command: |
+          aa-complain docker-default
+      - action: create-custom-profile
+        description: "Create application-specific profile"
+        example: |
+          #include <tunables/global>
+          
+          profile bookstore-api flags=(attach_disconnected,mediate_deleted) {
+            #include <abstractions/base>
+            
+            # Network access
+            network inet tcp,
+            network inet udp,
+            network inet icmp,
+            
+            # Read-only paths
+            /etc/resolv.conf r,
+            /etc/hosts r,
+            /etc/passwd r,
+            /etc/group r,
+            
+            # Application paths
+            /app/** r,
+            /app/node_modules/** ix,
+            
+            # Writable paths
+            /tmp/** rwk,
+            /var/log/app/** w,
+            
+            # Deny dangerous operations
+            deny /etc/shadow r,
+            deny /root/** rwx,
+          }
+      - action: apply-profile
+        command: |
+          # Load profile
+          apparmor_parser -r /etc/apparmor.d/bookstore-api
+          
+          # Apply to pod
+          kubectl patch deployment bookstore-api -n bookstore --type='json' -p='[
+            {
+              "op": "add",
+              "path": "/spec/template/metadata/annotations/container.apparmor.security.beta.kubernetes.io~1bookstore-api",
+              "value": "localhost/bookstore-api"
+            }
+          ]'
+
+  profileOptions:
+    runtimeDefault:
+      description: "Use container runtime's default AppArmor profile"
+      annotation: |
+        container.apparmor.security.beta.kubernetes.io/app: runtime/default
+      recommendation: "Good baseline for most applications"
+    custom:
+      description: "Use custom application profile"
+      annotation: |
+        container.apparmor.security.beta.kubernetes.io/app: localhost/custom-profile
+      recommendation: "For specific application needs"
+    unconfined:
+      description: "Disable AppArmor (not recommended)"
+      annotation: |
+        container.apparmor.security.beta.kubernetes.io/app: unconfined
+      warning: "Security risk - use only for debugging"
+
+  profileGeneration:
+    description: "Generate profile by tracing application"
+    methods:
+      - tool: "aa-genprof"
+        command: |
+          # Run in learning mode
+          aa-genprof /app/server
+          # Exercise all application functionality
+          # Then accept learned rules
+      - tool: "bane"
+        description: "AppArmor profile generator for containers"
+        command: |
+          bane sample.toml
+      - tool: "aa-logprof"
+        command: |
+          # Review denied operations and generate rules
+          aa-logprof
+
+  prevention:
+    - type: profile-testing
+      description: "Test profiles in complain mode first"
+      command: |
+        aa-complain /etc/apparmor.d/bookstore-api
+    - type: documentation
+      description: "Document application access requirements"
+    - type: ci-testing
+      description: "Test with AppArmor in CI pipeline"
+
+  verification:
+    - type: no-denials
+      command: |
+        dmesg | grep "apparmor.*DENIED.*bookstore" | tail -1
+      expected: "No recent denials"
+    - type: application-health
+      command: |
+        kubectl exec -n bookstore deploy/bookstore-api -- curl -sf http://localhost:8080/health
+      expected: "healthy"
+    - type: profile-status
+      command: |
+        aa-status | grep bookstore-api
+      expected: "Profile in enforce mode"
+
+  references:
+    - url: https://kubernetes.io/docs/tutorials/security/apparmor/
+      title: "Kubernetes AppArmor Tutorial"
+    - url: https://gitlab.com/apparmor/apparmor/-/wikis/Documentation
+      title: "AppArmor Documentation"
+    - url: https://github.com/genuinetools/bane
+      title: "Bane - AppArmor Profile Generator"

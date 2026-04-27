@@ -1,0 +1,134 @@
+# Scenario: Certificate Revoked
+# Category: Authentication/Authorization
+# Description: TLS certificate appears in Certificate Revocation List (CRL)
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: certificate-revoked
+  labels:
+    category: security
+    subcategory: authentication
+    severity: critical
+    service: bookstore-api
+spec:
+  description: |
+    The TLS certificate for bookstore-api has been revoked and appears in the
+    Certificate Revocation List (CRL). This could indicate a security incident
+    where the private key was compromised.
+  
+  symptoms:
+    - type: error
+      source: nginx-ingress
+      message: "SSL certificate problem: certificate revoked"
+    - type: log
+      source: envoy
+      pattern: "CERTIFICATE_VERIFY_FAILED: certificate revoked"
+    - type: metric
+      name: ssl_handshake_errors_total
+      labels:
+        reason: "revoked"
+      condition: "increase > 0"
+    - type: alert
+      name: CertificateRevocationDetected
+      severity: critical
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "All HTTPS traffic rejected"
+    - name: bookstore-frontend
+      namespace: bookstore
+      impact: "Cannot connect to API"
+
+  rootCause:
+    type: security-incident
+    component: pki
+    details: |
+      The certificate was revoked for one of these reasons:
+      1. Private key compromise detected
+      2. CA compromise requiring bulk revocation
+      3. Certificate issued incorrectly
+      4. Organization change (domain transfer, company merger)
+      5. Administrative revocation request
+      
+      SECURITY NOTE: Treat this as a potential security incident until proven otherwise.
+
+  detection:
+    - method: ocsp-check
+      command: |
+        openssl s_client -connect bookstore-api:443 -servername bookstore-api.example.com 2>/dev/null | \
+        openssl x509 -noout -ocsp_uri | \
+        xargs -I {} openssl ocsp -issuer ca.pem -cert cert.pem -url {} -resp_text
+    - method: crl-check
+      command: |
+        curl -s http://crl.example.com/ca.crl | openssl crl -inform DER -text | grep -A1 "Serial Number"
+    - method: prometheus
+      query: |
+        ssl_certificate_revoked{service="bookstore-api"} == 1
+
+  immediateActions:
+    - action: security-alert
+      description: "Notify security team immediately"
+      severity: critical
+    - action: isolate-service
+      description: "Consider network isolation if compromise suspected"
+      command: |
+        kubectl annotate pod -l app=bookstore-api \
+          traffic.sidecar.istio.io/excludeOutboundPorts="443"
+    - action: audit-access
+      description: "Review access logs for suspicious activity"
+
+  remediation:
+    automated: false
+    requiresApproval: security-team
+    steps:
+      - action: investigate
+        description: "Determine reason for revocation"
+        tasks:
+          - "Check CA admin console for revocation reason"
+          - "Review security alerts for key compromise indicators"
+          - "Audit who requested revocation and why"
+      - action: generate-new-key
+        command: |
+          openssl genrsa -out new-key.pem 4096
+          openssl req -new -key new-key.pem -out new-csr.pem \
+            -subj "/CN=bookstore-api.example.com"
+      - action: request-new-cert
+        description: "Submit CSR to CA for new certificate"
+      - action: update-secret
+        command: |
+          kubectl create secret tls bookstore-api-tls \
+            --cert=new-cert.pem --key=new-key.pem \
+            --dry-run=client -o yaml | kubectl apply -f -
+      - action: rotate-credentials
+        description: "If compromise suspected, rotate all secrets"
+
+  prevention:
+    - type: monitoring
+      description: "Regular OCSP/CRL checking"
+      implementation: |
+        Deploy cert-manager with OCSP stapling and CRL checking
+    - type: policy
+      description: "Key protection policies"
+      rules:
+        - "Store private keys in HSM or Vault"
+        - "Implement key rotation every 90 days"
+        - "Use short-lived certificates where possible"
+
+  verification:
+    - type: ocsp-check
+      description: "Verify new certificate not revoked"
+    - type: ssl-test
+      command: |
+        echo | openssl s_client -connect bookstore-api:443 2>/dev/null | \
+        openssl x509 -noout -dates -subject
+    - type: functional
+      endpoint: https://bookstore-api.example.com/health
+      expectedStatus: 200
+
+  references:
+    - url: https://datatracker.ietf.org/doc/html/rfc5280
+      title: "RFC 5280 - X.509 PKI Certificate and CRL Profile"
+    - url: https://datatracker.ietf.org/doc/html/rfc6960
+      title: "RFC 6960 - OCSP"

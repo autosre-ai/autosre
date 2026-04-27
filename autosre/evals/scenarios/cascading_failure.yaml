@@ -1,0 +1,86 @@
+name: cascading_failure
+description: "Database failure causing cascading service outages"
+difficulty: hard
+
+setup_steps:
+  - "Simulate database connection pool exhaustion"
+  - "Watch dependent services start failing"
+  - "Observe error propagation"
+
+alert:
+  name: "HighErrorRate"
+  severity: critical
+  service_name: order-service
+  namespace: production
+  summary: "Error rate above 50% for order-service"
+  description: "order-service is returning 5xx errors for more than 50% of requests"
+  labels:
+    alertname: HighErrorRate
+    namespace: production
+    service: order-service
+    error_type: "500"
+  annotations:
+    error_rate: "52%"
+    threshold: "5%"
+
+services:
+  - name: order-service
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    labels:
+      app: order-service
+      team: orders
+    annotations:
+      autosre.io/dependencies: "database,inventory-service,payment-service"
+      
+  - name: inventory-service
+    namespace: production
+    status: degraded
+    replicas: 2
+    ready_replicas: 2
+    annotations:
+      autosre.io/dependencies: "database"
+      
+  - name: payment-service
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    annotations:
+      autosre.io/dependencies: "database"
+      
+  - name: database
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 1
+    labels:
+      app: postgresql
+
+changes:
+  - id: change-005
+    change_type: scale_down
+    service_name: database
+    description: "Reduced database replicas from 3 to 1 for cost savings"
+    author: cost-optimization@example.com
+    timestamp: "2024-01-15T06:00:00Z"
+    successful: true
+
+metrics:
+  pg_connections_active:
+    database:
+      - timestamp: "2024-01-15T09:00:00Z"
+        value: 50
+      - timestamp: "2024-01-15T09:30:00Z"
+        value: 150
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 200  # max_connections hit
+
+expected_root_cause: "Database connection pool exhausted after scaling down replicas"
+expected_service: database
+expected_runbook: database-connection-pool
+expected_action: "Scale database replicas back to 3, increase connection pool size"
+
+max_time_seconds: 180

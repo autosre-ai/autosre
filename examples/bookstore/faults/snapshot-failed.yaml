@@ -1,0 +1,103 @@
+# Scenario: Snapshot Failed - Backup Error
+# Category: Storage Issues
+# Severity: High
+# Description: Volume snapshot creation failed
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: snapshot-failed
+  labels:
+    category: storage-issues
+    severity: high
+    component: volume-snapshot
+spec:
+  description: |
+    VolumeSnapshot creation failed. Backup operations are not completing
+    successfully, risking data loss in case of failure.
+    
+  symptoms:
+    - type: snapshot-status
+      readyToUse: false
+      error: "snapshot creation failed"
+    - type: event
+      reason: SnapshotCreationFailed
+      message: "failed to create snapshot"
+    - type: backup-job
+      status: Failed
+      reason: "SnapshotError"
+      
+  affectedResources:
+    - kind: VolumeSnapshot
+      name: mysql-backup-20240115
+      status: Failed
+    - kind: VolumeSnapshotContent
+      status: Error
+    - kind: CronJob
+      name: mysql-backup
+      lastStatus: Failed
+        
+  metrics:
+    - name: volumesnapshot_status_ready_to_use
+      labels:
+        volumesnapshot: mysql-backup-20240115
+      value: 0
+    - name: csi_snapshot_controller_operations_total
+      labels:
+        status: error
+      rate: 5
+    - name: backup_last_success_timestamp
+      value: 1704067200  # Days ago
+      
+  logs:
+    - source: snapshot-controller
+      level: error
+      patterns:
+        - "failed to create snapshot"
+        - "snapshot exceeded size limit"
+        - "cannot snapshot volume in use"
+    - source: csi-driver
+      level: error
+      patterns:
+        - "CreateSnapshot failed"
+        - "quota exceeded"
+        - "disk in bad state"
+        
+  rootCause:
+    component: volume-snapshot
+    type: operation-failed
+    details: |
+      Snapshot failure. Common causes:
+      - Snapshot quota exceeded
+      - Volume too large for snapshot
+      - Volume in inconsistent state
+      - CSI snapshot controller issues
+      - VolumeSnapshotClass misconfigured
+      - Cloud provider snapshot limits
+      - Insufficient cloud permissions
+      
+  remediation:
+    steps:
+      - action: check-snapshot-status
+        command: "kubectl get volumesnapshot mysql-backup-20240115 -o yaml"
+        description: "Check snapshot status and error"
+      - action: check-snapshot-class
+        command: "kubectl get volumesnapshotclass"
+        description: "Verify VolumeSnapshotClass exists"
+      - action: check-snapshot-controller
+        command: "kubectl logs -n kube-system -l app=snapshot-controller --tail=100"
+        description: "Review snapshot controller logs"
+      - action: check-quotas
+        command: "gcloud compute snapshots list --project=my-project | wc -l"
+        description: "Check current snapshot count vs quota"
+      - action: cleanup-old-snapshots
+        command: "kubectl delete volumesnapshot -l backup-type=daily --field-selector=metadata.creationTimestamp<2024-01-01"
+        description: "Delete old snapshots to free quota"
+      - action: retry-snapshot
+        command: "kubectl delete volumesnapshot mysql-backup-20240115 && kubectl apply -f snapshot.yaml"
+        description: "Delete failed snapshot and retry"
+    
+  detection:
+    promql: 'time() - backup_last_success_timestamp > 86400'
+    alertName: BackupNotSuccessful
+    severity: warning

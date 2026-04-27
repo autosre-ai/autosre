@@ -1,0 +1,182 @@
+# Scenario: Encryption at Rest Disabled
+# Category: Compliance
+# Description: Persistent volume or database not encrypted
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: encryption-at-rest-disabled
+  labels:
+    category: security
+    subcategory: compliance
+    severity: high
+    service: database
+spec:
+  description: |
+    A persistent volume, database, or storage system has been found without
+    encryption at rest enabled. This violates data protection requirements
+    and exposes sensitive data to physical access attacks.
+  
+  symptoms:
+    - type: compliance-alert
+      source: security-scanner
+      message: "Unencrypted EBS volume detected: vol-123456"
+    - type: audit-finding
+      source: cloud-audit
+      message: "RDS instance without encryption: db-bookstore"
+    - type: policy-violation
+      source: config-rules
+      message: "AWS Config: ec2-ebs-encryption-by-default FAIL"
+
+  complianceContext:
+    violations:
+      - framework: "PCI-DSS"
+        requirement: "3.4.1"
+        description: "Disk encryption for cardholder data"
+      - framework: "HIPAA"
+        rule: "164.312(a)(2)(iv)"
+        description: "Encryption mechanisms for ePHI"
+      - framework: "SOC2"
+        control: "CC6.7"
+        description: "Encryption of data at rest"
+      - framework: "GDPR"
+        article: "Article 32"
+        description: "Appropriate technical measures"
+
+  affectedResources:
+    - type: ebs-volume
+      id: "vol-123456"
+      attached: "i-789xyz"
+      data: "Database storage"
+    - type: rds-instance
+      id: "db-bookstore"
+      data: "Customer data"
+    - type: pv
+      name: "bookstore-data-pv"
+      namespace: "bookstore"
+      data: "Application data"
+
+  detection:
+    - method: aws-cli
+      command: |
+        # Check EBS volumes
+        aws ec2 describe-volumes --query 'Volumes[?Encrypted==`false`].VolumeId'
+        
+        # Check RDS instances
+        aws rds describe-db-instances --query 'DBInstances[?StorageEncrypted==`false`].DBInstanceIdentifier'
+    - method: gcp-cli
+      command: |
+        # Check GCE disks
+        gcloud compute disks list --filter="diskEncryptionKey:*" --format="value(name)"
+    - method: kubernetes
+      command: |
+        # Check storage classes
+        kubectl get storageclass -o json | jq '.items[] | select(.parameters.encrypted != "true") | .metadata.name'
+    - method: aws-config
+      description: "AWS Config rule: ec2-ebs-encryption-by-default"
+
+  remediation:
+    automated: partial
+    complexityNote: |
+      Encryption at rest typically cannot be enabled on existing volumes/databases.
+      Migration to new encrypted resources is usually required.
+    steps:
+      - action: assess-scope
+        description: "Identify all unencrypted resources"
+        command: |
+          # List all unencrypted volumes
+          aws ec2 describe-volumes --filters "Name=encrypted,Values=false" \
+            --query 'Volumes[*].[VolumeId,Attachments[0].InstanceId,Size]'
+      - action: migrate-ebs
+        description: "Migrate to encrypted EBS volume"
+        steps:
+          - "Create snapshot of unencrypted volume"
+          - "Copy snapshot with encryption enabled"
+          - "Create new volume from encrypted snapshot"
+          - "Stop instance, detach old volume"
+          - "Attach new encrypted volume"
+          - "Start instance and verify"
+          - "Delete old unencrypted volume"
+        command: |
+          # Create encrypted copy
+          SNAPSHOT=$(aws ec2 create-snapshot --volume-id vol-123456 --query 'SnapshotId' --output text)
+          aws ec2 wait snapshot-completed --snapshot-ids $SNAPSHOT
+          ENCRYPTED_SNAPSHOT=$(aws ec2 copy-snapshot --source-snapshot-id $SNAPSHOT \
+            --source-region us-east-1 --encrypted --kms-key-id alias/aws/ebs \
+            --query 'SnapshotId' --output text)
+      - action: migrate-rds
+        description: "Migrate to encrypted RDS"
+        steps:
+          - "Create snapshot"
+          - "Copy snapshot with encryption"
+          - "Restore from encrypted snapshot"
+          - "Update DNS/connection strings"
+          - "Delete old instance"
+      - action: update-storage-class
+        description: "Enable encryption in Kubernetes storage class"
+        manifest: |
+          apiVersion: storage.k8s.io/v1
+          kind: StorageClass
+          metadata:
+            name: encrypted-gp3
+          provisioner: ebs.csi.aws.com
+          parameters:
+            type: gp3
+            encrypted: "true"
+            kmsKeyId: alias/aws/ebs
+
+  prevention:
+    - type: default-encryption
+      description: "Enable encryption by default"
+      aws: |
+        aws ec2 enable-ebs-encryption-by-default
+      gcp: |
+        # Default encryption is automatic in GCP
+        # For CMEK, use disk encryption set
+      azure: |
+        # Enable Azure Disk Encryption
+    - type: policy-enforcement
+      description: "Block creation of unencrypted resources"
+      aws-scp: |
+        {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Sid": "RequireEBSEncryption",
+            "Effect": "Deny",
+            "Action": "ec2:CreateVolume",
+            "Resource": "*",
+            "Condition": {
+              "Bool": {"ec2:Encrypted": "false"}
+            }
+          }]
+        }
+    - type: terraform
+      description: "Enforce encryption in IaC"
+      config: |
+        resource "aws_ebs_volume" "data" {
+          encrypted = true  # Required
+          kms_key_id = aws_kms_key.data.arn
+        }
+
+  verification:
+    - type: ebs-check
+      command: |
+        aws ec2 describe-volumes --volume-ids vol-123456 --query 'Volumes[0].Encrypted'
+      expected: "true"
+    - type: rds-check
+      command: |
+        aws rds describe-db-instances --db-instance-identifier db-bookstore \
+          --query 'DBInstances[0].StorageEncrypted'
+      expected: "true"
+    - type: default-encryption
+      command: |
+        aws ec2 get-ebs-encryption-by-default --query 'EbsEncryptionByDefault'
+      expected: "true"
+
+  references:
+    - url: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/EBSEncryption.html
+      title: "AWS EBS Encryption"
+    - url: https://cloud.google.com/compute/docs/disks/customer-managed-encryption
+      title: "GCP Disk Encryption"
+    - url: https://docs.microsoft.com/en-us/azure/virtual-machines/disk-encryption
+      title: "Azure Disk Encryption"

@@ -1,0 +1,109 @@
+# Third-Party API Slow
+# Simulates degraded external service performance
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recommendations-service-external-slow
+  namespace: bookstore
+  labels:
+    app: recommendations-service
+    tier: api
+    fault: third-party-api-slow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: recommendations-service
+  template:
+    metadata:
+      labels:
+        app: recommendations-service
+        tier: api
+        fault: third-party-api-slow
+    spec:
+      containers:
+      - name: recommendations
+        image: python:3.11-alpine
+        env:
+        - name: FAULT_MODE
+          value: "third-party-api-slow"
+        - name: EXTERNAL_SERVICE
+          value: "ml-recommendations.example.com"
+        - name: SLOW_RESPONSE_MS
+          value: "8000"
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+          import random
+          import time
+          import os
+          
+          EXTERNAL_SERVICE = os.environ.get('EXTERNAL_SERVICE', 'ml-recommendations.example.com')
+          SLOW_MS = int(os.environ.get('SLOW_RESPONSE_MS', 8000))
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path in ['/health', '/ready']:
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                      return
+                  
+                  delay = random.uniform(SLOW_MS * 0.8, SLOW_MS * 1.5) / 1000
+                  print(f"[external-slow] Waiting {delay:.1f}s for {EXTERNAL_SERVICE}...")
+                  time.sleep(delay)
+                  
+                  self.send_response(200)
+                  self.send_header('Content-Type', 'application/json')
+                  self.send_header('X-External-Latency-Ms', str(int(delay * 1000)))
+                  self.end_headers()
+                  response = {
+                      "recommendations": [
+                          {"book_id": "BOOK-001", "score": 0.95},
+                          {"book_id": "BOOK-002", "score": 0.87}
+                      ],
+                      "performance_warning": {
+                          "external_service": EXTERNAL_SERVICE,
+                          "latency_ms": int(delay * 1000),
+                          "normal_latency_ms": 200,
+                          "degraded": True,
+                          "sla_violation": delay > 5
+                      },
+                      "suggestion": "Consider caching recommendations or using fallback"
+                  }
+                  self.wfile.write(json.dumps(response).encode())
+                      
+              def do_POST(self):
+                  return self.do_GET()
+                  
+              def log_message(self, format, *args):
+                  print(f"[recs-slow] {args[0]}")
+          
+          print(f"Recommendations service (EXTERNAL SLOW) starting - latency={SLOW_MS}ms")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          timeoutSeconds: 5

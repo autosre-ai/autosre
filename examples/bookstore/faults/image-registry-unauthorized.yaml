@@ -1,0 +1,183 @@
+# Scenario: Image Pull Secret Missing
+# Category: Container Security
+# Description: Cannot pull image from private registry due to missing credentials
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: image-registry-unauthorized
+  labels:
+    category: security
+    subcategory: container-security
+    severity: high
+    service: bookstore-api
+spec:
+  description: |
+    Cannot pull container image from private registry due to missing or
+    invalid image pull secret. Pods are stuck in ImagePullBackOff state.
+  
+  symptoms:
+    - type: pod-status
+      status: "ImagePullBackOff"
+      message: "Failed to pull image: unauthorized: authentication required"
+    - type: event
+      reason: "Failed"
+      message: "Error response from daemon: pull access denied for registry/image, repository does not exist or may require 'docker login'"
+    - type: metric
+      name: kube_pod_container_status_waiting_reason
+      labels:
+        reason: "ImagePullBackOff"
+      condition: "count > 0"
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "Cannot deploy or scale"
+
+  rootCause:
+    type: authentication-failure
+    component: image-pull-secret
+    possibleCauses:
+      - "imagePullSecret not created in namespace"
+      - "Secret name typo in deployment"
+      - "Secret credentials expired or revoked"
+      - "Registry credentials rotated"
+      - "ServiceAccount not linked to secret"
+      - "Wrong registry URL in secret"
+
+  detection:
+    - method: pod-events
+      command: |
+        kubectl get events -n bookstore --field-selector reason=Failed | grep -i image
+    - method: pod-describe
+      command: |
+        kubectl describe pod -n bookstore -l app=bookstore-api | grep -A5 "Events:"
+    - method: secret-check
+      command: |
+        kubectl get secrets -n bookstore | grep registry
+    - method: deployment-check
+      command: |
+        kubectl get deployment bookstore-api -n bookstore -o jsonpath='{.spec.template.spec.imagePullSecrets}'
+
+  remediation:
+    automated: true
+    steps:
+      - action: check-secret-exists
+        command: |
+          kubectl get secret regcred -n bookstore
+      - action: check-deployment-reference
+        command: |
+          kubectl get deployment bookstore-api -n bookstore -o yaml | grep -A5 imagePullSecrets
+      - action: create-secret
+        description: "Create image pull secret if missing"
+        command: |
+          kubectl create secret docker-registry regcred \
+            --docker-server=registry.example.com \
+            --docker-username=${REGISTRY_USER} \
+            --docker-password=${REGISTRY_PASSWORD} \
+            --docker-email=${REGISTRY_EMAIL} \
+            -n bookstore
+      - action: update-deployment
+        description: "Add imagePullSecrets to deployment"
+        command: |
+          kubectl patch deployment bookstore-api -n bookstore --type='json' -p='[
+            {
+              "op": "add",
+              "path": "/spec/template/spec/imagePullSecrets",
+              "value": [{"name": "regcred"}]
+            }
+          ]'
+      - action: link-to-service-account
+        description: "Add secret to default ServiceAccount"
+        command: |
+          kubectl patch serviceaccount default -n bookstore -p \
+            '{"imagePullSecrets": [{"name": "regcred"}]}'
+      - action: verify-pull
+        command: |
+          kubectl delete pod -n bookstore -l app=bookstore-api
+          kubectl get pods -n bookstore -l app=bookstore-api -w
+
+  secretManagement:
+    external-secrets:
+      description: "Use External Secrets Operator for rotation"
+      config: |
+        apiVersion: external-secrets.io/v1beta1
+        kind: ExternalSecret
+        metadata:
+          name: regcred
+          namespace: bookstore
+        spec:
+          refreshInterval: 1h
+          secretStoreRef:
+            name: vault-backend
+            kind: ClusterSecretStore
+          target:
+            name: regcred
+            template:
+              type: kubernetes.io/dockerconfigjson
+              data:
+                .dockerconfigjson: |
+                  {"auths":{"registry.example.com":{"username":"{{ .username }}","password":"{{ .password }}"}}}
+          data:
+          - secretKey: username
+            remoteRef:
+              key: registry/credentials
+              property: username
+          - secretKey: password
+            remoteRef:
+              key: registry/credentials
+              property: password
+    cloud-workload-identity:
+      description: "Use cloud IAM for registry auth"
+      aws-ecr: |
+        # Use IAM role for service account
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+          name: bookstore-api
+          annotations:
+            eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/ecr-reader
+      gcp-gcr: |
+        # Use Workload Identity
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+          name: bookstore-api
+          annotations:
+            iam.gke.io/gcp-service-account: gcr-reader@project.iam.gserviceaccount.com
+
+  prevention:
+    - type: namespace-default
+      description: "Add pull secret to namespace default ServiceAccount"
+      command: |
+        kubectl patch serviceaccount default -n bookstore -p \
+          '{"imagePullSecrets": [{"name": "regcred"}]}'
+    - type: external-secrets
+      description: "Use External Secrets for automatic rotation"
+    - type: workload-identity
+      description: "Use cloud IAM instead of static credentials"
+    - type: monitoring
+      description: "Alert on ImagePullBackOff"
+      rule: |
+        kube_pod_container_status_waiting_reason{reason="ImagePullBackOff"} > 0
+
+  verification:
+    - type: pod-status
+      command: |
+        kubectl get pods -n bookstore -l app=bookstore-api -o jsonpath='{.items[0].status.phase}'
+      expected: "Running"
+    - type: image-pulled
+      command: |
+        kubectl get pods -n bookstore -l app=bookstore-api -o jsonpath='{.items[0].status.containerStatuses[0].ready}'
+      expected: "true"
+    - type: manual-pull
+      command: |
+        kubectl run test --image=registry.example.com/bookstore-api:1.2.3 \
+          --overrides='{"spec":{"imagePullSecrets":[{"name":"regcred"}]}}' \
+          --restart=Never --rm -it -- echo "Success"
+
+  references:
+    - url: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
+      title: "Kubernetes Pull from Private Registry"
+    - url: https://external-secrets.io/
+      title: "External Secrets Operator"

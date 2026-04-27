@@ -1,0 +1,101 @@
+# Scenario: Storage IOPS Throttled - Cloud Provider Limits
+# Category: Storage Issues
+# Severity: Medium
+# Description: Storage performance degraded due to IOPS throttling
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: storage-iops-throttled
+  labels:
+    category: storage-issues
+    severity: medium
+    component: cloud-storage
+spec:
+  description: |
+    Cloud provider is throttling storage IOPS due to exceeding provisioned
+    limits. Applications experience slow disk I/O and timeouts.
+    
+  symptoms:
+    - type: io-latency
+      percentile: p99
+      value: 500ms
+      threshold: 10ms
+    - type: application-behavior
+      description: "Database queries timing out"
+    - type: io-wait
+      percentage: 80
+      description: "High iowait on node"
+      
+  affectedResources:
+    - kind: PersistentVolumeClaim
+      name: data-mysql-0
+      performance: Throttled
+    - kind: Pod
+      name: mysql-0
+      symptom: SlowQueries
+    - kind: Node
+      name: worker-node-3
+      iowait: High
+        
+  metrics:
+    - name: node_disk_io_time_seconds_total
+      labels:
+        device: sdb
+      rate: 0.8  # 80% I/O utilization
+    - name: node_disk_read_time_seconds_total
+      labels:
+        device: sdb
+      rate: 500  # ms per read
+    - name: kubelet_volume_stats_inodes_used
+      labels:
+        persistentvolumeclaim: data-mysql-0
+      value: 9500000
+      
+  logs:
+    - source: application
+      level: warning
+      patterns:
+        - "disk I/O timeout"
+        - "slow query"
+        - "connection timeout"
+    - source: kernel
+      level: warning
+      patterns:
+        - "device blocked"
+        - "I/O error"
+        
+  rootCause:
+    component: cloud-storage
+    type: throttling
+    details: |
+      Storage IOPS throttling. Common causes:
+      - Exceeded provisioned IOPS for disk size
+      - Burstable IOPS credits exhausted
+      - Wrong disk type for workload (HDD vs SSD)
+      - Disk too small (IOPS scales with size)
+      - Multiple pods competing for same disk
+      - Background operations consuming IOPS
+      
+  remediation:
+    steps:
+      - action: check-disk-metrics
+        command: "kubectl top node | grep worker-node-3"
+        description: "Check node I/O metrics"
+      - action: check-cloud-metrics
+        command: "gcloud compute disks describe disk-name --format='value(provisionedIops)'"
+        description: "Check provisioned IOPS"
+      - action: resize-disk
+        command: "gcloud compute disks resize disk-name --size=200GB"
+        description: "Increase disk size to get more IOPS"
+      - action: upgrade-disk-type
+        command: "# Migrate to pd-ssd or pd-extreme"
+        description: "Consider upgrading to higher performance disk"
+      - action: add-iops
+        command: "kubectl patch pvc data-mysql-0 -p '{\"spec\":{\"resources\":{\"requests\":{\"iops\":\"10000\"}}}}'"
+        description: "Request more IOPS if supported by CSI"
+    
+  detection:
+    promql: 'rate(node_disk_io_time_seconds_total[5m]) > 0.7'
+    alertName: DiskIOPSThrottled
+    severity: warning

@@ -1,0 +1,56 @@
+# Scenario: Namespace Terminating Stuck
+# Expected: OpenSRE detects namespace stuck in Terminating state
+# Remediation: Remove finalizers, clean up orphaned resources, force delete
+# Root Cause: Namespace has finalizers that can't be completed
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bookstore-stuck-terminating
+  labels:
+    fault: namespace-terminating-stuck
+  # These finalizers will prevent deletion
+  finalizers:
+  - custom.bookstore.example.com/cleanup
+  - kubernetes.io/pvc-protection
+---
+# Resources that might block namespace deletion
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orphaned-deployment
+  namespace: bookstore-stuck-terminating
+  labels:
+    fault: namespace-terminating-stuck
+  # Finalizer on deployment too
+  finalizers:
+  - bookstore.example.com/cleanup-external
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orphaned
+  template:
+    metadata:
+      labels:
+        app: orphaned
+    spec:
+      containers:
+      - name: app
+        image: python:3.11-alpine
+        command: ["python", "-c", "import time; time.sleep(3600)"]
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+---
+# When you try to delete this namespace:
+# kubectl delete namespace bookstore-stuck-terminating
+#
+# It will be stuck in "Terminating" status:
+# NAME                          STATUS        AGE
+# bookstore-stuck-terminating   Terminating   5m
+#
+# To fix:
+# 1. Find blocking resources: kubectl api-resources --verbs=list -o name | xargs -n 1 kubectl get -n bookstore-stuck-terminating
+# 2. Remove finalizers: kubectl patch namespace bookstore-stuck-terminating -p '{"metadata":{"finalizers":[]}}' --type=merge
+# 3. Or find the webhook/controller that handles the finalizer and fix it

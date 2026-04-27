@@ -1,0 +1,63 @@
+# Scenario: Pod Eviction due to Resource Pressure
+# Expected: OpenSRE detects Evicted pods, resource pressure warnings
+# Remediation: Check node resources, adjust QoS class, add resource requests
+# Root Cause: Pod uses excessive ephemeral storage triggering eviction
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logging-service-evicted
+  namespace: bookstore
+  labels:
+    app: logging-service
+    tier: infrastructure
+    fault: evicted-pod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logging-service
+      fault: evicted-pod
+  template:
+    metadata:
+      labels:
+        app: logging-service
+        tier: infrastructure
+        fault: evicted-pod
+    spec:
+      containers:
+      - name: logging
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          import time
+          import os
+          
+          print("Logging service starting...")
+          print("[WARN] This service will fill disk to trigger eviction")
+          
+          # Write large files to fill ephemeral storage
+          log_dir = "/tmp/logs"
+          os.makedirs(log_dir, exist_ok=True)
+          
+          file_count = 0
+          while True:
+              file_path = f"{log_dir}/log_{file_count}.txt"
+              # Write 50MB per file
+              with open(file_path, 'w') as f:
+                  f.write('X' * (50 * 1024 * 1024))
+              file_count += 1
+              print(f"[DISK] Written {file_count * 50}MB to ephemeral storage")
+              time.sleep(5)
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+            ephemeral-storage: "100Mi"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+            ephemeral-storage: "200Mi"  # Will exceed this quickly

@@ -1,0 +1,77 @@
+name: high_cpu
+description: "High CPU usage causing latency spikes"
+difficulty: easy
+
+setup_steps:
+  - "Deploy service with CPU-intensive workload"
+  - "Increase traffic to trigger high CPU"
+  - "Monitor latency degradation"
+
+alert:
+  name: "HighCPUUsage"
+  severity: medium
+  service_name: api-gateway
+  namespace: production
+  summary: "CPU usage above 90% for api-gateway"
+  description: "Container CPU usage has been above 90% for more than 5 minutes"
+  labels:
+    alertname: HighCPUUsage
+    namespace: production
+    pod: api-gateway-xyz789
+    container: api-gateway
+  annotations:
+    value: "95%"
+    threshold: "90%"
+
+services:
+  - name: api-gateway
+    namespace: production
+    status: degraded
+    replicas: 2
+    ready_replicas: 2
+    labels:
+      app: api-gateway
+      team: platform
+      
+  - name: user-service
+    namespace: production
+    status: healthy
+    replicas: 3
+    ready_replicas: 3
+
+changes:
+  - id: change-002
+    change_type: config_change
+    service_name: api-gateway
+    description: "Updated rate limiting configuration"
+    author: ops@example.com
+    timestamp: "2024-01-15T09:00:00Z"
+    successful: true
+    
+  - id: change-003
+    change_type: deployment
+    service_name: api-gateway
+    description: "Deployed v1.8.0 - New request validation"
+    author: dev@example.com
+    commit_sha: def456ghi
+    timestamp: "2024-01-15T08:30:00Z"
+    successful: true
+
+metrics:
+  container_cpu_usage_percent:
+    api-gateway:
+      - timestamp: "2024-01-15T09:00:00Z"
+        value: 45
+      - timestamp: "2024-01-15T09:30:00Z"
+        value: 65
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 85
+      - timestamp: "2024-01-15T10:15:00Z"
+        value: 95
+
+expected_root_cause: "Rate limiting config change removed protection, v1.8.0 request validation is CPU-intensive"
+expected_service: api-gateway
+expected_runbook: cpu-troubleshooting
+expected_action: "Scale up api-gateway replicas, revert rate limiting config"
+
+max_time_seconds: 90

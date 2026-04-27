@@ -1,0 +1,196 @@
+# Scenario: GDPR Data Leak
+# Category: Compliance
+# Description: Personal Identifiable Information (PII) exposed in logs
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: gdpr-data-leak
+  labels:
+    category: security
+    subcategory: compliance
+    severity: critical
+    service: user-service
+spec:
+  description: |
+    Personal Identifiable Information (PII) has been detected in application
+    logs, error messages, or monitoring systems. This violates GDPR data
+    minimization and security principles.
+  
+  symptoms:
+    - type: compliance-alert
+      source: dlp-scanner
+      message: "PII detected in log stream: email addresses, names found in bookstore-api logs"
+    - type: security-alert
+      source: siem
+      message: "Personal data exposure: user profile data in error logs"
+    - type: audit-finding
+      description: "GDPR Article 32 violation: inadequate security measures"
+
+  complianceContext:
+    framework: "GDPR"
+    violatedArticles:
+      - article: "Article 5(1)(c)"
+        principle: "Data minimisation"
+        violation: "More data logged than necessary"
+      - article: "Article 5(1)(f)"
+        principle: "Integrity and confidentiality"
+        violation: "Inadequate security of personal data"
+      - article: "Article 32"
+        principle: "Security of processing"
+        violation: "Insufficient technical measures"
+    dataCategories:
+      - "Names"
+      - "Email addresses"
+      - "Physical addresses"
+      - "Phone numbers"
+      - "IP addresses"
+      - "User behavior data"
+
+  affectedServices:
+    - name: user-service
+      namespace: bookstore
+      impact: "EU user data exposed"
+    - name: logging-pipeline
+      impact: "PII flowing to log aggregation"
+
+  immediateActions:
+    - action: stop-logging
+      description: "Prevent further PII logging"
+      command: |
+        kubectl set env deployment/user-service LOG_PII=false -n bookstore
+      priority: critical
+    - action: assess-scope
+      description: "Determine extent of exposure"
+      tasks:
+        - "Which log systems received PII?"
+        - "Retention period of affected logs"
+        - "Who has access to logs?"
+        - "Number of affected data subjects"
+    - action: notify-dpo
+      description: "Alert Data Protection Officer"
+      priority: critical
+      timeline: "Immediately"
+
+  detection:
+    - method: log-scanning
+      command: |
+        # Search for email patterns
+        kubectl logs -n bookstore -l app=user-service --since=24h | \
+          grep -E '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+    - method: dlp-scanner
+      tools:
+        - "Google Cloud DLP"
+        - "Amazon Macie"
+        - "Azure Information Protection"
+    - method: regex-patterns
+      patterns:
+        - name: "Email"
+          regex: '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+        - name: "Phone"
+          regex: '\+?[0-9]{10,14}'
+        - name: "IP Address"
+          regex: '\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b'
+        - name: "Name patterns"
+          regex: '(?i)(firstName|lastName|fullName|userName)[\"\s:=]+[a-zA-Z\s]+'
+
+  remediation:
+    automated: partial
+    requiresApproval: dpo
+    steps:
+      - action: scrub-logs
+        description: "Remove PII from existing logs"
+        command: |
+          # Delete affected log entries
+          curl -X POST "elasticsearch:9200/logs-*/_delete_by_query" -H 'Content-Type: application/json' -d'
+          {
+            "query": {
+              "regexp": {
+                "message": ".*@.*\\.[a-z]{2,}.*"
+              }
+            }
+          }'
+      - action: implement-masking
+        description: "Add PII masking to logging"
+        code: |
+          // Log sanitization middleware
+          const piiPatterns = [
+            { regex: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, replacement: '[EMAIL]' },
+            { regex: /\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, replacement: '[PHONE]' },
+            { regex: /"(password|ssn|creditCard)":\s*"[^"]+"/gi, replacement: '"$1":"[REDACTED]"' }
+          ];
+          
+          function sanitize(logEntry) {
+            let sanitized = logEntry;
+            for (const pattern of piiPatterns) {
+              sanitized = sanitized.replace(pattern.regex, pattern.replacement);
+            }
+            return sanitized;
+          }
+      - action: update-retention
+        description: "Review log retention policies"
+        considerations:
+          - "Minimize retention period"
+          - "Implement automatic deletion"
+          - "Document retention justification"
+      - action: document-breach
+        description: "Prepare breach documentation"
+        required:
+          - "Nature of breach"
+          - "Categories of data"
+          - "Number of affected subjects"
+          - "Likely consequences"
+          - "Measures taken"
+
+  breachAssessment:
+    questions:
+      - "Was personal data accessed by unauthorized parties?"
+      - "Was data transmitted outside EU without SCCs?"
+      - "Does this require DPA notification (Article 33)?"
+      - "Does this require data subject notification (Article 34)?"
+    notification_thresholds:
+      dpa:
+        timeline: "72 hours"
+        criteria: "Risk to rights and freedoms"
+      data_subjects:
+        timeline: "Without undue delay"
+        criteria: "High risk to rights and freedoms"
+
+  prevention:
+    - type: log-sanitization
+      description: "Automatic PII removal from logs"
+      implementation: |
+        Use structured logging with PII-aware serializers
+    - type: log-policy
+      description: "Enforce what can be logged"
+      rules:
+        - "Never log passwords, tokens, or keys"
+        - "Mask email addresses"
+        - "Anonymize IP addresses"
+        - "Hash user identifiers"
+    - type: dlp-scanning
+      description: "Continuous DLP monitoring"
+    - type: privacy-by-design
+      description: "Build privacy into development process"
+
+  verification:
+    - type: log-scan
+      command: |
+        # Verify no PII in recent logs
+        kubectl logs -n bookstore -l app=user-service --since=1h | \
+          grep -cE '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+      expected: "0"
+    - type: masking-test
+      command: |
+        # Trigger log with PII, verify masked
+        curl -X POST http://user-service/api/test-log -d '{"email":"test@example.com"}'
+        kubectl logs -n bookstore -l app=user-service --tail=10 | grep -c "test@example.com"
+      expected: "0"
+
+  references:
+    - url: https://gdpr.eu/
+      title: "GDPR Official Text"
+    - url: https://edpb.europa.eu/
+      title: "European Data Protection Board"
+    - url: https://ico.org.uk/for-organisations/guide-to-data-protection/
+      title: "ICO GDPR Guide"

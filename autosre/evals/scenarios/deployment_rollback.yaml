@@ -1,0 +1,67 @@
+name: deployment_rollback
+description: "Bad deployment causing errors, needs rollback"
+difficulty: medium
+
+setup_steps:
+  - "Deploy broken version"
+  - "Monitor error rate increase"
+  - "Correlate with recent deployment"
+
+alert:
+  name: "HighErrorRate"
+  severity: high
+  service_name: checkout-service
+  namespace: production
+  summary: "Error rate spike in checkout-service after deployment"
+  description: "5xx error rate increased from 0.1% to 15% after recent deployment"
+  labels:
+    alertname: HighErrorRate
+    namespace: production
+    service: checkout-service
+    deployment: checkout-service
+  annotations:
+    error_rate: "15%"
+    previous_rate: "0.1%"
+
+services:
+  - name: checkout-service
+    namespace: production
+    status: degraded
+    replicas: 5
+    ready_replicas: 5
+    labels:
+      app: checkout-service
+      team: commerce
+      version: v3.2.0
+
+changes:
+  - id: change-006
+    change_type: deployment
+    service_name: checkout-service
+    description: "Deployed v3.2.0 - Updated payment integration"
+    author: dev@example.com
+    commit_sha: abc789xyz
+    pr_number: 1234
+    pr_url: "https://github.com/example/checkout-service/pull/1234"
+    previous_version: v3.1.9
+    new_version: v3.2.0
+    timestamp: "2024-01-15T10:00:00Z"
+    successful: true
+    
+  - id: change-007
+    change_type: deployment
+    service_name: checkout-service
+    description: "Deployed v3.1.9 - Bug fixes"
+    author: dev@example.com
+    commit_sha: xyz456abc
+    previous_version: v3.1.8
+    new_version: v3.1.9
+    timestamp: "2024-01-14T15:00:00Z"
+    successful: true
+
+expected_root_cause: "Breaking change in v3.2.0 payment integration"
+expected_service: checkout-service
+expected_runbook: deployment-rollback
+expected_action: "Rollback checkout-service to v3.1.9"
+
+max_time_seconds: 120

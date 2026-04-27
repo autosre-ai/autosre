@@ -1,0 +1,121 @@
+# Cascade Failure
+# Simulates one service failure bringing down others
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway-cascade-failure
+  namespace: bookstore
+  labels:
+    app: api-gateway
+    tier: api
+    fault: cascade-failure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+        tier: api
+        fault: cascade-failure
+    spec:
+      containers:
+      - name: gateway
+        image: python:3.11-alpine
+        env:
+        - name: FAULT_MODE
+          value: "cascade-failure"
+        - name: INITIAL_FAILURE_SERVICE
+          value: "inventory-service"
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+          import random
+          import time
+          import os
+          
+          INITIAL_FAILURE = os.environ.get('INITIAL_FAILURE_SERVICE', 'inventory-service')
+          
+          # Services and their dependencies
+          CASCADE_CHAIN = [
+              {"service": INITIAL_FAILURE, "status": "DOWN", "cause": "OOM killed"},
+              {"service": "catalog-service", "status": "DEGRADED", "cause": f"Depends on {INITIAL_FAILURE}"},
+              {"service": "search-service", "status": "DEGRADED", "cause": "Depends on catalog-service"},
+              {"service": "checkout-service", "status": "DOWN", "cause": f"Cannot verify inventory"},
+              {"service": "order-service", "status": "DOWN", "cause": "Depends on checkout-service"},
+          ]
+          
+          cascade_stage = 0
+          
+          class Handler(BaseHTTPRequestHandler):
+              global cascade_stage
+              
+              def do_GET(self):
+                  global cascade_stage
+                  
+                  if self.path in ['/health', '/ready']:
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                      return
+                  
+                  # Progress the cascade
+                  if cascade_stage < len(CASCADE_CHAIN):
+                      cascade_stage = min(cascade_stage + 1, len(CASCADE_CHAIN))
+                  
+                  affected = CASCADE_CHAIN[:cascade_stage]
+                  
+                  print(f"[cascade] Stage {cascade_stage}/{len(CASCADE_CHAIN)}: {[s['service'] for s in affected]}")
+                  
+                  self.send_response(503)
+                  self.send_header('Content-Type', 'application/json')
+                  self.end_headers()
+                  error = {
+                      "error": "CascadeFailure",
+                      "message": "Multiple services affected by cascading failure",
+                      "root_cause": {
+                          "service": INITIAL_FAILURE,
+                          "failure_reason": "OOM killed",
+                          "started_at": "2024-01-15T12:25:00Z"
+                      },
+                      "affected_services": affected,
+                      "cascade_stage": cascade_stage,
+                      "total_stages": len(CASCADE_CHAIN),
+                      "suggestion": f"Restore {INITIAL_FAILURE} first, then allow dependencies to recover"
+                  }
+                  self.wfile.write(json.dumps(error).encode())
+                      
+              def do_POST(self):
+                  return self.do_GET()
+                  
+              def log_message(self, format, *args):
+                  print(f"[api-cascade] {args[0]}")
+          
+          print(f"API Gateway (CASCADE FAILURE) starting - initial_failure={INITIAL_FAILURE}")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15

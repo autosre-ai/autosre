@@ -1,0 +1,74 @@
+name: network_latency
+description: "Network latency spike between services"
+difficulty: medium
+
+setup_steps:
+  - "Inject network latency between services"
+  - "Monitor request timeouts"
+  - "Correlate with infrastructure changes"
+
+alert:
+  name: "HighLatency"
+  severity: high
+  service_name: search-service
+  namespace: production
+  summary: "P99 latency above 5s for search-service"
+  description: "Request latency increased significantly, causing user-facing timeouts"
+  labels:
+    alertname: HighLatency
+    namespace: production
+    service: search-service
+  annotations:
+    p99_latency: "5.2s"
+    p50_latency: "2.1s"
+    threshold: "1s"
+
+services:
+  - name: search-service
+    namespace: production
+    status: degraded
+    replicas: 4
+    ready_replicas: 4
+    labels:
+      app: search-service
+      team: search
+    annotations:
+      autosre.io/dependencies: "elasticsearch,redis-cache"
+      
+  - name: elasticsearch
+    namespace: production
+    status: healthy
+    replicas: 3
+    ready_replicas: 3
+    
+  - name: redis-cache
+    namespace: production
+    status: healthy
+    replicas: 2
+    ready_replicas: 2
+
+changes:
+  - id: change-009
+    change_type: infrastructure
+    service_name: network
+    description: "Applied new network policy restricting pod-to-pod traffic"
+    author: security@example.com
+    timestamp: "2024-01-15T08:00:00Z"
+    successful: true
+
+metrics:
+  http_request_duration_seconds_p99:
+    search-service:
+      - timestamp: "2024-01-15T07:00:00Z"
+        value: 0.5
+      - timestamp: "2024-01-15T08:00:00Z"
+        value: 2.0
+      - timestamp: "2024-01-15T09:00:00Z"
+        value: 5.2
+
+expected_root_cause: "Network policy causing packet inspection overhead between search-service and elasticsearch"
+expected_service: search-service
+expected_runbook: network-troubleshooting
+expected_action: "Review and optimize network policy, exclude elasticsearch from inspection"
+
+max_time_seconds: 150

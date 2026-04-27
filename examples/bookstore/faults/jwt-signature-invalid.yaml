@@ -1,0 +1,168 @@
+# Scenario: JWT Signature Invalid
+# Category: Authentication/Authorization
+# Description: JWT token signature verification failing (potential tampering)
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: jwt-signature-invalid
+  labels:
+    category: security
+    subcategory: authentication
+    severity: critical
+    service: api-gateway
+spec:
+  description: |
+    JWT token signature validation is failing. This could indicate token
+    tampering, key mismatch, or algorithm confusion attack.
+  
+  symptoms:
+    - type: error
+      source: api-gateway
+      message: "JWT signature verification failed"
+    - type: log
+      source: auth-middleware
+      pattern: "JsonWebTokenError: invalid signature"
+    - type: metric
+      name: jwt_validation_errors_total
+      labels:
+        error_type: "invalid_signature"
+      condition: "increase > 10 in 5m"
+    - type: security-alert
+      name: JWTTamperingDetected
+      severity: critical
+
+  affectedServices:
+    - name: api-gateway
+      namespace: bookstore
+      impact: "Rejecting all token-authenticated requests"
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "All authenticated endpoints inaccessible"
+
+  rootCause:
+    type: cryptographic-failure
+    component: jwt-verification
+    possibleCauses:
+      - cause: "key-rotation-mismatch"
+        description: "Signing key was rotated but verifying service has old key"
+        likelihood: high
+      - cause: "algorithm-confusion"
+        description: "Token signed with different algorithm than expected"
+        likelihood: medium
+        securityRisk: critical
+      - cause: "token-tampering"
+        description: "Token payload modified by attacker"
+        likelihood: low
+        securityRisk: critical
+      - cause: "encoding-issue"
+        description: "Base64 encoding corruption"
+        likelihood: low
+
+  securityAnalysis:
+    potentialAttacks:
+      - name: "Algorithm Confusion (CVE-2015-9235)"
+        description: |
+          Attacker changes 'alg' header from RS256 to HS256 and signs with
+          public key, which server incorrectly uses as HMAC secret.
+        mitigation: "Explicitly specify allowed algorithms in verification"
+      - name: "None Algorithm Attack"
+        description: |
+          Attacker sets 'alg' to 'none' and removes signature.
+        mitigation: "Reject 'none' algorithm explicitly"
+      - name: "Key Injection"
+        description: |
+          Attacker embeds key in 'jku' or 'x5u' header pointing to malicious server.
+        mitigation: "Whitelist allowed JWKS URLs"
+
+  detection:
+    - method: logs
+      query: |
+        (message:"invalid signature" OR message:"signature verification failed") 
+        AND service:api-gateway
+    - method: prometheus
+      query: |
+        sum(rate(jwt_validation_errors_total{error_type="invalid_signature"}[5m])) > 5
+    - method: security-investigation
+      steps:
+        - "Extract failing JWT from logs"
+        - "Decode header to check algorithm"
+        - "Compare kid claim with available keys"
+
+  remediation:
+    automated: partial
+    steps:
+      - action: analyze-token
+        description: "Decode and analyze a failing token"
+        command: |
+          # Extract token from logs and decode header
+          echo "${JWT}" | cut -d. -f1 | base64 -d 2>/dev/null | jq .
+      - action: check-jwks
+        description: "Verify JWKS is accessible and contains expected keys"
+        command: |
+          curl -s ${OIDC_ISSUER}/.well-known/jwks.json | jq '.keys[] | {kid, alg, kty}'
+      - action: verify-key-match
+        description: "Check if token's kid matches available keys"
+        command: |
+          TOKEN_KID=$(echo "${JWT}" | cut -d. -f1 | base64 -d | jq -r '.kid')
+          AVAILABLE_KIDS=$(curl -s ${OIDC_ISSUER}/.well-known/jwks.json | jq -r '.keys[].kid')
+          echo "Token KID: ${TOKEN_KID}"
+          echo "Available KIDs: ${AVAILABLE_KIDS}"
+      - action: refresh-jwks
+        description: "Force JWKS refresh if key rotation detected"
+        command: |
+          kubectl delete pod -l app=api-gateway -n bookstore
+      - action: if-attack-suspected
+        description: "Security incident response"
+        manual: true
+        steps:
+          - "Preserve logs for forensics"
+          - "Identify source IPs of invalid tokens"
+          - "Block suspicious IPs"
+          - "Notify security team"
+
+  prevention:
+    - type: secure-config
+      description: "Secure JWT verification configuration"
+      config: |
+        jwt:
+          algorithms:
+            - RS256  # Explicitly whitelist
+          issuer: "https://auth.example.com"
+          audience: "bookstore-api"
+          requireExp: true
+          requireIat: true
+          clockTolerance: 30
+    - type: monitoring
+      description: "Real-time JWT validation monitoring"
+      rules:
+        - "Alert on any signature failures"
+        - "Alert on algorithm header anomalies"
+    - type: key-management
+      description: "Proper key rotation with overlap"
+      process: |
+        1. Add new key to JWKS
+        2. Wait for all services to fetch new JWKS
+        3. Start signing with new key
+        4. Remove old key after token TTL
+
+  verification:
+    - type: token-validation
+      description: "Generate and validate test token"
+      command: |
+        # Get token and verify
+        TOKEN=$(curl -s -X POST ${OIDC_ISSUER}/oauth/token \
+          -d "grant_type=client_credentials" \
+          -d "client_id=${CLIENT_ID}" \
+          -d "client_secret=${CLIENT_SECRET}")
+        curl -s -H "Authorization: Bearer ${TOKEN}" \
+          http://api-gateway/api/validate
+    - type: metric
+      query: rate(jwt_validation_errors_total{error_type="invalid_signature"}[1m])
+      condition: "== 0"
+
+  references:
+    - url: https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/
+      title: "Critical JWT Vulnerabilities"
+    - url: https://datatracker.ietf.org/doc/html/rfc7515
+      title: "RFC 7515 - JSON Web Signature (JWS)"

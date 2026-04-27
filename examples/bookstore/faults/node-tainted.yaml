@@ -1,0 +1,93 @@
+# Scenario: Node Tainted - Pods Can't Schedule
+# Category: Node Issues
+# Severity: Medium
+# Description: Node has taints that pods don't tolerate, preventing scheduling
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: node-tainted
+  labels:
+    category: node-issues
+    severity: medium
+    component: scheduler
+spec:
+  description: |
+    Node has taints applied that pods don't tolerate. This prevents pods
+    from being scheduled unless they have matching tolerations.
+    
+  symptoms:
+    - type: node-spec
+      field: spec.taints
+      contains: "NoSchedule"
+    - type: event
+      reason: FailedScheduling
+      message: "0/5 nodes are available: 1 node(s) had taint {custom-taint: true} that the pod didn't tolerate"
+    - type: pod-status
+      status: Pending
+      reason: Unschedulable
+      
+  affectedResources:
+    - kind: Node
+      name: worker-node-7
+    - kind: Pod
+      selector:
+        status.phase: Pending
+    - kind: Deployment
+      conditions:
+        - type: Available
+          status: "False"
+        
+  metrics:
+    - name: kube_node_spec_taint
+      labels:
+        node: worker-node-7
+        key: "custom-taint"
+        effect: "NoSchedule"
+      value: 1
+    - name: kube_pod_status_unschedulable
+      value: 5
+      
+  logs:
+    - source: kube-scheduler
+      level: info
+      patterns:
+        - "taint .* that the pod didn't tolerate"
+        - "had untolerated taint"
+        - "nodes didn't match Pod's node affinity"
+    - source: events
+      level: warning
+      patterns:
+        - "FailedScheduling"
+        - "Unschedulable"
+        
+  rootCause:
+    component: node-taints
+    type: misconfiguration
+    details: |
+      Node taints preventing scheduling. Common causes:
+      - Manual taint applied during maintenance
+      - Cloud provider added taint (spot instance warning)
+      - GPU/special hardware taints misconfigured
+      - Node problem detector added taint
+      - Cluster autoscaler marked node for deletion
+      
+  remediation:
+    steps:
+      - action: list-taints
+        command: "kubectl describe node worker-node-7 | grep Taints"
+        description: "List all taints on node"
+      - action: check-pod-tolerations
+        command: "kubectl get pod <pending-pod> -o yaml | grep -A10 tolerations"
+        description: "Check if pod has required tolerations"
+      - action: remove-taint
+        command: "kubectl taint node worker-node-7 custom-taint:NoSchedule-"
+        description: "Remove the problematic taint"
+      - action: add-toleration
+        command: "kubectl patch deployment <name> --patch '{\"spec\":{\"template\":{\"spec\":{\"tolerations\":[{\"key\":\"custom-taint\",\"operator\":\"Exists\",\"effect\":\"NoSchedule\"}]}}}}'"
+        description: "Alternatively, add toleration to deployment"
+    
+  detection:
+    promql: 'kube_pod_status_unschedulable{reason="Unschedulable"} > 0'
+    alertName: KubePodsUnschedulable
+    severity: warning

@@ -1,0 +1,99 @@
+# Scenario: Node Clock Skew - Time Sync Issues
+# Category: Node Issues
+# Severity: High
+# Description: Node clock is out of sync causing certificate and authentication failures
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: node-clock-skew
+  labels:
+    category: node-issues
+    severity: high
+    component: system
+spec:
+  description: |
+    Node clock is significantly different from cluster time. This causes
+    TLS certificate validation failures, token expiration issues, and
+    inconsistent log timestamps.
+    
+  symptoms:
+    - type: api-error
+      error: "x509: certificate has expired or is not yet valid"
+    - type: event
+      reason: FailedToAuthenticate
+      message: "Unable to authenticate the request due to an error: token has expired"
+    - type: pod-logs
+      pattern: "certificate is not valid until"
+    - type: metric-gap
+      description: "Metrics from this node appear in wrong time range"
+      
+  affectedResources:
+    - kind: Node
+      name: worker-node-8
+    - kind: Pod
+      selector:
+        spec.nodeName: worker-node-8
+    - kind: ServiceAccount
+      description: "Token validation fails"
+        
+  metrics:
+    - name: node_time_seconds
+      labels:
+        instance: worker-node-8
+      deviation: 300  # 5 minutes off
+    - name: kube_pod_container_status_waiting_reason
+      labels:
+        reason: CreateContainerError
+      value: 3
+      
+  logs:
+    - source: kubelet
+      level: error
+      patterns:
+        - "certificate has expired"
+        - "x509: certificate signed by unknown authority"
+        - "token has expired"
+    - source: apiserver
+      level: warning
+      patterns:
+        - "Unable to authenticate the request"
+        - "token not valid yet"
+    - source: etcd
+      level: error
+      patterns:
+        - "clock difference"
+        
+  rootCause:
+    component: system-time
+    type: misconfiguration
+    details: |
+      Clock synchronization failure. Common causes:
+      - NTP service stopped or misconfigured
+      - VM clock drift (hypervisor issue)
+      - Network blocking NTP traffic (UDP 123)
+      - Incorrect timezone configuration
+      - Battery/RTC failure on physical nodes
+      
+  remediation:
+    steps:
+      - action: check-time-diff
+        command: "date && ssh worker-node-8 date"
+        description: "Compare time with other nodes"
+      - action: check-ntp-status
+        command: "systemctl status chronyd || systemctl status ntpd"
+        description: "Check NTP service status"
+      - action: force-sync
+        command: "chronyc makestep || ntpdate -u pool.ntp.org"
+        description: "Force time synchronization"
+      - action: restart-ntp
+        command: "systemctl restart chronyd"
+        description: "Restart NTP service"
+      - action: restart-kubelet
+        command: "systemctl restart kubelet"
+        description: "Restart kubelet after time fix"
+    
+  detection:
+    promql: 'abs(node_time_seconds - time()) > 60'
+    alertName: KubeNodeClockSkew
+    severity: critical

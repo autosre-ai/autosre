@@ -1,0 +1,85 @@
+# Scenario: Pod Disruption Budget Blocking Updates
+# Expected: OpenSRE detects PDB blocking evictions/updates
+# Remediation: Adjust PDB minAvailable, scale up first, use maxUnavailable
+# Root Cause: PDB prevents removing pods needed for cluster operations
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: critical-service-pdb
+  namespace: bookstore
+  labels:
+    fault: pod-disruption-budget
+spec:
+  minAvailable: 3  # Requires at least 3 pods always available
+  selector:
+    matchLabels:
+      app: critical-service
+      fault: pod-disruption-budget
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: critical-service-pdb-block
+  namespace: bookstore
+  labels:
+    app: critical-service
+    tier: api
+    fault: pod-disruption-budget
+spec:
+  replicas: 3  # Only 3 replicas with minAvailable: 3 = no disruption allowed
+  selector:
+    matchLabels:
+      app: critical-service
+      fault: pod-disruption-budget
+  template:
+    metadata:
+      labels:
+        app: critical-service
+        tier: api
+        fault: pod-disruption-budget
+    spec:
+      containers:
+      - name: critical
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  self.send_response(200)
+                  self.end_headers()
+                  self.wfile.write(b'Critical service running')
+              def log_message(self, format, *args):
+                  pass
+          
+          print("Critical service starting on port 8080...")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+# With minAvailable: 3 and replicas: 3:
+# - Node drain: Will fail (cannot evict any pods)
+# - Rolling update: Will be blocked (can't remove old pods)
+# - kubectl drain node-1: Evicting pod critical-service-xxx
+#   error when evicting pods: Cannot evict pod as it would violate the pod's disruption budget
+
+# Fix options:
+# 1. Change minAvailable to 2 (allows 1 disruption)
+# 2. Scale up to 4+ replicas first
+# 3. Use maxUnavailable: 1 instead of minAvailable

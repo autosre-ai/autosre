@@ -1,0 +1,111 @@
+# Scenario: Network Policy Blocking Traffic
+# Expected: OpenSRE detects connection timeouts, network policy violations
+# Remediation: Review network policies, add allow rules, check namespaces
+# Root Cause: NetworkPolicy blocks required ingress/egress traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-traffic
+  namespace: bookstore
+  labels:
+    fault: network-policy-blocking
+spec:
+  podSelector:
+    matchLabels:
+      app: isolated-cart-service
+  policyTypes:
+  - Ingress
+  - Egress
+  # No ingress/egress rules = deny all
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cart-service-network-blocked
+  namespace: bookstore
+  labels:
+    app: isolated-cart-service
+    tier: api
+    fault: network-policy-blocking
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: isolated-cart-service
+      fault: network-policy-blocking
+  template:
+    metadata:
+      labels:
+        app: isolated-cart-service
+        tier: api
+        fault: network-policy-blocking
+    spec:
+      containers:
+      - name: cart
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import urllib.request
+          import json
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path == '/health':
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                  elif self.path.startswith('/cart'):
+                      # This will timeout due to network policy blocking egress
+                      try:
+                          # Try to reach catalog service
+                          response = urllib.request.urlopen(
+                              'http://catalog-service.bookstore.svc.cluster.local:8080/books',
+                              timeout=5
+                          )
+                          self.send_response(200)
+                          self.end_headers()
+                          self.wfile.write(response.read())
+                      except Exception as e:
+                          print(f"[NETPOL-BLOCKED] Egress blocked: {e}")
+                          self.send_response(504)
+                          self.send_header('Content-Type', 'application/json')
+                          self.end_headers()
+                          error = {"error": "NETWORK_BLOCKED",
+                                   "message": "Cannot reach catalog service - network policy blocking"}
+                          self.wfile.write(json.dumps(error).encode())
+                  else:
+                      self.send_response(404)
+                      self.end_headers()
+              def log_message(self, format, *args):
+                  print(f"[cart-isolated] {args[0]}")
+          
+          print("Cart service (NETWORK ISOLATED) starting on port 8080...")
+          print("[WARN] NetworkPolicy blocks all ingress/egress - service is isolated")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cart-service-network-blocked
+  namespace: bookstore
+  labels:
+    fault: network-policy-blocking
+spec:
+  selector:
+    app: isolated-cart-service
+  ports:
+  - port: 80
+    targetPort: 8080
+# Note: Even though service exists, NetworkPolicy blocks all ingress traffic

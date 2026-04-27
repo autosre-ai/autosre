@@ -1,0 +1,211 @@
+# Scenario: HIPAA Violation
+# Category: Compliance
+# Description: Protected Health Information (PHI) mishandled
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: hipaa-violation
+  labels:
+    category: security
+    subcategory: compliance
+    severity: critical
+    service: health-service
+spec:
+  description: |
+    Protected Health Information (PHI) has been mishandled in violation of
+    HIPAA regulations. This could include improper access, storage, or
+    transmission of health data.
+  
+  symptoms:
+    - type: compliance-alert
+      source: hipaa-scanner
+      message: "PHI transmitted over unencrypted channel"
+    - type: audit-finding
+      source: compliance-audit
+      message: "HIPAA Security Rule violation: Access controls insufficient"
+    - type: security-alert
+      source: siem
+      message: "Unauthorized access to patient records detected"
+
+  complianceContext:
+    framework: "HIPAA"
+    violatedRules:
+      - rule: "Security Rule § 164.312(a)(1)"
+        standard: "Access Control"
+        violation: "Insufficient access controls on PHI"
+      - rule: "Security Rule § 164.312(e)(1)"
+        standard: "Transmission Security"
+        violation: "PHI transmitted without encryption"
+      - rule: "Privacy Rule § 164.502"
+        standard: "Uses and Disclosures"
+        violation: "Unauthorized disclosure of PHI"
+    phiCategories:
+      - "Patient names"
+      - "Dates (birth, treatment, death)"
+      - "Medical record numbers"
+      - "Health insurance numbers"
+      - "Diagnosis codes"
+      - "Treatment information"
+
+  affectedServices:
+    - name: health-service
+      namespace: healthcare
+      impact: "PHI at risk"
+      dataClassification: "HIPAA Covered"
+
+  immediateActions:
+    - action: contain
+      description: "Stop unauthorized access/disclosure"
+      command: |
+        # Restrict access immediately
+        kubectl scale deployment/health-service --replicas=0 -n healthcare
+      priority: critical
+    - action: assess-breach
+      description: "Determine if breach occurred"
+      criteria:
+        - "Was PHI accessed by unauthorized person?"
+        - "Was PHI acquired (not just accessed)?"
+        - "Risk assessment of harm"
+    - action: notify-compliance
+      description: "Alert HIPAA compliance officer"
+      priority: critical
+      timeline: "Immediately"
+
+  detection:
+    - method: access-audit
+      command: |
+        # Review access logs for unusual patterns
+        kubectl logs -n healthcare -l app=health-service | \
+          grep -E "patient_record|phi|medical_record" | \
+          grep -v "authorized_user"
+    - method: encryption-check
+      command: |
+        # Check for unencrypted PHI transmission
+        tcpdump -A -i any port 80 | grep -iE 'patient|diagnosis|medical'
+    - method: access-control-review
+      command: |
+        # Verify access controls
+        kubectl get rolebindings -n healthcare -o yaml | \
+          grep -A10 "subjects:"
+
+  breachAssessment:
+    lowProbabilityFactors:
+      - "PHI was encrypted"
+      - "No evidence of actual viewing"
+      - "Quick containment"
+    highRiskFactors:
+      - "Sensitive data (HIV, mental health, genetic)"
+      - "Large number of records"
+      - "Data likely used for harm"
+    breachDetermination: |
+      If PHI is accessed/disclosed, presumed breach unless:
+      1. Encryption meeting NIST standards
+      2. Low probability PHI was compromised (risk assessment)
+      3. One of three exceptions applies
+
+  remediation:
+    automated: false
+    requiresApproval: hipaa-compliance-officer
+    steps:
+      - action: risk-assessment
+        description: "Conduct formal risk assessment"
+        factors:
+          - "Nature and extent of PHI involved"
+          - "Unauthorized person who used/received PHI"
+          - "Whether PHI was actually acquired or viewed"
+          - "Extent to which risk has been mitigated"
+      - action: implement-access-controls
+        description: "Strengthen access controls"
+        measures: |
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: Role
+          metadata:
+            name: phi-accessor
+            namespace: healthcare
+          rules:
+          - apiGroups: [""]
+            resources: ["secrets"]
+            resourceNames: ["phi-encryption-key"]
+            verbs: ["get"]
+      - action: enable-encryption
+        description: "Ensure encryption at rest and in transit"
+        config: |
+          # TLS for transmission
+          apiVersion: networking.istio.io/v1beta1
+          kind: PeerAuthentication
+          metadata:
+            name: phi-services-mtls
+          spec:
+            mtls:
+              mode: STRICT
+      - action: enhance-audit-logging
+        description: "Comprehensive PHI access logging"
+        requirements:
+          - "Log all PHI access"
+          - "Include user identity"
+          - "Timestamp all access"
+          - "Retain logs per HIPAA requirements"
+
+  notificationRequirements:
+    breach_affecting_500_plus:
+      notify:
+        - entity: "Affected individuals"
+          method: "First-class mail"
+          timeline: "60 days"
+        - entity: "HHS Secretary"
+          timeline: "60 days"
+        - entity: "Prominent media outlets"
+          condition: "If >500 in state"
+          timeline: "60 days"
+    breach_affecting_less_than_500:
+      notify:
+        - entity: "Affected individuals"
+          timeline: "60 days"
+        - entity: "HHS Secretary"
+          timeline: "Annual log by March 1"
+
+  prevention:
+    - type: access-controls
+      description: "Role-based PHI access"
+      implementation: |
+        - Minimum necessary access
+        - Unique user identification
+        - Automatic logoff
+    - type: encryption
+      description: "Encrypt all PHI"
+      requirements:
+        - "AES-256 at rest"
+        - "TLS 1.2+ in transit"
+        - "Key management per NIST"
+    - type: audit-controls
+      description: "Comprehensive access logging"
+      implementation: |
+        Log: Who, What, When, Where, How
+        Retain: 6 years minimum
+    - type: workforce-training
+      description: "HIPAA awareness training"
+      frequency: "Annual"
+
+  verification:
+    - type: access-control
+      command: |
+        kubectl auth can-i get secret/phi-data -n healthcare --as=unauthorized-user
+      expected: "no"
+    - type: encryption-transit
+      command: |
+        curl -sf https://health-service:8443/api/patients/1
+      expected: "200 OK over TLS"
+    - type: audit-logging
+      command: |
+        kubectl logs -n healthcare -l app=audit-logger --tail=10 | \
+          grep -c "phi_access"
+      expected: "> 0"
+
+  references:
+    - url: https://www.hhs.gov/hipaa/
+      title: "HHS HIPAA"
+    - url: https://www.hhs.gov/hipaa/for-professionals/breach-notification/
+      title: "HIPAA Breach Notification Rule"
+    - url: https://www.nist.gov/privacy-framework
+      title: "NIST Privacy Framework"

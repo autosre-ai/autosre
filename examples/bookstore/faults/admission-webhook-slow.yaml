@@ -1,0 +1,104 @@
+# Scenario: Admission Webhook Slow - Webhook Latency
+# Category: Cluster Issues
+# Severity: High
+# Description: Admission webhooks causing delays in resource creation/updates
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: admission-webhook-slow
+  labels:
+    category: cluster-issues
+    severity: high
+    component: admission-controller
+spec:
+  description: |
+    Admission webhooks (validating or mutating) are responding slowly or
+    timing out, causing delays in all resource creation and updates that
+    match the webhook configuration.
+    
+  symptoms:
+    - type: api-latency
+      operation: CREATE
+      value: 30000ms  # 30 seconds
+    - type: webhook-timeout
+      error: "context deadline exceeded"
+    - type: kubectl-behavior
+      description: "kubectl create/apply hanging"
+    - type: deployment-stuck
+      reason: "Pods not being created"
+      
+  affectedResources:
+    - kind: ValidatingWebhookConfiguration
+      name: policy-webhook
+    - kind: MutatingWebhookConfiguration
+      name: injection-webhook
+    - kind: Pod
+      status: "Creation delayed"
+        
+  metrics:
+    - name: apiserver_admission_webhook_admission_duration_seconds_bucket
+      labels:
+        le: "30"
+        name: policy-webhook
+      value: 0.1  # 90% taking >30s
+    - name: apiserver_admission_webhook_rejection_count
+      labels:
+        name: policy-webhook
+        error_type: timeout
+      rate: 10
+    - name: apiserver_admission_controller_work_duration_seconds
+      percentile: p99
+      value: 35
+      
+  logs:
+    - source: kube-apiserver
+      level: warning
+      patterns:
+        - "failed calling webhook"
+        - "context deadline exceeded"
+        - "webhook response took"
+        - "admission webhook denied the request"
+    - source: webhook-server
+      level: error
+      patterns:
+        - "request processing slow"
+        - "connection timeout"
+        
+  rootCause:
+    component: admission-webhooks
+    type: external-dependency
+    details: |
+      Admission webhook slowdown. Common causes:
+      - Webhook service overloaded
+      - Webhook pod resource constrained
+      - Network latency to webhook service
+      - Webhook performing expensive validation
+      - Webhook calling external APIs
+      - Certificate issues causing TLS negotiation delays
+      
+  remediation:
+    steps:
+      - action: identify-slow-webhooks
+        command: "kubectl get --raw /metrics | grep apiserver_admission_webhook_admission_duration"
+        description: "Find which webhooks are slow"
+      - action: check-webhook-pods
+        command: "kubectl get pods -n webhook-system"
+        description: "Check webhook pod status"
+      - action: check-webhook-logs
+        command: "kubectl logs -n webhook-system -l app=policy-webhook --tail=100"
+        description: "Review webhook logs"
+      - action: add-timeout
+        command: "kubectl patch validatingwebhookconfiguration policy-webhook --patch '{\"webhooks\":[{\"name\":\"validate.policy.io\",\"timeoutSeconds\":5}]}'"
+        description: "Reduce webhook timeout"
+      - action: add-failure-policy
+        command: "kubectl patch validatingwebhookconfiguration policy-webhook --patch '{\"webhooks\":[{\"name\":\"validate.policy.io\",\"failurePolicy\":\"Ignore\"}]}'"
+        description: "Set failurePolicy to Ignore (use with caution)"
+      - action: scale-webhook
+        command: "kubectl scale deployment -n webhook-system policy-webhook --replicas=5"
+        description: "Scale webhook deployment"
+    
+  detection:
+    promql: 'histogram_quantile(0.99, sum(rate(apiserver_admission_webhook_admission_duration_seconds_bucket[5m])) by (name, le)) > 10'
+    alertName: AdmissionWebhookSlow
+    severity: warning

@@ -1,0 +1,100 @@
+# Scenario: Service Token Expired
+# Category: Authentication/Authorization
+# Description: JWT or service token has expired and needs refresh
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: token-expired
+  labels:
+    category: security
+    subcategory: authentication
+    severity: high
+    service: bookstore-api
+spec:
+  description: |
+    The service-to-service authentication token has expired. The payment-service
+    is rejecting requests from bookstore-api because the JWT token's exp claim
+    is in the past.
+  
+  symptoms:
+    - type: error
+      source: payment-service
+      message: "Token expired at 2024-01-15T10:00:00Z, current time 2024-01-15T12:30:00Z"
+    - type: log
+      source: bookstore-api
+      pattern: "401 Unauthorized: token expired"
+    - type: metric
+      name: auth_token_validation_failures_total
+      labels:
+        reason: "expired"
+      condition: "increase > 100 in 5m"
+    - type: alert
+      name: ServiceAuthenticationFailures
+      severity: warning
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+    - name: payment-service
+      namespace: payments
+
+  rootCause:
+    type: token-lifecycle
+    component: jwt-auth
+    details: |
+      The token refresh mechanism failed to renew the service token before expiry.
+      This can happen when:
+      1. Token refresh job crashed or was evicted
+      2. Clock skew between services
+      3. Token issuer (identity service) was unavailable during refresh window
+
+  detection:
+    - method: logs
+      query: |
+        service:payment-service AND message:"token expired"
+    - method: prometheus
+      query: |
+        increase(auth_token_validation_failures_total{reason="expired"}[5m]) > 10
+    - method: trace
+      condition: spans with tag "auth.error" = "token_expired"
+
+  remediation:
+    automated: true
+    steps:
+      - action: force-token-refresh
+        command: |
+          kubectl exec -n bookstore deploy/bookstore-api -- \
+            curl -X POST http://localhost:8080/internal/auth/refresh
+      - action: restart-token-refresher
+        command: kubectl rollout restart deployment/token-refresher -n auth
+      - action: check-clock-sync
+        command: |
+          for pod in $(kubectl get pods -n bookstore -o name); do
+            kubectl exec $pod -- date
+          done
+
+  prevention:
+    - type: config
+      description: "Increase token refresh buffer time"
+      setting: TOKEN_REFRESH_BUFFER_MINUTES=30
+    - type: monitoring
+      description: "Alert when token expiry approaches"
+      rule: |
+        (token_expiry_timestamp - time()) / 60 < 15
+
+  verification:
+    - type: api-call
+      endpoint: /api/payments/validate
+      headers:
+        Authorization: "Bearer ${NEW_TOKEN}"
+      expectedStatus: 200
+    - type: metric
+      query: rate(auth_token_validation_failures_total{reason="expired"}[1m])
+      condition: "== 0"
+
+  references:
+    - url: https://jwt.io/introduction
+      title: "JWT Introduction"
+    - url: https://datatracker.ietf.org/doc/html/rfc7519
+      title: "RFC 7519 - JSON Web Token"

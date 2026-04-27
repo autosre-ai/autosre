@@ -1,0 +1,108 @@
+# OAuth Provider Down
+# Simulates SSO/OAuth login service unavailable
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service-oauth-down
+  namespace: bookstore
+  labels:
+    app: auth-service
+    tier: api
+    fault: oauth-provider-down
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+        tier: api
+        fault: oauth-provider-down
+    spec:
+      containers:
+      - name: auth
+        image: python:3.11-alpine
+        env:
+        - name: FAULT_MODE
+          value: "oauth-provider-down"
+        - name: OAUTH_PROVIDER
+          value: "google"
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+          import random
+          import os
+          
+          OAUTH_PROVIDER = os.environ.get('OAUTH_PROVIDER', 'google')
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path in ['/health', '/ready']:
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                      return
+                  
+                  if '/oauth' in self.path or '/login' in self.path or '/callback' in self.path:
+                      print(f"[oauth] ERROR: Cannot reach {OAUTH_PROVIDER} OAuth endpoint")
+                      
+                      self.send_response(503)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      error = {
+                          "error": "OAuthProviderUnavailable",
+                          "message": f"Cannot connect to {OAUTH_PROVIDER} authentication service",
+                          "details": {
+                              "provider": OAUTH_PROVIDER,
+                              "oauth_endpoint": f"https://accounts.{OAUTH_PROVIDER}.com/o/oauth2/v2/auth",
+                              "error": "ECONNREFUSED",
+                              "timeout_ms": 30000,
+                              "retry_count": 3
+                          },
+                          "fallback": {
+                              "local_auth_available": True,
+                              "message": "Users can login with email/password"
+                          },
+                          "suggestion": "Enable local authentication fallback or try alternative OAuth provider"
+                      }
+                      self.wfile.write(json.dumps(error).encode())
+                  else:
+                      self.send_response(200)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      self.wfile.write(json.dumps({"status": "ok"}).encode())
+                      
+              def do_POST(self):
+                  return self.do_GET()
+                  
+              def log_message(self, format, *args):
+                  print(f"[auth-oauth] {args[0]}")
+          
+          print(f"Auth service (OAUTH DOWN) starting - provider={OAUTH_PROVIDER}")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15

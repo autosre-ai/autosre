@@ -1,0 +1,116 @@
+# Scenario: Prometheus Scrape Failed - Target Unreachable
+# Category: Observability Infrastructure
+# Severity: Medium
+# Description: Prometheus cannot scrape metrics from target
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: prometheus-scrape-failed
+  labels:
+    category: observability-infrastructure
+    severity: medium
+    component: prometheus
+spec:
+  description: |
+    Prometheus is failing to scrape metrics from one or more targets.
+    Metrics for affected services are missing.
+    
+  symptoms:
+    - type: scrape-status
+      target: "app-service"
+      health: down
+      error: "connection refused"
+    - type: metric-gap
+      description: "Specific service metrics missing"
+    - type: prometheus-ui
+      path: /targets
+      status: "Target showing DOWN"
+      
+  affectedResources:
+    - kind: ServiceMonitor
+      name: app-service
+      status: "Scrape failing"
+    - kind: Pod
+      name: app-service
+      port: 9090
+      description: "Metrics endpoint unreachable"
+        
+  metrics:
+    - name: up
+      labels:
+        job: app-service
+      value: 0
+    - name: prometheus_target_scrape_pool_sync_total
+      labels:
+        scrape_pool: app-service
+      rate: 0
+    - name: prometheus_sd_discovered_targets
+      labels:
+        name: app-service
+      value: 5  # Targets exist but failing
+      
+  logs:
+    - source: prometheus
+      level: error
+      patterns:
+        - "scrape failed"
+        - "connection refused"
+        - "context deadline exceeded"
+    - source: prometheus
+      level: warning
+      patterns:
+        - "server returned HTTP status"
+        - "INVALID is not a valid"
+        
+  rootCause:
+    component: prometheus-scrape
+    type: connectivity
+    details: |
+      Scrape failures. Common causes:
+      - Service metrics endpoint not exposed
+      - Wrong port in ServiceMonitor
+      - Network policy blocking Prometheus
+      - Metrics endpoint authentication required
+      - Target pod unhealthy
+      - Service mesh sidecar intercepting
+      
+  remediation:
+    steps:
+      - action: check-targets
+        command: "curl -s http://prometheus:9090/api/v1/targets | jq '.data.activeTargets[] | select(.health!=\"up\")'"
+        description: "List unhealthy targets"
+      - action: check-service-monitor
+        command: "kubectl get servicemonitor app-service -o yaml"
+        description: "Review ServiceMonitor configuration"
+      - action: test-metrics-endpoint
+        command: "kubectl exec -it prometheus-0 -n monitoring -- curl http://app-service:9090/metrics"
+        description: "Test metrics endpoint from Prometheus"
+      - action: check-network-policy
+        command: "kubectl get networkpolicy -n app-namespace"
+        description: "Check for network policies blocking Prometheus"
+      - action: fix-service-port
+        command: "kubectl patch servicemonitor app-service --type=merge -p '{\"spec\":{\"endpoints\":[{\"port\":\"metrics\",\"interval\":\"30s\"}]}}'"
+        description: "Fix ServiceMonitor port configuration"
+      - action: allow-prometheus-scrape
+        command: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          metadata:
+            name: allow-prometheus
+          spec:
+            ingress:
+            - from:
+              - namespaceSelector:
+                  matchLabels:
+                    name: monitoring
+              ports:
+              - port: 9090
+          EOF
+        description: "Add network policy to allow Prometheus"
+    
+  detection:
+    promql: 'up == 0'
+    alertName: TargetDown
+    severity: warning

@@ -1,0 +1,202 @@
+# Scenario: Egress Traffic Blocked
+# Category: Network Security
+# Description: Outbound traffic to external services blocked
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: egress-blocked
+  labels:
+    category: security
+    subcategory: network-security
+    severity: high
+    service: bookstore-api
+spec:
+  description: |
+    Outbound (egress) traffic to external services is blocked, preventing
+    the application from reaching third-party APIs, external databases,
+    or cloud services.
+  
+  symptoms:
+    - type: error
+      source: bookstore-api
+      message: "Failed to connect to api.stripe.com: connection timed out"
+    - type: log
+      source: istio-proxy
+      pattern: "upstream connect error: connection timeout"
+    - type: metric
+      name: external_api_errors_total
+      labels:
+        error: "timeout"
+      condition: "spike"
+    - type: log
+      source: calico
+      pattern: "DROP: src=bookstore-api dst=external action=deny"
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "Cannot reach external payment API"
+    - name: notification-service
+      namespace: bookstore
+      impact: "Cannot send emails via external SMTP"
+
+  rootCause:
+    type: policy-misconfiguration
+    component: egress-policy
+    possibleCauses:
+      - "Default-deny egress NetworkPolicy"
+      - "Istio ServiceEntry missing for external service"
+      - "Firewall blocking outbound traffic"
+      - "NAT gateway unavailable"
+      - "VPC routing misconfiguration"
+      - "Proxy configuration issues"
+
+  detection:
+    - method: connectivity-test
+      command: |
+        kubectl exec -n bookstore deploy/bookstore-api -- \
+          curl -v -m 10 https://api.stripe.com/v1/balance
+    - method: dns-test
+      command: |
+        kubectl exec -n bookstore deploy/bookstore-api -- \
+          nslookup api.stripe.com
+    - method: network-policy-check
+      command: |
+        kubectl get networkpolicies -n bookstore -o yaml | grep -A20 egress
+    - method: istio-check
+      command: |
+        kubectl get serviceentry -n bookstore
+        istioctl analyze -n bookstore
+
+  remediation:
+    automated: true
+    steps:
+      - action: check-network-policies
+        command: |
+          kubectl get networkpolicies -n bookstore -o yaml
+      - action: check-istio-config
+        command: |
+          kubectl get serviceentry,destinationrule -n bookstore
+          istioctl proxy-config clusters deploy/bookstore-api -n bookstore | grep stripe
+      - action: add-egress-policy
+        description: "Allow egress to specific external services"
+        command: |
+          kubectl apply -f - <<EOF
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          metadata:
+            name: allow-egress-stripe
+            namespace: bookstore
+          spec:
+            podSelector:
+              matchLabels:
+                app: bookstore-api
+            policyTypes:
+            - Egress
+            egress:
+            - to:
+              - ipBlock:
+                  cidr: 0.0.0.0/0
+              ports:
+              - protocol: TCP
+                port: 443
+          EOF
+      - action: add-service-entry
+        description: "For Istio: Add ServiceEntry for external service"
+        command: |
+          kubectl apply -f - <<EOF
+          apiVersion: networking.istio.io/v1beta1
+          kind: ServiceEntry
+          metadata:
+            name: stripe-api
+            namespace: bookstore
+          spec:
+            hosts:
+            - api.stripe.com
+            ports:
+            - number: 443
+              name: https
+              protocol: TLS
+            resolution: DNS
+            location: MESH_EXTERNAL
+          EOF
+      - action: verify-connectivity
+        command: |
+          kubectl exec -n bookstore deploy/bookstore-api -- \
+            curl -sf https://api.stripe.com/v1/balance -H "Authorization: Bearer ${STRIPE_KEY}"
+
+  egressPatterns:
+    denyByDefault:
+      description: "Secure: deny all egress, allow specific"
+      networkPolicy: |
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        metadata:
+          name: deny-all-egress
+        spec:
+          podSelector: {}
+          policyTypes:
+          - Egress
+          egress: []  # No egress allowed by default
+    allowSpecific:
+      description: "Allow only required external services"
+      networkPolicy: |
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        metadata:
+          name: allow-payment-api
+        spec:
+          podSelector:
+            matchLabels:
+              needs-payment-api: "true"
+          policyTypes:
+          - Egress
+          egress:
+          - to:
+            - ipBlock:
+                cidr: 192.0.2.0/24  # Payment provider IPs
+            ports:
+            - port: 443
+              protocol: TCP
+
+  prevention:
+    - type: egress-inventory
+      description: "Document all required external dependencies"
+      format: |
+        Service: bookstore-api
+        External Dependencies:
+        - api.stripe.com:443 (payment processing)
+        - smtp.sendgrid.net:587 (email)
+        - api.twilio.com:443 (SMS)
+    - type: proactive-policies
+      description: "Create egress policies during deployment"
+    - type: monitoring
+      description: "Alert on egress failures"
+      query: |
+        sum(rate(external_api_errors_total{error="timeout"}[5m])) by (target) > 0
+    - type: egress-gateway
+      description: "Use Istio egress gateway for visibility and control"
+
+  verification:
+    - type: connectivity
+      command: |
+        kubectl exec -n bookstore deploy/bookstore-api -- \
+          curl -sf -o /dev/null -w "%{http_code}" https://api.stripe.com/v1/
+      expected: "401 (authentication error, not connectivity error)"
+    - type: network-policy
+      command: |
+        kubectl get networkpolicies -n bookstore -o jsonpath='{.items[*].spec.egress}'
+      expected: "Contains required egress rules"
+    - type: istio-clusters
+      command: |
+        istioctl proxy-config clusters deploy/bookstore-api -n bookstore | grep -c stripe
+      expected: "> 0"
+
+  references:
+    - url: https://kubernetes.io/docs/concepts/services-networking/network-policies/
+      title: "Kubernetes Network Policies"
+    - url: https://istio.io/latest/docs/tasks/traffic-management/egress/
+      title: "Istio Egress Traffic"
+    - url: https://istio.io/latest/docs/reference/config/networking/service-entry/
+      title: "Istio ServiceEntry"

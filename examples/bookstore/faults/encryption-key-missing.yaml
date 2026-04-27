@@ -1,0 +1,183 @@
+# Scenario: Encryption Key Missing
+# Category: Secrets Management
+# Description: Cannot decrypt data because encryption key is unavailable
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: encryption-key-missing
+  labels:
+    category: security
+    subcategory: secrets-management
+    severity: critical
+    service: encryption-service
+spec:
+  description: |
+    The application cannot decrypt data because the encryption key is missing
+    or inaccessible. This could affect data at rest, transit encryption, or
+    application-level encryption.
+  
+  symptoms:
+    - type: error
+      source: bookstore-api
+      message: "Decryption failed: key not found for key_id=key-v3"
+    - type: error
+      source: encryption-service
+      message: "KeyNotFoundException: No key material found for alias 'bookstore-data-key'"
+    - type: log
+      source: database
+      pattern: "ERROR: could not decrypt column: key material unavailable"
+    - type: metric
+      name: encryption_operations_total
+      labels:
+        operation: "decrypt"
+        status: "error"
+        reason: "key_not_found"
+      condition: "increase > 0"
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "Cannot read encrypted data"
+    - name: user-service
+      namespace: bookstore
+      impact: "Cannot decrypt PII fields"
+    - name: payment-service
+      namespace: bookstore
+      impact: "Cannot decrypt payment tokens"
+
+  rootCause:
+    type: key-unavailability
+    component: key-management
+    possibleCauses:
+      - "Key was rotated/deleted without migrating data"
+      - "Key material not synced to all nodes"
+      - "KMS service unavailable"
+      - "Key version mismatch"
+      - "Key alias points to wrong key"
+      - "Access to key revoked"
+
+  detection:
+    - method: logs
+      query: |
+        "key not found" OR "key material unavailable" OR "decryption failed"
+    - method: prometheus
+      query: |
+        increase(encryption_operations_total{status="error",reason="key_not_found"}[5m]) > 0
+    - method: kms-check
+      command: |
+        # AWS KMS
+        aws kms describe-key --key-id alias/bookstore-data-key
+        
+        # Check key state
+        aws kms list-keys | jq '.Keys[] | select(.KeyId=="<key-id>")'
+
+  remediation:
+    automated: false
+    requiresApproval: security-team
+    criticalWarning: |
+      DO NOT delete old keys or data until recovery is confirmed.
+      Data encrypted with missing key may be permanently lost.
+    steps:
+      - action: identify-missing-key
+        description: "Determine which key version is needed"
+        command: |
+          # Check encrypted data metadata for key ID
+          kubectl exec -n bookstore deploy/bookstore-api -- \
+            ./debug-tool show-key-metadata --data-sample
+      - action: check-key-inventory
+        description: "List all available keys"
+        command: |
+          # AWS KMS
+          aws kms list-keys
+          aws kms list-aliases
+          
+          # Vault Transit
+          vault list transit/keys
+      - action: check-key-versions
+        description: "List key versions for rotation issues"
+        command: |
+          # AWS KMS
+          aws kms list-key-rotations --key-id ${KEY_ID}
+          
+          # Vault
+          vault read transit/keys/bookstore-key
+      - action: restore-key-if-deleted
+        description: "Recover deleted key if in pending deletion"
+        command: |
+          # AWS KMS (if in pending deletion)
+          aws kms cancel-key-deletion --key-id ${KEY_ID}
+          aws kms enable-key --key-id ${KEY_ID}
+      - action: sync-key-material
+        description: "Ensure key is available in all regions/nodes"
+        manual: true
+      - action: verify-decryption
+        command: |
+          kubectl exec -n bookstore deploy/bookstore-api -- \
+            ./debug-tool test-decrypt --key-id=${KEY_ID}
+
+  dataRecovery:
+    description: |
+      If encryption key is permanently lost, data recovery depends on:
+    scenarios:
+      - scenario: "Key in pending deletion"
+        recovery: "Cancel deletion, re-enable key"
+        dataLoss: false
+      - scenario: "Key material in backup"
+        recovery: "Import key material from backup"
+        dataLoss: false
+        prerequisites: ["Backup key material exists", "CMK allows import"]
+      - scenario: "No key backup exists"
+        recovery: "Data is permanently encrypted"
+        dataLoss: true
+        mitigation: "Restore from unencrypted backup if available"
+
+  prevention:
+    - type: key-policy
+      description: "Prevent key deletion without approval"
+      config: |
+        # AWS KMS Key Policy
+        {
+          "Sid": "PreventDeletion",
+          "Effect": "Deny",
+          "Principal": "*",
+          "Action": "kms:ScheduleKeyDeletion",
+          "Resource": "*",
+          "Condition": {
+            "StringNotLike": {
+              "aws:PrincipalArn": "arn:aws:iam::*:role/security-admin"
+            }
+          }
+        }
+    - type: key-rotation
+      description: "Proper key rotation with data re-encryption"
+      process: |
+        1. Create new key version
+        2. Re-encrypt data with new key
+        3. Verify all data accessible with new key
+        4. Disable (don't delete) old key version
+    - type: backup
+      description: "Backup key material where supported"
+      implementation: |
+        Export and secure key material for disaster recovery
+    - type: monitoring
+      description: "Alert on key operations"
+      rules:
+        - "Alert on key deletion scheduled"
+        - "Alert on decryption failures"
+
+  verification:
+    - type: decrypt-test
+      command: |
+        kubectl exec -n bookstore deploy/bookstore-api -- \
+          curl -sf http://localhost:8080/api/users/me
+      expected: "User data with decrypted PII fields"
+    - type: metric
+      query: rate(encryption_operations_total{status="error",reason="key_not_found"}[5m])
+      condition: "== 0"
+
+  references:
+    - url: https://docs.aws.amazon.com/kms/latest/developerguide/deleting-keys.html
+      title: "AWS KMS Deleting Keys"
+    - url: https://www.vaultproject.io/docs/secrets/transit
+      title: "Vault Transit Secrets Engine"

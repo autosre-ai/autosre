@@ -1,0 +1,199 @@
+# Scenario: DDoS Attack Detected
+# Category: Network Security
+# Description: Distributed Denial of Service attack overwhelming services
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: ddos-attack-detected
+  labels:
+    category: security
+    subcategory: network-security
+    severity: critical
+    service: api-gateway
+spec:
+  description: |
+    A Distributed Denial of Service (DDoS) attack is overwhelming the
+    infrastructure with malicious traffic, causing service degradation
+    or complete unavailability.
+  
+  symptoms:
+    - type: metric
+      name: requests_per_second
+      condition: "spike > 1000% above baseline"
+    - type: metric
+      name: bandwidth_mbps
+      condition: "exceeds provisioned capacity"
+    - type: alert
+      source: cloudflare
+      message: "DDoS attack detected: 10M requests/sec from 50K unique IPs"
+    - type: log
+      source: nginx
+      pattern: "Excessive connections from IP range"
+    - type: user-impact
+      description: "Service unavailable or extremely slow"
+    - type: infrastructure
+      description: "CPU/memory exhaustion on edge nodes"
+
+  attackCharacteristics:
+    type: "application-layer" # or volumetric, protocol
+    indicators:
+      - "Traffic from unusual geographic regions"
+      - "High request rate with low response consumption"
+      - "Uniform request patterns (bot signatures)"
+      - "Targeting specific expensive endpoints"
+    estimatedScale:
+      requestsPerSecond: 10000000
+      uniqueSourceIPs: 50000
+      bandwidthGbps: 100
+
+  affectedServices:
+    - name: api-gateway
+      namespace: bookstore
+      impact: "Primary target, overwhelmed"
+    - name: load-balancer
+      impact: "Connection pool exhausted"
+    - name: "All services"
+      impact: "Cascading failures"
+
+  immediateActions:
+    - action: enable-ddos-protection
+      description: "Activate DDoS mitigation service"
+      command: |
+        # Cloudflare - enable Under Attack mode
+        curl -X PATCH "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/settings/security_level" \
+          -H "Authorization: Bearer ${CF_TOKEN}" \
+          -H "Content-Type: application/json" \
+          -d '{"value":"under_attack"}'
+      priority: 1
+    - action: scale-infrastructure
+      description: "Scale up to absorb attack"
+      command: |
+        # Scale ingress controller
+        kubectl scale deployment ingress-nginx-controller -n ingress-nginx --replicas=10
+        
+        # Enable HPA if not active
+        kubectl patch hpa api-gateway -n bookstore -p '{"spec":{"maxReplicas":50}}'
+      priority: 2
+    - action: block-attack-sources
+      description: "Block identified malicious IP ranges"
+      command: |
+        # Add to WAF blocklist
+        for ip in $(cat malicious_ips.txt); do
+          kubectl exec -n security deploy/waf -- waf-cli block-ip --ip=$ip --duration=24h
+        done
+      priority: 2
+    - action: enable-rate-limiting
+      description: "Aggressive rate limiting"
+      command: |
+        kubectl apply -f - <<EOF
+        apiVersion: networking.k8s.io/v1
+        kind: Ingress
+        metadata:
+          name: bookstore-api
+          annotations:
+            nginx.ingress.kubernetes.io/limit-rps: "10"
+            nginx.ingress.kubernetes.io/limit-connections: "5"
+        EOF
+      priority: 3
+
+  detection:
+    - method: traffic-analysis
+      command: |
+        # Analyze traffic patterns
+        kubectl exec -n monitoring deploy/prometheus -- \
+          promql 'topk(10, sum(rate(nginx_ingress_controller_requests[1m])) by (remote_addr))'
+    - method: cdn-dashboard
+      description: "Check CDN/WAF dashboard for attack metrics"
+    - method: prometheus
+      query: |
+        sum(rate(http_requests_total[1m])) > 10 * avg_over_time(sum(rate(http_requests_total[1m]))[24h:1h])
+
+  remediation:
+    automated: partial
+    steps:
+      - action: identify-attack-vectors
+        description: "Analyze attack characteristics"
+        tasks:
+          - "Request patterns and signatures"
+          - "Source IP distribution"
+          - "Targeted endpoints"
+          - "Attack bandwidth and rate"
+      - action: implement-filtering
+        description: "Create targeted filters"
+        options:
+          - name: geographic-blocking
+            command: |
+              # Block traffic from countries not serving
+              kubectl apply -f geo-blocking-policy.yaml
+          - name: challenge-suspicious
+            command: |
+              # JavaScript challenge for suspicious requests
+              # Configure at CDN/WAF level
+          - name: captcha-enforcement
+            command: |
+              # Require CAPTCHA for affected endpoints
+      - action: contact-isp-upstream
+        description: "Request upstream filtering if attack is volumetric"
+        manual: true
+      - action: failover
+        description: "If attack persists, consider failover to backup region"
+        manual: true
+
+  mitigation:
+    layers:
+      - layer: "CDN/Edge"
+        provider: "Cloudflare/Akamai/AWS Shield"
+        capabilities:
+          - "Absorb volumetric attacks"
+          - "Challenge suspicious traffic"
+          - "Geographic filtering"
+      - layer: "WAF"
+        capabilities:
+          - "Application-layer filtering"
+          - "Rate limiting"
+          - "Bot detection"
+      - layer: "Load Balancer"
+        capabilities:
+          - "Connection limits"
+          - "Health-based routing"
+      - layer: "Application"
+        capabilities:
+          - "Request validation"
+          - "Resource limits"
+
+  prevention:
+    - type: ddos-protection-service
+      description: "Use dedicated DDoS protection"
+      options:
+        - "AWS Shield Advanced"
+        - "Cloudflare DDoS Protection"
+        - "Akamai Prolexic"
+    - type: rate-limiting
+      description: "Baseline rate limits on all endpoints"
+    - type: capacity-planning
+      description: "Provision capacity for traffic spikes"
+    - type: runbook
+      description: "Documented DDoS response playbook"
+
+  verification:
+    - type: traffic-levels
+      command: |
+        kubectl exec -n monitoring deploy/prometheus -- \
+          promql 'sum(rate(http_requests_total[1m]))'
+      expected: "Within normal baseline"
+    - type: service-health
+      endpoint: /health
+      expectedStatus: 200
+      expectedLatency: "< 500ms"
+    - type: user-experience
+      description: "Verify real users can access service"
+      method: "Synthetic monitoring from multiple regions"
+
+  references:
+    - url: https://www.cloudflare.com/ddos/
+      title: "Cloudflare DDoS Protection"
+    - url: https://aws.amazon.com/shield/
+      title: "AWS Shield"
+    - url: https://owasp.org/www-community/attacks/Denial_of_Service
+      title: "OWASP DoS Attacks"

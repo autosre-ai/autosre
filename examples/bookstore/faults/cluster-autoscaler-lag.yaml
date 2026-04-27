@@ -1,0 +1,106 @@
+# Scenario: Cluster Autoscaler Lag - Slow Scale-Up
+# Category: Cluster Issues
+# Severity: High
+# Description: Cluster autoscaler taking too long to provision new nodes
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: cluster-autoscaler-lag
+  labels:
+    category: cluster-issues
+    severity: high
+    component: cluster-autoscaler
+spec:
+  description: |
+    Cluster autoscaler is taking too long to provision new nodes for
+    pending pods. Workloads are delayed while waiting for capacity.
+    
+  symptoms:
+    - type: pod-status
+      status: Pending
+      reason: "Insufficient cpu/memory"
+      duration: ">10 minutes"
+    - type: autoscaler-status
+      condition: ScaleUp
+      status: "True"
+      duration: ">15 minutes"
+    - type: node-count
+      description: "Expected nodes not appearing"
+      
+  affectedResources:
+    - kind: Deployment
+      name: cluster-autoscaler
+      namespace: kube-system
+    - kind: Pod
+      selector:
+        status.phase: Pending
+    - kind: NodePool
+      condition: Scaling
+        
+  metrics:
+    - name: cluster_autoscaler_unschedulable_pods_count
+      value: 25
+    - name: cluster_autoscaler_scaled_up_nodes_total
+      rate: 0  # No scale-ups happening
+    - name: cluster_autoscaler_scale_up_delay_seconds
+      percentile: p99
+      value: 900  # 15 minutes
+    - name: cluster_autoscaler_errors_total
+      labels:
+        type: scale_up
+      rate: 5
+      
+  logs:
+    - source: cluster-autoscaler
+      level: warning
+      patterns:
+        - "Scale up timeout"
+        - "failed to increase node pool"
+        - "quota exceeded"
+        - "no matching instance type"
+    - source: cluster-autoscaler
+      level: error
+      patterns:
+        - "Could not scale up"
+        - "max node count reached"
+        - "cloud provider error"
+        
+  rootCause:
+    component: cluster-autoscaler
+    type: external-dependency
+    details: |
+      Cluster autoscaler slowdown. Common causes:
+      - Cloud provider API rate limits
+      - Instance quota exhausted
+      - No suitable instance types available
+      - Autoscaler misconfiguration
+      - Autoscaler pod unhealthy
+      - Max node count reached
+      - Service account permission issues
+      
+  remediation:
+    steps:
+      - action: check-autoscaler-status
+        command: "kubectl get configmap cluster-autoscaler-status -n kube-system -o yaml"
+        description: "View autoscaler status"
+      - action: check-autoscaler-logs
+        command: "kubectl logs -n kube-system -l app=cluster-autoscaler --tail=200"
+        description: "Review autoscaler logs"
+      - action: check-node-pools
+        command: "gcloud container node-pools list --cluster=my-cluster"
+        description: "Check node pool configuration"
+      - action: check-quotas
+        command: "gcloud compute project-info describe --project=my-project | grep -A 5 'quotas'"
+        description: "Verify cloud provider quotas"
+      - action: increase-max-nodes
+        command: "kubectl patch configmap cluster-autoscaler-config -n kube-system --patch '{\"data\":{\"max-nodes\":\"100\"}}'"
+        description: "Increase max node limit"
+      - action: add-node-pool
+        command: "gcloud container node-pools create high-cpu --cluster=my-cluster --machine-type=n1-standard-8"
+        description: "Add new node pool with different instance type"
+    
+  detection:
+    promql: 'cluster_autoscaler_unschedulable_pods_count > 10 and rate(cluster_autoscaler_scaled_up_nodes_total[10m]) == 0'
+    alertName: ClusterAutoscalerNotScaling
+    severity: warning

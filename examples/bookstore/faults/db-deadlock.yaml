@@ -1,0 +1,117 @@
+# Database Deadlock
+# Simulates transaction deadlocks when multiple operations compete for locks
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service-db-deadlock
+  namespace: bookstore
+  labels:
+    app: order-service
+    tier: api
+    fault: db-deadlock
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: order-service
+  template:
+    metadata:
+      labels:
+        app: order-service
+        tier: api
+        fault: db-deadlock
+    spec:
+      containers:
+      - name: order
+        image: python:3.11-alpine
+        env:
+        - name: FAULT_MODE
+          value: "db-deadlock"
+        - name: DEADLOCK_PROBABILITY
+          value: "0.4"
+        - name: DEADLOCK_RETRY_DELAY_MS
+          value: "2000"
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+          import random
+          import time
+          import os
+          
+          DEADLOCK_PROB = float(os.environ.get('DEADLOCK_PROBABILITY', 0.4))
+          RETRY_DELAY = int(os.environ.get('DEADLOCK_RETRY_DELAY_MS', 2000)) / 1000
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path in ['/health', '/ready']:
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                      return
+                  
+                  self.send_response(200)
+                  self.send_header('Content-Type', 'application/json')
+                  self.end_headers()
+                  self.wfile.write(json.dumps({"orders": []}).encode())
+                      
+              def do_POST(self):
+                  if random.random() < DEADLOCK_PROB:
+                      # Simulate deadlock detection delay
+                      time.sleep(random.uniform(1.0, 3.0))
+                      
+                      retry_count = random.randint(1, 5)
+                      print(f"[db-deadlock] DEADLOCK DETECTED! Transaction rolled back. Retry attempt {retry_count}")
+                      
+                      self.send_response(500)
+                      self.send_header('Content-Type', 'application/json')
+                      self.send_header('X-Retry-After', str(int(RETRY_DELAY * 1000)))
+                      self.end_headers()
+                      error = {
+                          "error": "DeadlockDetected",
+                          "code": "40001",
+                          "message": "Deadlock found when trying to get lock; try restarting transaction",
+                          "details": {
+                              "tables_involved": ["orders", "inventory", "order_items"],
+                              "transaction_id": f"trx_{random.randint(10000, 99999)}",
+                              "waiting_for_lock": f"trx_{random.randint(10000, 99999)}",
+                              "retry_count": retry_count,
+                              "max_retries": 5
+                          },
+                          "suggestion": "Implement row-level locking order or reduce transaction scope"
+                      }
+                      self.wfile.write(json.dumps(error).encode())
+                  else:
+                      self.send_response(201)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      self.wfile.write(json.dumps({"order_id": f"ORD-{random.randint(1000, 9999)}"}).encode())
+                  
+              def log_message(self, format, *args):
+                  print(f"[order-deadlock] {args[0]}")
+          
+          print(f"Order service (DEADLOCK) starting - probability={DEADLOCK_PROB}")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15

@@ -1,0 +1,98 @@
+# Scenario: Prometheus Down - Metrics Unavailable
+# Category: Observability Infrastructure
+# Severity: Critical
+# Description: Prometheus server is down, no metrics collection or alerting
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: prometheus-down
+  labels:
+    category: observability-infrastructure
+    severity: critical
+    component: prometheus
+spec:
+  description: |
+    Prometheus server is down or unreachable. Metrics are not being
+    collected, dashboards show no data, and alerting is non-functional.
+    
+  symptoms:
+    - type: prometheus-status
+      status: Down
+      error: "connection refused"
+    - type: grafana-dashboard
+      description: "All panels showing 'No Data'"
+    - type: alerting
+      description: "No alerts firing, including meta-alerts"
+      
+  affectedResources:
+    - kind: StatefulSet
+      name: prometheus
+      namespace: monitoring
+      replicas: 0
+    - kind: Service
+      name: prometheus-server
+      status: "No endpoints"
+    - kind: Alertmanager
+      status: "No alerts received"
+        
+  metrics:
+    - name: up
+      labels:
+        job: prometheus
+      value: 0
+    - name: prometheus_tsdb_head_samples_appended_total
+      value: null  # No data
+      
+  logs:
+    - source: prometheus
+      level: fatal
+      patterns:
+        - "error opening storage"
+        - "out of memory"
+        - "WAL corrupted"
+    - source: pod
+      level: error
+      patterns:
+        - "CrashLoopBackOff"
+        - "OOMKilled"
+        - "Error: cannot load configuration"
+        
+  rootCause:
+    component: prometheus
+    type: crash
+    details: |
+      Prometheus down. Common causes:
+      - Prometheus OOM killed
+      - Disk full (TSDB storage)
+      - Configuration error
+      - WAL corruption
+      - Resource limits too restrictive
+      - PVC detached
+      - Node failure
+      
+  remediation:
+    steps:
+      - action: check-prometheus-pods
+        command: "kubectl get pods -n monitoring -l app=prometheus"
+        description: "Check Prometheus pod status"
+      - action: check-logs
+        command: "kubectl logs -n monitoring -l app=prometheus --previous --tail=200"
+        description: "Review crash logs"
+      - action: check-pvc
+        command: "kubectl get pvc -n monitoring -l app=prometheus"
+        description: "Verify PVC is bound"
+      - action: check-disk-usage
+        command: "kubectl exec -n monitoring prometheus-0 -- df -h /prometheus"
+        description: "Check TSDB disk usage"
+      - action: increase-resources
+        command: "kubectl set resources statefulset prometheus -n monitoring --limits=memory=8Gi"
+        description: "Increase memory limits"
+      - action: restart-prometheus
+        command: "kubectl rollout restart statefulset prometheus -n monitoring"
+        description: "Restart Prometheus"
+    
+  detection:
+    promql: 'absent(up{job="prometheus"})'
+    alertName: PrometheusDown
+    severity: critical

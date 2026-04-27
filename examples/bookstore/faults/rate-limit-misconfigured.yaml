@@ -1,0 +1,117 @@
+# Rate Limit Misconfigured
+# Simulates rate limiting blocking legitimate users
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway-rate-limit-broken
+  namespace: bookstore
+  labels:
+    app: api-gateway
+    tier: api
+    fault: rate-limit-misconfigured
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+        tier: api
+        fault: rate-limit-misconfigured
+    spec:
+      containers:
+      - name: gateway
+        image: python:3.11-alpine
+        env:
+        - name: FAULT_MODE
+          value: "rate-limit-misconfigured"
+        - name: MISCONFIGURED_LIMIT
+          value: "5"
+        - name: INTENDED_LIMIT
+          value: "1000"
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+          import os
+          
+          WRONG_LIMIT = int(os.environ.get('MISCONFIGURED_LIMIT', 5))
+          INTENDED = int(os.environ.get('INTENDED_LIMIT', 1000))
+          
+          request_count = {}
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path in ['/health', '/ready']:
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                      return
+                  
+                  client_ip = "10.0.0.50"  # Simulated
+                  request_count[client_ip] = request_count.get(client_ip, 0) + 1
+                  
+                  if request_count[client_ip] > WRONG_LIMIT:
+                      print(f"[rate-limit] BLOCKING legitimate user: {client_ip} (limit={WRONG_LIMIT}, should be {INTENDED})")
+                      
+                      self.send_response(429)
+                      self.send_header('Content-Type', 'application/json')
+                      self.send_header('X-RateLimit-Limit', str(WRONG_LIMIT))
+                      self.send_header('X-RateLimit-Remaining', '0')
+                      self.send_header('Retry-After', '60')
+                      self.end_headers()
+                      error = {
+                          "error": "RateLimitExceeded",
+                          "message": "Rate limit exceeded",
+                          "details": {
+                              "configured_limit": WRONG_LIMIT,
+                              "intended_limit": INTENDED,
+                              "misconfiguration": True,
+                              "client_ip": client_ip,
+                              "requests_made": request_count[client_ip]
+                          },
+                          "warning": f"Rate limit is set to {WRONG_LIMIT}/min instead of {INTENDED}/min",
+                          "suggestion": "Fix rate limit configuration - value too restrictive"
+                      }
+                      self.wfile.write(json.dumps(error).encode())
+                  else:
+                      self.send_response(200)
+                      self.send_header('Content-Type', 'application/json')
+                      self.send_header('X-RateLimit-Limit', str(WRONG_LIMIT))
+                      self.send_header('X-RateLimit-Remaining', str(WRONG_LIMIT - request_count[client_ip]))
+                      self.end_headers()
+                      self.wfile.write(json.dumps({"status": "ok"}).encode())
+                      
+              def do_POST(self):
+                  return self.do_GET()
+                  
+              def log_message(self, format, *args):
+                  print(f"[api-ratelimit] {args[0]}")
+          
+          print(f"API Gateway (RATE LIMIT BROKEN) starting - wrong_limit={WRONG_LIMIT}, intended={INTENDED}")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15

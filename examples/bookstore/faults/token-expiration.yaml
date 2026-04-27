@@ -1,0 +1,112 @@
+# Scenario: Service Account Token Expiration
+# Expected: OpenSRE detects API calls failing with 401 Unauthorized
+# Remediation: Restart pod to get new token, check token rotation config
+# Root Cause: Service account token expired and wasn't rotated properly
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: token-expiry-demo
+  namespace: bookstore
+  labels:
+    app: token-demo
+    tier: api
+    fault: token-expiration
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: token-demo
+      fault: token-expiration
+  template:
+    metadata:
+      labels:
+        app: token-demo
+        tier: api
+        fault: token-expiration
+    spec:
+      serviceAccountName: bookstore-reader
+      automountServiceAccountToken: true
+      containers:
+      - name: api-client
+        image: python:3.11-alpine
+        command: ["sh", "-c"]
+        args:
+        - |
+          pip install kubernetes --quiet
+          python -c "
+          from kubernetes import client, config
+          import time
+          import sys
+          
+          print('Starting API client...')
+          
+          # Load token once at startup (won't refresh)
+          config.load_incluster_config()
+          v1 = client.CoreV1Api()
+          
+          # Read and cache the token
+          with open('/var/run/secrets/kubernetes.io/serviceaccount/token') as f:
+              initial_token = f.read()
+          print(f'Loaded token: {initial_token[:50]}...')
+          
+          # Simulate long-running service that caches token
+          call_count = 0
+          while True:
+              call_count += 1
+              try:
+                  # This uses cached token that may expire
+                  pods = v1.list_namespaced_pod('bookstore', limit=1)
+                  print(f'[{call_count}] API call successful - {len(pods.items)} pods')
+              except client.exceptions.ApiException as e:
+                  if e.status == 401:
+                      print(f'[{call_count}] ERROR: Token expired - 401 Unauthorized')
+                      print('[ERROR] Service account token needs refresh')
+                  else:
+                      print(f'[{call_count}] API error: {e.status} {e.reason}')
+              except Exception as e:
+                  print(f'[{call_count}] Unexpected error: {e}')
+              
+              time.sleep(60)
+          "
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "100m"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bookstore-reader
+  namespace: bookstore
+  labels:
+    fault: token-expiration
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader
+  namespace: bookstore
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: bookstore-reader-binding
+  namespace: bookstore
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pod-reader
+subjects:
+- kind: ServiceAccount
+  name: bookstore-reader
+  namespace: bookstore
+---
+# In k8s 1.21+, bound service account tokens expire (default 1 hour)
+# If app caches token and doesn't reload, it will get 401 after expiry

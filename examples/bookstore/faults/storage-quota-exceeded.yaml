@@ -1,0 +1,100 @@
+# Scenario: Storage Quota Exceeded - Quota Hit
+# Category: Storage Issues
+# Severity: Medium
+# Description: ResourceQuota blocking new PVC creation
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: storage-quota-exceeded
+  labels:
+    category: storage-issues
+    severity: medium
+    component: resource-quota
+spec:
+  description: |
+    Namespace storage ResourceQuota has been exceeded. New PVC creation
+    fails and pods cannot provision required storage.
+    
+  symptoms:
+    - type: api-error
+      error: "exceeded quota: storage-quota"
+      resource: persistentvolumeclaims
+    - type: event
+      reason: FailedCreate
+      message: "Error creating: persistentvolumeclaims is forbidden: exceeded quota"
+    - type: pvc-status
+      description: "PVC not created"
+      
+  affectedResources:
+    - kind: ResourceQuota
+      name: storage-quota
+      namespace: production
+      status: Exceeded
+    - kind: PersistentVolumeClaim
+      status: "Not created"
+    - kind: StatefulSet
+      name: elasticsearch
+      status: "Scale blocked"
+        
+  metrics:
+    - name: kube_resourcequota
+      labels:
+        resourcequota: storage-quota
+        resource: requests.storage
+        type: hard
+      value: 107374182400  # 100Gi limit
+    - name: kube_resourcequota
+      labels:
+        resourcequota: storage-quota
+        resource: requests.storage
+        type: used
+      value: 107374182400  # 100Gi used (100%)
+      
+  logs:
+    - source: kube-controller-manager
+      level: warning
+      patterns:
+        - "exceeded quota"
+        - "forbidden: exceeded quota"
+        - "insufficient storage quota"
+    - source: statefulset-controller
+      level: error
+      patterns:
+        - "FailedCreate"
+        - "quota exceeded"
+        
+  rootCause:
+    component: resource-quota
+    type: limit-exceeded
+    details: |
+      Storage quota exceeded. Common causes:
+      - Organic growth exceeding planned quota
+      - Old PVCs not cleaned up
+      - Quota set too low for workload
+      - Unexpected scale-up
+      - Test data accumulated
+      - PVCs from deleted pods remain
+      
+  remediation:
+    steps:
+      - action: check-quota-usage
+        command: "kubectl describe resourcequota storage-quota -n production"
+        description: "View current quota usage"
+      - action: list-pvcs
+        command: "kubectl get pvc -n production -o custom-columns='NAME:.metadata.name,SIZE:.spec.resources.requests.storage,STATUS:.status.phase'"
+        description: "List all PVCs and their sizes"
+      - action: find-unused-pvcs
+        command: "kubectl get pvc -n production -o json | jq '.items[] | select(.status.phase==\"Bound\") | select(.metadata.deletionTimestamp==null) | .metadata.name'"
+        description: "Find PVCs that might be unused"
+      - action: increase-quota
+        command: "kubectl patch resourcequota storage-quota -n production -p '{\"spec\":{\"hard\":{\"requests.storage\":\"200Gi\"}}}'"
+        description: "Increase storage quota"
+      - action: cleanup-unused
+        command: "kubectl delete pvc old-data-pvc -n production"
+        description: "Delete unused PVCs to free quota"
+    
+  detection:
+    promql: 'kube_resourcequota{resource="requests.storage",type="used"} / kube_resourcequota{resource="requests.storage",type="hard"} > 0.9'
+    alertName: StorageQuotaNearLimit
+    severity: warning

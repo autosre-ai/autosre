@@ -1,0 +1,93 @@
+name: alert_storm
+description: "Multiple alerts firing simultaneously, find root cause"
+difficulty: hard
+
+setup_steps:
+  - "Trigger root cause failure"
+  - "Watch cascading alerts"
+  - "Identify common dependency"
+
+alert:
+  name: "MultipleServicesDown"
+  severity: critical
+  service_name: platform
+  namespace: production
+  summary: "5+ services reporting errors simultaneously"
+  description: "Alert storm detected: api-gateway, user-service, order-service, inventory-service, payment-service all alerting"
+  labels:
+    alertname: MultipleServicesDown
+    namespace: production
+    alert_count: "12"
+  annotations:
+    affected_services: "api-gateway,user-service,order-service,inventory-service,payment-service"
+
+services:
+  - name: api-gateway
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    annotations:
+      autosre.io/dependencies: "user-service,order-service"
+      
+  - name: user-service
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    annotations:
+      autosre.io/dependencies: "database,redis-cache"
+      
+  - name: order-service
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    annotations:
+      autosre.io/dependencies: "database,inventory-service"
+      
+  - name: inventory-service
+    namespace: production
+    status: degraded
+    replicas: 2
+    ready_replicas: 2
+    annotations:
+      autosre.io/dependencies: "database"
+      
+  - name: payment-service
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    annotations:
+      autosre.io/dependencies: "database"
+      
+  - name: database
+    namespace: production
+    status: down
+    replicas: 3
+    ready_replicas: 0
+    labels:
+      app: postgresql
+      
+  - name: redis-cache
+    namespace: production
+    status: healthy
+    replicas: 2
+    ready_replicas: 2
+
+changes:
+  - id: change-010
+    change_type: infrastructure
+    service_name: database
+    description: "Applied PostgreSQL security patch"
+    author: dba@example.com
+    timestamp: "2024-01-15T09:45:00Z"
+    successful: false
+
+expected_root_cause: "Database down after failed security patch deployment"
+expected_service: database
+expected_runbook: database-recovery
+expected_action: "Rollback database to pre-patch state, restore from backup if needed"
+
+max_time_seconds: 300

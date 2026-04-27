@@ -1,0 +1,176 @@
+# Scenario: Unsigned Container Image
+# Category: Container Security
+# Description: Container image lacks cryptographic signature
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: image-not-signed
+  labels:
+    category: security
+    subcategory: container-security
+    severity: high
+    service: bookstore-api
+spec:
+  description: |
+    The container image being deployed is not cryptographically signed.
+    This means the image integrity and provenance cannot be verified,
+    risking deployment of tampered or malicious images.
+  
+  symptoms:
+    - type: policy-violation
+      source: sigstore
+      message: "Image signature verification failed: no valid signatures found"
+    - type: compliance-alert
+      source: admission-controller
+      message: "Image not signed by trusted authority"
+    - type: warning
+      source: notary
+      message: "No trust data available for image"
+
+  securityRisk:
+    severity: high
+    description: |
+      Unsigned images cannot guarantee:
+      - Image hasn't been tampered with
+      - Image came from expected source
+      - Image was built by authorized process
+    attackScenarios:
+      - "Man-in-the-middle during image pull"
+      - "Registry compromise serving malicious images"
+      - "Supply chain attack via compromised CI/CD"
+      - "Typosquatting with similarly named images"
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+      image: "registry/bookstore-api:1.2.3"
+      impact: "Image provenance unverified"
+
+  detection:
+    - method: cosign
+      command: |
+        cosign verify --key cosign.pub registry/bookstore-api:1.2.3
+    - method: notation
+      command: |
+        notation verify registry/bookstore-api:1.2.3
+    - method: docker-trust
+      command: |
+        DOCKER_CONTENT_TRUST=1 docker pull registry/bookstore-api:1.2.3
+    - method: policy-check
+      description: "Check admission controller for signature verification"
+
+  remediation:
+    automated: partial
+    steps:
+      - action: generate-signing-key
+        description: "Create signing keypair if not exists"
+        command: |
+          cosign generate-key-pair
+          # Store private key securely in Vault or KMS
+          # Distribute public key to verification systems
+      - action: sign-image
+        description: "Sign the container image"
+        command: |
+          # Sign with local key
+          cosign sign --key cosign.key registry/bookstore-api:1.2.3
+          
+          # Or sign with keyless (Sigstore)
+          cosign sign --oidc-issuer=https://accounts.google.com registry/bookstore-api:1.2.3
+      - action: verify-signature
+        command: |
+          cosign verify --key cosign.pub registry/bookstore-api:1.2.3
+      - action: enable-enforcement
+        description: "Configure admission controller to require signatures"
+        kyverno: |
+          apiVersion: kyverno.io/v1
+          kind: ClusterPolicy
+          metadata:
+            name: verify-image-signature
+          spec:
+            validationFailureAction: enforce
+            rules:
+            - name: verify-signature
+              match:
+                resources:
+                  kinds:
+                  - Pod
+              verifyImages:
+              - imageReferences:
+                - "registry/*"
+                attestors:
+                - entries:
+                  - keys:
+                      publicKeys: |-
+                        -----BEGIN PUBLIC KEY-----
+                        ...
+                        -----END PUBLIC KEY-----
+
+  signingOptions:
+    localKey:
+      description: "Sign with local private key"
+      pros: ["Full control", "Works offline"]
+      cons: ["Key management burden", "Key rotation complexity"]
+      command: |
+        cosign sign --key cosign.key image:tag
+    keyless:
+      description: "Sign with OIDC identity (Sigstore Fulcio)"
+      pros: ["No key management", "Identity-based trust"]
+      cons: ["Requires network", "Depends on Sigstore infra"]
+      command: |
+        cosign sign image:tag  # Uses OIDC automatically
+    kms:
+      description: "Sign with cloud KMS"
+      pros: ["Secure key storage", "Audit trail"]
+      cons: ["Cloud dependency", "Cost"]
+      command: |
+        cosign sign --key awskms:///alias/image-signing image:tag
+
+  cicdIntegration:
+    github-actions: |
+      - name: Sign Image
+        uses: sigstore/cosign-installer@v3
+      - run: |
+          cosign sign --yes \
+            --oidc-issuer=https://token.actions.githubusercontent.com \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+    gitlab-ci: |
+      sign_image:
+        image: gcr.io/projectsigstore/cosign:v2
+        script:
+          - cosign sign --key ${COSIGN_PRIVATE_KEY} ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}
+
+  prevention:
+    - type: ci-signing
+      description: "Sign images automatically in CI/CD"
+    - type: admission-control
+      description: "Require signatures at deploy time"
+      tools:
+        - "Kyverno with verifyImages"
+        - "Connaisseur"
+        - "Portieris"
+        - "Sigstore Policy Controller"
+    - type: registry-policy
+      description: "Configure registry to require signatures"
+
+  verification:
+    - type: signature-verify
+      command: |
+        cosign verify --key cosign.pub registry/bookstore-api:1.2.3
+      expected: "Verification succeeded"
+    - type: deployment-policy
+      command: |
+        kubectl apply --dry-run=server -f unsigned-pod.yaml
+      expected: "Rejected: image not signed"
+    - type: signed-image-deploys
+      command: |
+        kubectl apply -f signed-pod.yaml
+      expected: "Pod created successfully"
+
+  references:
+    - url: https://sigstore.dev/
+      title: "Sigstore"
+    - url: https://github.com/sigstore/cosign
+      title: "Cosign"
+    - url: https://kyverno.io/docs/writing-policies/verify-images/
+      title: "Kyverno Image Verification"

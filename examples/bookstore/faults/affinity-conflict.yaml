@@ -1,0 +1,79 @@
+# Scenario: Pod Anti-Affinity Deadlock
+# Expected: OpenSRE detects pods stuck in Pending due to affinity conflicts
+# Remediation: Relax anti-affinity rules, add nodes, use preferred instead of required
+# Root Cause: Pod anti-affinity rules create impossible scheduling requirements
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: distributed-cache-affinity-conflict
+  namespace: bookstore
+  labels:
+    app: distributed-cache
+    tier: cache
+    fault: affinity-conflict
+spec:
+  replicas: 10  # Want 10 replicas but only 3 nodes
+  selector:
+    matchLabels:
+      app: distributed-cache
+      fault: affinity-conflict
+  template:
+    metadata:
+      labels:
+        app: distributed-cache
+        tier: cache
+        fault: affinity-conflict
+    spec:
+      affinity:
+        # Require each pod to be on different node AND different zone
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: distributed-cache
+                fault: affinity-conflict
+            topologyKey: kubernetes.io/hostname
+          - labelSelector:
+              matchLabels:
+                app: distributed-cache
+            topologyKey: topology.kubernetes.io/zone
+        # Also require specific node type
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: node-type
+                operator: In
+                values:
+                - cache-optimized
+                - memory-optimized
+      containers:
+      - name: cache
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+          name: redis
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+# With 10 replicas, strict anti-affinity, and limited nodes:
+# - First 3 pods schedule (1 per node)
+# - Remaining 7 pods stuck in Pending
+#
+# kubectl get pods:
+# NAME                           READY   STATUS    RESTARTS   AGE
+# distributed-cache-xxx-a1b2c    1/1     Running   0          1m
+# distributed-cache-xxx-d3e4f    1/1     Running   0          1m
+# distributed-cache-xxx-g5h6i    1/1     Running   0          1m
+# distributed-cache-xxx-j7k8l    0/1     Pending   0          1m
+# distributed-cache-xxx-m9n0o    0/1     Pending   0          1m
+# ... (more Pending)
+#
+# Events:
+# Warning  FailedScheduling  pod/distributed-cache-xxx  
+# 0/3 nodes are available: 3 node(s) didn't match pod anti-affinity rules

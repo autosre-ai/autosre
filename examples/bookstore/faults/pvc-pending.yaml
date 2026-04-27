@@ -1,0 +1,71 @@
+# Scenario: PVC Pending - Storage Class Missing
+# Expected: OpenSRE detects PVC stuck in Pending, volume provisioning failure
+# Remediation: Create storage class, fix storage class name, check provisioner
+# Root Cause: Referenced StorageClass does not exist
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: database-pvc-pending
+  namespace: bookstore
+  labels:
+    app: database-service
+    fault: pvc-pending
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: premium-ssd-nonexistent  # This storage class doesn't exist
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: database-service-pvc-pending
+  namespace: bookstore
+  labels:
+    app: database-service
+    tier: data
+    fault: pvc-pending
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: database-service
+      fault: pvc-pending
+  template:
+    metadata:
+      labels:
+        app: database-service
+        tier: data
+        fault: pvc-pending
+    spec:
+      containers:
+      - name: database
+        image: postgres:15-alpine
+        env:
+        - name: POSTGRES_PASSWORD
+          value: "bookstore-secret"
+        - name: POSTGRES_DB
+          value: "bookstore"
+        ports:
+        - containerPort: 5432
+          name: postgres
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: database-pvc-pending  # Will be stuck in Pending
+---
+# Expected events on PVC:
+# Warning  ProvisioningFailed  pvc/database-pvc-pending  
+# storageclass.storage.k8s.io "premium-ssd-nonexistent" not found

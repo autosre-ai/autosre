@@ -1,0 +1,108 @@
+# Scenario: Scheduler Backlog - Pending Pods Queue
+# Category: Cluster Issues
+# Severity: High
+# Description: Large number of pods stuck in Pending state due to scheduler backlog
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: scheduler-backlog
+  labels:
+    category: cluster-issues
+    severity: high
+    component: kube-scheduler
+spec:
+  description: |
+    Kubernetes scheduler has a large backlog of pending pods. New pods
+    are not being scheduled in a timely manner despite available resources.
+    
+  symptoms:
+    - type: pod-status
+      status: Pending
+      count: 150
+      duration: ">5 minutes"
+    - type: scheduler-queue
+      size: 200
+      description: "Large scheduling queue"
+    - type: deployment-status
+      condition: Progressing
+      status: "False"
+      reason: "NewReplicaSetAvailable"
+      
+  affectedResources:
+    - kind: Pod
+      selector:
+        status.phase: Pending
+    - kind: Deployment
+      condition: Available=False
+    - kind: ReplicaSet
+      selector:
+        status.replicas: ">0"
+        status.readyReplicas: "0"
+        
+  metrics:
+    - name: scheduler_pending_pods
+      labels:
+        queue: unschedulable
+      value: 150
+    - name: scheduler_queue_incoming_pods_total
+      rate: 100  # Pods/second
+    - name: scheduler_scheduling_duration_seconds
+      percentile: p99
+      value: 30  # Very slow
+    - name: scheduler_pod_scheduling_attempts
+      labels:
+        result: unschedulable
+      value: 500
+      
+  logs:
+    - source: kube-scheduler
+      level: warning
+      patterns:
+        - "Unable to schedule pod"
+        - "no nodes available"
+        - "0 nodes are available"
+        - "Preemption is not helpful"
+    - source: kube-scheduler
+      level: info
+      patterns:
+        - "Too many binding goroutines"
+        - "Scheduling queue depth"
+        
+  rootCause:
+    component: kube-scheduler
+    type: performance-bottleneck
+    details: |
+      Scheduler backlog. Common causes:
+      - Burst of pod creations (deployment scale-up, batch jobs)
+      - Complex scheduling requirements (affinity, resources)
+      - Insufficient cluster resources (no nodes fit)
+      - Scheduler performance issues (single replica)
+      - Custom scheduler plugins slow
+      - Priority preemption loops
+      
+  remediation:
+    steps:
+      - action: check-pending-count
+        command: "kubectl get pods -A --field-selector=status.phase=Pending | wc -l"
+        description: "Count pending pods"
+      - action: check-scheduler-logs
+        command: "kubectl logs -n kube-system -l component=kube-scheduler --tail=100"
+        description: "Review scheduler logs"
+      - action: analyze-pending-reason
+        command: "kubectl get pods -A --field-selector=status.phase=Pending -o json | jq '.items[].status.conditions[0].message' | sort | uniq -c"
+        description: "Group pending reasons"
+      - action: check-node-resources
+        command: "kubectl describe nodes | grep -A5 'Allocated resources'"
+        description: "Check node resource availability"
+      - action: scale-cluster
+        command: "kubectl scale nodepool default --num-nodes=10"
+        description: "Add more nodes if resource constrained"
+      - action: prioritize-pods
+        command: "kubectl patch deployment critical-app -p '{\"spec\":{\"template\":{\"spec\":{\"priorityClassName\":\"high-priority\"}}}}'"
+        description: "Prioritize important workloads"
+    
+  detection:
+    promql: 'scheduler_pending_pods{queue="unschedulable"} > 50'
+    alertName: KubeSchedulerBacklog
+    severity: warning

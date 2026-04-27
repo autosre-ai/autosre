@@ -1,0 +1,150 @@
+# Scenario: OIDC Provider Down
+# Category: Authentication/Authorization
+# Description: Identity provider (IdP) is unavailable
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: oidc-provider-down
+  labels:
+    category: security
+    subcategory: authentication
+    severity: critical
+    service: bookstore-frontend
+spec:
+  description: |
+    The OIDC identity provider (Auth0/Okta/Keycloak) is unavailable, preventing
+    all user authentication. Users cannot log in and token validation fails.
+  
+  symptoms:
+    - type: error
+      source: bookstore-frontend
+      message: "OIDC discovery failed: connection refused to https://auth.example.com/.well-known/openid-configuration"
+    - type: log
+      source: oauth2-proxy
+      pattern: "unable to fetch JWKS: dial tcp: connection timed out"
+    - type: metric
+      name: auth_provider_requests_total
+      labels:
+        status: "error"
+      condition: "rate > 100/min"
+    - type: metric
+      name: login_attempts_total
+      labels:
+        result: "failed"
+        reason: "provider_unavailable"
+      condition: "increase > 50 in 5m"
+    - type: alert
+      name: IdentityProviderUnavailable
+      severity: critical
+
+  affectedServices:
+    - name: bookstore-frontend
+      namespace: bookstore
+      impact: "No new user logins possible"
+    - name: admin-portal
+      namespace: bookstore
+      impact: "Admin access blocked"
+    - name: api-gateway
+      namespace: bookstore
+      impact: "Token validation failing for new requests"
+
+  rootCause:
+    type: dependency-failure
+    component: oidc-provider
+    provider: "auth.example.com"
+    possibleCauses:
+      - "IdP service outage"
+      - "Network connectivity to IdP"
+      - "DNS resolution failure"
+      - "IdP rate limiting"
+      - "IdP certificate issues"
+
+  detection:
+    - method: health-check
+      command: |
+        curl -sf https://auth.example.com/.well-known/openid-configuration || echo "OIDC Discovery Failed"
+    - method: prometheus
+      query: |
+        probe_success{job="oidc-provider"} == 0
+    - method: status-page
+      url: https://status.auth0.com
+      description: "Check IdP status page"
+
+  fallbackBehavior:
+    description: |
+      During IdP outage, consider these fallback strategies:
+    options:
+      - name: cached-jwks
+        description: "Use cached JWKS for token validation"
+        risk: "Revoked tokens may still be valid"
+        config: |
+          OIDC_JWKS_CACHE_TTL=3600
+          OIDC_JWKS_CACHE_FALLBACK=true
+      - name: graceful-degradation
+        description: "Allow existing sessions, block new logins"
+        implementation: |
+          Session cookies remain valid until expiry
+      - name: backup-idp
+        description: "Failover to secondary IdP"
+        config: |
+          OIDC_BACKUP_ISSUER=https://backup-auth.example.com
+
+  remediation:
+    automated: partial
+    steps:
+      - action: check-idp-status
+        command: |
+          curl -w "\n%{http_code}" -s https://auth.example.com/health
+      - action: verify-network
+        command: |
+          kubectl run -it --rm debug --image=nicolaka/netshoot --restart=Never -- \
+            curl -v https://auth.example.com/.well-known/openid-configuration
+      - action: check-dns
+        command: |
+          kubectl run -it --rm debug --image=nicolaka/netshoot --restart=Never -- \
+            nslookup auth.example.com
+      - action: enable-jwks-cache
+        description: "Enable cached JWKS fallback"
+        command: |
+          kubectl set env deployment/api-gateway OIDC_JWKS_CACHE_FALLBACK=true
+      - action: contact-provider
+        description: "Open support ticket with IdP vendor"
+        manual: true
+
+  prevention:
+    - type: architecture
+      description: "Implement JWKS caching with fallback"
+    - type: monitoring
+      description: "Proactive IdP health monitoring"
+      rule: |
+        - probe_success{job="oidc-provider"} == 0 for 1m
+    - type: redundancy
+      description: "Configure backup identity provider"
+    - type: offline-capability
+      description: "Design for IdP unavailability"
+      implementation: |
+        - Long-lived refresh tokens
+        - Cached JWKS with extended TTL
+        - Graceful session handling
+
+  verification:
+    - type: health-check
+      command: |
+        curl -sf https://auth.example.com/.well-known/openid-configuration
+      expected: "200 OK with valid JSON"
+    - type: functional-test
+      description: "Complete login flow"
+      steps:
+        - "Navigate to /login"
+        - "Complete OIDC flow"
+        - "Verify session created"
+    - type: metric
+      query: rate(auth_provider_requests_total{status="success"}[1m])
+      condition: "> 0"
+
+  references:
+    - url: https://openid.net/specs/openid-connect-discovery-1_0.html
+      title: "OpenID Connect Discovery"
+    - url: https://datatracker.ietf.org/doc/html/rfc7517
+      title: "RFC 7517 - JSON Web Key (JWK)"

@@ -1,0 +1,115 @@
+# Data Corruption
+# Simulates inconsistent data state between services
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service-data-corruption
+  namespace: bookstore
+  labels:
+    app: order-service
+    tier: api
+    fault: data-corruption
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: order-service
+  template:
+    metadata:
+      labels:
+        app: order-service
+        tier: api
+        fault: data-corruption
+    spec:
+      containers:
+      - name: order
+        image: python:3.11-alpine
+        env:
+        - name: FAULT_MODE
+          value: "data-corruption"
+        - name: CORRUPTION_RATE
+          value: "0.5"
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+          import random
+          import os
+          
+          CORRUPTION_RATE = float(os.environ.get('CORRUPTION_RATE', 0.5))
+          
+          CORRUPTION_TYPES = [
+              {"type": "orphaned_order", "desc": "Order exists but user record deleted"},
+              {"type": "duplicate_id", "desc": "Multiple orders with same ID"},
+              {"type": "negative_total", "desc": "Order total is negative"},
+              {"type": "missing_items", "desc": "Order items array is empty but total > 0"},
+              {"type": "invalid_status", "desc": "Order status is 'SHIPPED' but no tracking number"},
+              {"type": "future_date", "desc": "Order created_at is in the future"},
+          ]
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path in ['/health', '/ready']:
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                      return
+                  
+                  if random.random() < CORRUPTION_RATE:
+                      corruption = random.choice(CORRUPTION_TYPES)
+                      order_id = f"ORD-{random.randint(10000, 99999)}"
+                      
+                      print(f"[data-corruption] {corruption['type']}: {corruption['desc']} (order: {order_id})")
+                      
+                      self.send_response(500)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      error = {
+                          "error": "DataCorruptionDetected",
+                          "message": "Data integrity check failed",
+                          "corruption": {
+                              "type": corruption['type'],
+                              "description": corruption['desc'],
+                              "affected_order": order_id,
+                              "detected_at": "2024-01-15T12:30:00Z"
+                          },
+                          "suggestion": "Run data integrity reconciliation job"
+                      }
+                      self.wfile.write(json.dumps(error).encode())
+                  else:
+                      self.send_response(200)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      self.wfile.write(json.dumps({"orders": []}).encode())
+                      
+              def do_POST(self):
+                  return self.do_GET()
+                  
+              def log_message(self, format, *args):
+                  print(f"[order-corrupt] {args[0]}")
+          
+          print(f"Order service (DATA CORRUPTION) starting - rate={CORRUPTION_RATE}")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15

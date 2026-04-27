@@ -1,0 +1,155 @@
+# Scenario: Firewall Rule Missing
+# Category: Network Security
+# Description: Cloud firewall or security group blocking traffic
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: firewall-rule-missing
+  labels:
+    category: security
+    subcategory: network-security
+    severity: high
+    service: bookstore-api
+spec:
+  description: |
+    A cloud firewall rule or security group is missing, causing traffic to
+    be dropped at the infrastructure level. This affects traffic between
+    VPCs, subnets, or from external sources.
+  
+  symptoms:
+    - type: error
+      source: load-balancer
+      message: "Connection timeout to backend instances"
+    - type: log
+      source: vpc-flow-logs
+      pattern: "REJECT: src=10.0.1.x dst=10.0.2.x dstport=8080 action=REJECT"
+    - type: metric
+      name: aws_elb_backend_connection_errors
+      condition: "increase > 100 in 5m"
+    - type: user-impact
+      description: "External users cannot access application"
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "Not reachable from load balancer"
+    - name: external-api-gateway
+      impact: "Cannot route traffic to backend"
+
+  rootCause:
+    type: infrastructure-misconfiguration
+    component: security-group
+    possibleCauses:
+      - "Security group rule deleted accidentally"
+      - "Terraform/CloudFormation change removed rule"
+      - "Auto-remediation system removed 'non-compliant' rule"
+      - "Subnet NACL blocking traffic"
+      - "New VPC peering missing route/security group"
+
+  detection:
+    - method: vpc-flow-logs
+      command: |
+        # AWS
+        aws logs filter-log-events \
+          --log-group-name /aws/vpc-flow-logs \
+          --filter-pattern "REJECT"
+    - method: security-group-check
+      command: |
+        # AWS
+        aws ec2 describe-security-groups --group-ids ${SG_ID} \
+          --query 'SecurityGroups[*].IpPermissions'
+    - method: connectivity-test
+      command: |
+        # From bastion
+        nc -zv <target-ip> 8080
+    - method: prometheus
+      query: |
+        increase(aws_elb_backend_connection_errors_total[5m]) > 0
+
+  remediation:
+    automated: false
+    requiresApproval: infra-team
+    steps:
+      - action: identify-traffic-flow
+        description: "Map the network path"
+        tasks:
+          - "Source IP/subnet"
+          - "Destination IP/subnet"
+          - "Ports required"
+          - "VPC/peering connections involved"
+      - action: check-security-groups
+        command: |
+          # AWS - Check all security groups in the path
+          aws ec2 describe-security-groups --filters "Name=group-name,Values=*bookstore*" \
+            --query 'SecurityGroups[*].[GroupId,GroupName,IpPermissions]'
+      - action: check-nacls
+        command: |
+          # AWS - Check Network ACLs
+          aws ec2 describe-network-acls --filters "Name=vpc-id,Values=${VPC_ID}" \
+            --query 'NetworkAcls[*].[NetworkAclId,Entries]'
+      - action: add-rule
+        description: "Add missing security group rule"
+        command: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id ${SG_ID} \
+            --protocol tcp \
+            --port 8080 \
+            --source-group ${SOURCE_SG_ID} \
+            --description "Allow traffic from load balancer"
+      - action: update-iac
+        description: "Update Terraform/CloudFormation"
+        manual: true
+        note: "Ensure change is persistent through IaC"
+
+  prevention:
+    - type: infrastructure-as-code
+      description: "Manage all firewall rules via IaC"
+      implementation: |
+        # Terraform
+        resource "aws_security_group_rule" "allow_lb" {
+          type              = "ingress"
+          from_port         = 8080
+          to_port           = 8080
+          protocol          = "tcp"
+          source_security_group_id = aws_security_group.lb.id
+          security_group_id = aws_security_group.backend.id
+        }
+    - type: drift-detection
+      description: "Detect and alert on infrastructure drift"
+      tools:
+        - "terraform plan (scheduled)"
+        - "AWS Config rules"
+        - "Driftctl"
+    - type: change-management
+      description: "Review all security group changes"
+      process: |
+        1. PR with security group changes
+        2. Security team review
+        3. Test in staging
+        4. Deploy with monitoring
+    - type: testing
+      description: "Integration tests include connectivity checks"
+
+  verification:
+    - type: connectivity
+      command: |
+        # From load balancer subnet
+        nc -zv <backend-ip> 8080
+      expected: "Connection succeeded"
+    - type: flow-logs
+      command: |
+        aws logs filter-log-events \
+          --log-group-name /aws/vpc-flow-logs \
+          --filter-pattern "ACCEPT ${BACKEND_IP}"
+      expected: "ACCEPT entries present"
+    - type: lb-health
+      command: |
+        aws elbv2 describe-target-health --target-group-arn ${TG_ARN}
+      expected: "healthy"
+
+  references:
+    - url: https://docs.aws.amazon.com/vpc/latest/userguide/VPC_SecurityGroups.html
+      title: "AWS Security Groups"
+    - url: https://docs.aws.amazon.com/vpc/latest/userguide/flow-logs.html
+      title: "VPC Flow Logs"

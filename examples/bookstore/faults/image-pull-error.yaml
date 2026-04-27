@@ -1,0 +1,41 @@
+# Scenario: Image Pull Error
+# Expected: OpenSRE detects ErrImagePull/ImagePullBackOff events
+# Remediation: Verify image name, tag exists, registry credentials
+# Root Cause: Non-existent image tag specified
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service-image-pull-error
+  namespace: bookstore
+  labels:
+    app: order-service
+    tier: api
+    fault: image-pull-error
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: order-service
+      fault: image-pull-error
+  template:
+    metadata:
+      labels:
+        app: order-service
+        tier: api
+        fault: image-pull-error
+    spec:
+      containers:
+      - name: order
+        # Intentionally wrong tag - this image doesn't exist
+        image: python:3.11-alpine-nonexistent-v99.99.99
+        command: ["python", "-c", "print('This will never run')"]
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"

@@ -1,0 +1,46 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.3, pytest-9.0.2, pluggy-1.6.0 -- /Users/sadusumilli/clawd/projects/opensre/.venv/bin/python3.14
+cachedir: .pytest_cache
+rootdir: /Users/sadusumilli/clawd/projects/opensre
+configfile: pyproject.toml
+plugins: respx-0.22.0, mock-3.15.1, cov-7.1.0, asyncio-1.3.0, Faker-40.11.1, anyio-4.13.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 35 items
+
+tests/integration/test_investigations.py::TestOrchestratorBasic::test_orchestrator_initializes PASSED [  2%]
+tests/integration/test_investigations.py::TestOrchestratorBasic::test_investigate_returns_result PASSED [  5%]
+tests/integration/test_investigations.py::TestOrchestratorBasic::test_investigate_timeout PASSED [  8%]
+tests/integration/test_investigations.py::TestScenarioDefinitions::test_all_scenarios_have_required_fields PASSED [ 11%]
+tests/integration/test_investigations.py::TestScenarioDefinitions::test_deployable_scenarios_have_manifests PASSED [ 14%]
+tests/integration/test_investigations.py::TestScenarioDefinitions::test_scenario_count PASSED [ 17%]
+tests/integration/test_investigations.py::TestMemoryScenario::test_memory_hog_detection PASSED [ 20%]
+tests/integration/test_investigations.py::TestCrashloopScenario::test_crashloop_detection PASSED [ 22%]
+tests/integration/test_investigations.py::TestCPUScenario::test_cpu_hog_detection PASSED [ 25%]
+tests/integration/test_investigations.py::TestOOMScenario::test_oom_detection PASSED [ 28%]
+tests/integration/test_investigations.py::TestHealthCheck::test_healthy_namespace PASSED [ 31%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[memory_hog] PASSED [ 34%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[cpu_hog] PASSED [ 37%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[crashloop] PASSED [ 40%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[oom_kill] PASSED [ 42%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[latency_issue] PASSED [ 45%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[error_rate] PASSED [ 48%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[healthy_check] PASSED [ 51%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[network_issue] PASSED [ 54%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[disk_pressure] PASSED [ 57%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[pending_pods] PASSED [ 60%]
+tests/integration/test_skills_integration.py::TestPrometheusIntegration::test_query_basic PASSED [ 62%]
+tests/integration/test_skills_integration.py::TestPrometheusIntegration::test_get_targets PASSED [ 65%]
+tests/integration/test_skills_integration.py::TestPrometheusIntegration::test_get_alerts PASSED [ 68%]
+tests/integration/test_skills_integration.py::TestKubernetesIntegration::test_get_pods PASSED [ 71%]
+tests/integration/test_skills_integration.py::TestKubernetesIntegration::test_get_deployments PASSED [ 74%]
+tests/integration/test_skills_integration.py::TestKubernetesIntegration::test_get_events PASSED [ 77%]
+tests/integration/test_skills_integration.py::TestHTTPIntegration::test_get_request PASSED [ 80%]
+tests/integration/test_skills_integration.py::TestHTTPIntegration::test_post_request PASSED [ 82%]
+tests/integration/test_skills_integration.py::TestHTTPIntegration::test_health_check PASSED [ 85%]
+tests/integration/test_skills_integration.py::TestHTTPIntegration::test_health_check_failure PASSED [ 88%]
+tests/integration/test_skills_integration.py::TestDatadogIntegration::test_query_metrics SKIPPED [ 91%]
+tests/integration/test_skills_integration.py::TestDatadogIntegration::test_get_monitors SKIPPED [ 94%]
+tests/integration/test_skills_integration.py::TestElasticsearchIntegration::test_cluster_health PASSED [ 97%]
+tests/integration/test_skills_integration.py::TestElasticsearchIntegration::test_get_indices PASSED [100%]
+
+================== 33 passed, 2 skipped in 361.27s (0:06:01) ===================

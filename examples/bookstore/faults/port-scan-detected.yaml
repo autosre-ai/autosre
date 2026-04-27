@@ -1,0 +1,176 @@
+# Scenario: Port Scan Detected
+# Category: Network Security
+# Description: Security systems detected port scanning activity
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: port-scan-detected
+  labels:
+    category: security
+    subcategory: network-security
+    severity: medium
+    service: ids
+spec:
+  description: |
+    Intrusion detection systems have identified port scanning activity
+    targeting the cluster. This could be reconnaissance for a larger attack.
+  
+  symptoms:
+    - type: alert
+      source: falco
+      message: "Port scan detected from 192.168.1.100 - 50 ports probed in 10 seconds"
+    - type: log
+      source: firewall
+      pattern: "DROP: rapid connection attempts to multiple ports"
+    - type: metric
+      name: connection_attempts_by_port
+      condition: "unique_ports > 20 from single IP in 1 minute"
+    - type: alert
+      source: security-center
+      severity: medium
+
+  securityContext:
+    attackPhase: "reconnaissance"
+    intent: "Identifying open services and vulnerabilities"
+    threatLevel: medium
+    potentialFollowUp:
+      - "Vulnerability exploitation on discovered services"
+      - "Brute force attacks on identified auth endpoints"
+      - "Service-specific exploits"
+
+  affectedServices:
+    - name: "cluster-perimeter"
+      impact: "Information disclosure about running services"
+
+  detection:
+    - method: falco
+      rule: |
+        - rule: Port Scan Detected
+          desc: Detect rapid connection attempts to multiple ports
+          condition: >
+            inbound and fd.sport != 0 and 
+            count(fd.dport) > 20 in 60s by (fd.cip)
+          output: "Port scan from %fd.cip (ports: %evt.arg.dport)"
+          priority: WARNING
+    - method: flow-analysis
+      command: |
+        # Analyze connection patterns
+        kubectl exec -n monitoring deploy/flow-analyzer -- \
+          analyze --source=${SUSPICIOUS_IP} --window=5m
+    - method: waf-logs
+      query: |
+        action:block AND rule_category:reconnaissance
+
+  immediateActions:
+    - action: block-source
+      description: "Block the scanning IP"
+      command: |
+        # Add to network policy blocklist
+        kubectl apply -f - <<EOF
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        metadata:
+          name: block-scanner-${IP_HASH}
+          namespace: default
+        spec:
+          podSelector: {}
+          ingress:
+          - from:
+            - ipBlock:
+                cidr: 0.0.0.0/0
+                except:
+                - ${SCANNER_IP}/32
+        EOF
+      priority: 1
+    - action: log-activity
+      description: "Preserve all logs from scanning IP"
+      command: |
+        kubectl logs --all-containers --selector='' --since=1h | \
+          grep "${SCANNER_IP}" > /evidence/portscan-${SCANNER_IP}.log
+      priority: 2
+
+  investigation:
+    steps:
+      - action: identify-scanner
+        description: "Gather information about scanning source"
+        command: |
+          # Whois lookup
+          whois ${SCANNER_IP}
+          
+          # Reverse DNS
+          dig -x ${SCANNER_IP}
+          
+          # Check threat intelligence
+          curl -s "https://api.abuseipdb.com/api/v2/check?ipAddress=${SCANNER_IP}" \
+            -H "Key: ${ABUSEIPDB_KEY}"
+      - action: analyze-pattern
+        description: "Understand what was scanned"
+        tasks:
+          - "Which ports were probed"
+          - "Timing and pattern of probes"
+          - "Any successful connections"
+          - "Follow-up activity from same IP"
+      - action: assess-exposure
+        description: "Determine what attacker learned"
+        tasks:
+          - "Which ports responded"
+          - "Service banners exposed"
+          - "Version information leaked"
+
+  remediation:
+    automated: true
+    steps:
+      - action: temporary-block
+        description: "Auto-block for 24 hours"
+        automated: true
+      - action: review-exposure
+        description: "Check what information was exposed"
+        command: |
+          # List exposed services
+          kubectl get services --all-namespaces -o wide | grep -v ClusterIP
+      - action: reduce-attack-surface
+        description: "Minimize exposed ports"
+        tasks:
+          - "Review LoadBalancer services"
+          - "Ensure only necessary ports are exposed"
+          - "Move non-public services behind VPN"
+      - action: report-abuse
+        description: "Report to IP owner if malicious"
+        manual: true
+
+  prevention:
+    - type: minimize-exposure
+      description: "Reduce exposed attack surface"
+      recommendations:
+        - "Use ClusterIP services where possible"
+        - "Implement VPN for admin access"
+        - "Use private endpoints for cloud services"
+    - type: intrusion-detection
+      description: "Deploy IDS/IPS"
+      tools:
+        - "Falco"
+        - "Suricata"
+        - "Cloud-native security groups"
+    - type: rate-limiting
+      description: "Connection rate limits at network level"
+    - type: service-mesh
+      description: "mTLS prevents service enumeration"
+
+  verification:
+    - type: block-check
+      command: |
+        # Verify IP is blocked
+        kubectl get networkpolicies -A | grep ${IP_HASH}
+      expected: "Policy exists"
+    - type: traffic-check
+      command: |
+        # No recent traffic from scanner
+        kubectl logs -n ingress-nginx -l app=ingress-nginx --since=1h | grep ${SCANNER_IP} | wc -l
+      expected: "0 or blocked entries only"
+
+  references:
+    - url: https://falco.org/docs/
+      title: "Falco Runtime Security"
+    - url: https://attack.mitre.org/tactics/TA0043/
+      title: "MITRE ATT&CK - Reconnaissance"

@@ -1,0 +1,75 @@
+# Scenario: Slow Start Container - Health Check Race
+# Expected: OpenSRE detects pods killed before app fully starts
+# Remediation: Increase initialDelaySeconds, use startupProbe, adjust thresholds
+# Root Cause: Application takes too long to start, killed by liveness probe
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: java-app-slow-start
+  namespace: bookstore
+  labels:
+    app: java-app
+    tier: api
+    fault: slow-start
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: java-app
+      fault: slow-start
+  template:
+    metadata:
+      labels:
+        app: java-app
+        tier: api
+        fault: slow-start
+    spec:
+      containers:
+      - name: java-app
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import time
+          
+          print("Java-like app starting...")
+          print("[INFO] Loading Spring context...")
+          print("[INFO] Initializing database connections...")
+          print("[INFO] Running Flyway migrations...")
+          
+          # Simulate slow JVM startup (60 seconds)
+          for i in range(60):
+              print(f"[BOOT] Startup progress: {i+1}/60 seconds...")
+              time.sleep(1)
+          
+          print("[INFO] Application started successfully!")
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  self.send_response(200)
+                  self.end_headers()
+                  self.wfile.write(b'OK')
+              def log_message(self, format, *args):
+                  pass
+          
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        # These probes are too aggressive for slow-starting app
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10  # App needs 60s, but probe starts at 10s
+          periodSeconds: 5
+          failureThreshold: 3  # Fails after 25s, kills pod
+        # Missing startupProbe that would help!

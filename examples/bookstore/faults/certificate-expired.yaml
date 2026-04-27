@@ -1,0 +1,115 @@
+# Scenario: mTLS Certificate Expired
+# Category: Authentication/Authorization
+# Description: Service mesh mTLS certificate has expired
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: certificate-expired
+  labels:
+    category: security
+    subcategory: authentication
+    severity: critical
+    service: bookstore-api
+spec:
+  description: |
+    The mTLS client certificate for bookstore-api has expired, causing all
+    service mesh communication to fail. Istio/Linkerd sidecar proxies are
+    rejecting connections due to certificate validation failures.
+  
+  symptoms:
+    - type: error
+      source: istio-proxy
+      message: "SSL_ERROR_SYSCALL:certificate verify failed:certificate has expired"
+    - type: log
+      source: envoy
+      pattern: "upstream connect error or disconnect/reset before headers. reset reason: connection failure, transport failure reason: TLS error"
+    - type: metric
+      name: istio_requests_total
+      labels:
+        response_code: "503"
+        response_flags: "UC"
+      condition: "spike > 1000%"
+    - type: alert
+      name: ServiceMeshCertificateExpiry
+      severity: critical
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "Cannot communicate with any mesh services"
+    - name: "*"
+      namespace: bookstore
+      impact: "All downstream services affected"
+
+  rootCause:
+    type: certificate-lifecycle
+    component: istio-citadel
+    details: |
+      The workload certificate issued by Citadel/istiod expired. This typically
+      happens when:
+      1. Certificate rotation job failed
+      2. Citadel/istiod was unavailable during rotation window
+      3. Pod was not restarted to pick up new certificate
+      4. Root CA was rotated without proper workload cert renewal
+
+  detection:
+    - method: istio-proxy-logs
+      query: |
+        container:istio-proxy AND "certificate has expired"
+    - method: prometheus
+      query: |
+        citadel_server_root_cert_expiry_timestamp - time() < 86400
+    - method: command
+      command: |
+        istioctl proxy-config secret <pod-name> -o json | jq '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | base64 -d | openssl x509 -noout -dates
+
+  remediation:
+    automated: true
+    steps:
+      - action: check-cert-status
+        command: |
+          istioctl proxy-config secret deploy/bookstore-api -n bookstore
+      - action: restart-istiod
+        command: kubectl rollout restart deployment/istiod -n istio-system
+      - action: restart-workload
+        command: kubectl rollout restart deployment/bookstore-api -n bookstore
+      - action: force-cert-rotation
+        command: |
+          kubectl delete secret istio.bookstore-api -n bookstore
+          kubectl rollout restart deployment/bookstore-api -n bookstore
+
+  prevention:
+    - type: monitoring
+      description: "Alert on certificate expiry approaching"
+      rule: |
+        (citadel_server_root_cert_expiry_timestamp - time()) / 86400 < 7
+    - type: config
+      description: "Reduce certificate TTL and increase rotation frequency"
+      setting: |
+        meshConfig:
+          certificates:
+            - secretName: dns.example1-service-account
+              dnsNames: [example1.default.svc.cluster.local]
+        values:
+          global:
+            proxy:
+              holdApplicationUntilProxyStarts: true
+
+  verification:
+    - type: command
+      command: |
+        istioctl proxy-config secret deploy/bookstore-api -n bookstore | grep "ACTIVE"
+      expected: "ACTIVE.*true"
+    - type: api-call
+      endpoint: /api/health
+      expectedStatus: 200
+    - type: metric
+      query: rate(istio_requests_total{response_code="503",response_flags="UC"}[1m])
+      condition: "== 0"
+
+  references:
+    - url: https://istio.io/latest/docs/tasks/security/cert-management/
+      title: "Istio Certificate Management"
+    - url: https://istio.io/latest/docs/ops/common-problems/security-issues/
+      title: "Istio Security Troubleshooting"

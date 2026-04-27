@@ -1,0 +1,190 @@
+# Scenario: PCI-DSS Violation Detected
+# Category: Compliance
+# Description: Cardholder data exposure or PCI compliance violation
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: pci-violation-detected
+  labels:
+    category: security
+    subcategory: compliance
+    severity: critical
+    service: payment-service
+spec:
+  description: |
+    A PCI-DSS compliance violation has been detected. Cardholder data may
+    be exposed, stored improperly, or transmitted insecurely.
+  
+  symptoms:
+    - type: compliance-alert
+      source: pci-scanner
+      message: "PCI-DSS 3.4 Violation: PANs stored in cleartext in database"
+    - type: security-alert
+      source: dlp
+      message: "Credit card number pattern detected in application logs"
+    - type: audit-finding
+      source: compliance-audit
+      message: "Requirement 4.1: Encrypted transmission not enforced"
+
+  complianceContext:
+    framework: "PCI-DSS v4.0"
+    violatedRequirements:
+      - requirement: "3.4"
+        description: "Render PAN unreadable anywhere it is stored"
+        finding: "PANs found in cleartext"
+      - requirement: "4.1"
+        description: "Use strong cryptography during transmission"
+        finding: "HTTP used instead of HTTPS"
+      - requirement: "6.5.3"
+        description: "Insecure cryptographic storage"
+        finding: "Weak encryption algorithm used"
+    dataInScope:
+      - "Primary Account Number (PAN)"
+      - "Cardholder Name"
+      - "Expiration Date"
+      - "Service Code"
+
+  affectedServices:
+    - name: payment-service
+      namespace: bookstore
+      impact: "Cardholder data at risk"
+      dataClassification: "PCI Scope"
+
+  immediateActions:
+    - action: incident-response
+      description: "Initiate PCI incident response process"
+      priority: critical
+      steps:
+        - "Notify PCI compliance officer"
+        - "Preserve evidence"
+        - "Determine scope of exposure"
+    - action: contain-exposure
+      description: "Stop data leakage immediately"
+      command: |
+        # Disable insecure logging
+        kubectl set env deployment/payment-service LOG_LEVEL=error -n bookstore
+        # Scale down if needed
+        kubectl scale deployment/payment-service --replicas=0 -n bookstore
+    - action: assess-breach
+      description: "Determine if breach notification required"
+      checklist:
+        - "How many records exposed?"
+        - "Was data accessed by unauthorized parties?"
+        - "Duration of exposure?"
+
+  detection:
+    - method: log-scanning
+      command: |
+        # Search for PAN patterns in logs
+        kubectl logs -n bookstore -l app=payment-service --since=24h | \
+          grep -E '\b[0-9]{4}[\s-]?[0-9]{4}[\s-]?[0-9]{4}[\s-]?[0-9]{4}\b'
+    - method: database-audit
+      command: |
+        # Check for cleartext PANs in database
+        psql -h db -c "SELECT COUNT(*) FROM payments WHERE card_number NOT LIKE 'enc:%';"
+    - method: network-analysis
+      command: |
+        # Check for unencrypted card data in transit
+        kubectl exec -n monitoring deploy/tcpdump -- \
+          tcpdump -A -i any port 80 | grep -iE 'card|pan|cvv'
+
+  remediation:
+    automated: false
+    requiresApproval: compliance-officer
+    steps:
+      - action: identify-violation
+        description: "Document specific violations"
+        tasks:
+          - "Which requirement violated"
+          - "Scope of non-compliance"
+          - "Root cause"
+      - action: fix-storage
+        description: "Encrypt cardholder data at rest"
+        implementation: |
+          # Use field-level encryption
+          const encryptedPAN = await encrypt(pan, dataKey);
+          await db.query('INSERT INTO payments (encrypted_pan) VALUES ($1)', [encryptedPAN]);
+      - action: fix-transmission
+        description: "Enforce TLS for all cardholder data"
+        config: |
+          # Require TLS for payment endpoints
+          apiVersion: networking.istio.io/v1beta1
+          kind: PeerAuthentication
+          metadata:
+            name: payment-service-mtls
+          spec:
+            selector:
+              matchLabels:
+                app: payment-service
+            mtls:
+              mode: STRICT
+      - action: fix-logging
+        description: "Implement log masking"
+        code: |
+          // Mask PAN in logs
+          function maskPAN(pan) {
+            return pan.replace(/^(\d{4})\d{8}(\d{4})$/, '$1****$2');
+          }
+      - action: remediation-evidence
+        description: "Document remediation for auditors"
+
+  prevention:
+    - type: tokenization
+      description: "Use payment tokens instead of PANs"
+      implementation: |
+        Use Stripe/Braintree tokens - PANs never touch your systems
+    - type: log-masking
+      description: "Automatic PII masking in logs"
+      config: |
+        logging:
+          masks:
+            - pattern: '\b[0-9]{13,16}\b'
+              replacement: '[MASKED-PAN]'
+    - type: data-discovery
+      description: "Regular scans for cardholder data"
+      tools:
+        - "Amazon Macie"
+        - "Google Cloud DLP"
+        - "Custom regex scanning"
+    - type: encryption
+      description: "Encrypt all cardholder data"
+      requirement: "AES-256 or equivalent"
+
+  breachNotification:
+    requirements:
+      - entity: "Card brands (Visa, Mastercard)"
+        timeline: "Immediately upon discovery"
+      - entity: "Acquiring bank"
+        timeline: "24-72 hours"
+      - entity: "PCI SSC"
+        timeline: "As required by card brands"
+      - entity: "Affected cardholders"
+        timeline: "Based on jurisdiction requirements"
+    documentation:
+      - "Timeline of events"
+      - "Scope of exposure"
+      - "Remediation steps taken"
+      - "Prevention measures implemented"
+
+  verification:
+    - type: scan
+      command: |
+        # Rescan for PANs
+        grep -rE '\b[0-9]{16}\b' /var/log/app/ | wc -l
+      expected: "0"
+    - type: encryption-check
+      command: |
+        # Verify encryption in database
+        psql -h db -c "SELECT card_number FROM payments LIMIT 1;" | grep -c "^enc:"
+      expected: "1"
+    - type: tls-check
+      command: |
+        curl -sf https://payment-service:8443/health
+      expected: "200 OK over TLS"
+
+  references:
+    - url: https://www.pcisecuritystandards.org/
+      title: "PCI Security Standards Council"
+    - url: https://docs.aws.amazon.com/whitepapers/latest/architecting-pci-dss-environment/welcome.html
+      title: "AWS PCI-DSS Architecture"

@@ -1,0 +1,173 @@
+# Scenario: SSL Stripping Attempt Detected
+# Category: Network Security
+# Description: Man-in-the-middle attack attempting to downgrade HTTPS to HTTP
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: ssl-stripping-attempt
+  labels:
+    category: security
+    subcategory: network-security
+    severity: critical
+    service: api-gateway
+spec:
+  description: |
+    Security systems have detected an SSL stripping or HTTPS downgrade attack
+    attempt. An attacker may be intercepting traffic and attempting to force
+    connections to use unencrypted HTTP.
+  
+  symptoms:
+    - type: alert
+      source: waf
+      message: "Potential SSL stripping: HTTP request to HTTPS-only endpoint from suspicious proxy"
+    - type: log
+      source: nginx
+      pattern: "HTTP request received on HTTPS endpoint, redirecting"
+    - type: metric
+      name: http_requests_total
+      labels:
+        scheme: "http"
+        endpoint: "/api/auth/login"
+      condition: "increase > 0"
+    - type: security-alert
+      description: "Credentials submitted over HTTP"
+
+  securityContext:
+    attackType: "Man-in-the-Middle (MITM)"
+    technique: "SSL Stripping"
+    intent: "Intercept credentials and sensitive data"
+    threatLevel: critical
+    mitreTactic: "TA0006 - Credential Access"
+
+  affectedServices:
+    - name: api-gateway
+      namespace: bookstore
+      impact: "Authentication endpoints potentially compromised"
+    - name: bookstore-frontend
+      impact: "User sessions at risk"
+
+  detection:
+    - method: http-monitoring
+      description: "Detect HTTP requests to HTTPS-only endpoints"
+      query: |
+        scheme:http AND (path:"/login" OR path:"/api/auth" OR path:"/checkout")
+    - method: header-analysis
+      description: "Look for downgrade indicators"
+      indicators:
+        - "Missing or incorrect X-Forwarded-Proto header"
+        - "HTTP request with HTTPS referrer"
+        - "Suspicious proxy headers"
+    - method: prometheus
+      query: |
+        sum(rate(http_requests_total{scheme="http",sensitive_endpoint="true"}[5m])) > 0
+
+  immediateActions:
+    - action: block-http
+      description: "Ensure all HTTP is redirected to HTTPS"
+      command: |
+        # Verify HTTPS redirect is working
+        curl -I http://api.example.com/api/auth/login
+      expected: "301/302 redirect to https://"
+      priority: 1
+    - action: enable-hsts
+      description: "Ensure HSTS is enabled with long max-age"
+      command: |
+        kubectl annotate ingress bookstore-api \
+          nginx.ingress.kubernetes.io/configuration-snippet='add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;'
+      priority: 1
+    - action: invalidate-sessions
+      description: "If credentials may have been exposed, invalidate sessions"
+      manual: true
+      priority: 2
+
+  investigation:
+    steps:
+      - action: identify-traffic-source
+        description: "Determine where HTTP traffic originated"
+        command: |
+          # Check X-Forwarded-For for real client IP
+          kubectl logs -n ingress-nginx -l app=ingress-nginx | \
+            grep "scheme=http" | awk '{print $NF}' | sort | uniq -c
+      - action: analyze-request-pattern
+        description: "Look for attack signatures"
+        indicators:
+          - "Proxy headers indicating interception"
+          - "Modified Host headers"
+          - "Missing HSTS acknowledgment"
+      - action: check-certificate-validity
+        description: "Verify no certificate issues enabling attack"
+        command: |
+          echo | openssl s_client -connect api.example.com:443 2>/dev/null | openssl x509 -noout -dates
+
+  remediation:
+    automated: partial
+    steps:
+      - action: enforce-https
+        description: "Ensure HTTPS is strictly enforced"
+        command: |
+          kubectl apply -f - <<EOF
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: bookstore-api
+            annotations:
+              nginx.ingress.kubernetes.io/ssl-redirect: "true"
+              nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+          spec:
+            tls:
+            - hosts:
+              - api.example.com
+              secretName: api-tls
+          EOF
+      - action: enable-hsts-preload
+        description: "Submit domain to HSTS preload list"
+        manual: true
+        url: "https://hstspreload.org/"
+      - action: implement-certificate-pinning
+        description: "For mobile apps, pin certificates"
+        manual: true
+      - action: notify-affected-users
+        description: "If credentials may be compromised"
+        manual: true
+        condition: "If HTTP auth requests detected"
+
+  prevention:
+    - type: hsts
+      description: "Strict Transport Security header"
+      config: |
+        Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+    - type: hsts-preload
+      description: "Add domain to browser preload list"
+      url: "https://hstspreload.org/"
+    - type: caa-records
+      description: "DNS CAA records to prevent mis-issuance"
+      config: |
+        example.com. CAA 0 issue "letsencrypt.org"
+    - type: certificate-transparency
+      description: "Monitor CT logs for unauthorized certs"
+    - type: secure-cookies
+      description: "Ensure cookies have Secure flag"
+      config: |
+        Set-Cookie: session=xxx; Secure; HttpOnly; SameSite=Strict
+
+  verification:
+    - type: https-redirect
+      command: |
+        curl -I http://api.example.com/
+      expected: "301 Moved Permanently to https://"
+    - type: hsts-header
+      command: |
+        curl -sI https://api.example.com/ | grep -i strict-transport-security
+      expected: "max-age >= 31536000"
+    - type: ssl-test
+      url: "https://www.ssllabs.com/ssltest/"
+      expected: "A+ rating"
+
+  references:
+    - url: https://owasp.org/www-community/attacks/Manipulator-in-the-middle_attack
+      title: "OWASP MITM Attack"
+    - url: https://hstspreload.org/
+      title: "HSTS Preload"
+    - url: https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Strict_Transport_Security_Cheat_Sheet.html
+      title: "OWASP HSTS Cheat Sheet"

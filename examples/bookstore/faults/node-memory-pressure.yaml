@@ -1,0 +1,95 @@
+# Scenario: Node Memory Pressure - Node OOM
+# Category: Node Issues
+# Severity: High
+# Description: Node experiences memory pressure causing pod evictions
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: node-memory-pressure
+  labels:
+    category: node-issues
+    severity: high
+    component: kubelet
+spec:
+  description: |
+    Node enters MemoryPressure condition when available memory drops below
+    the eviction threshold (default: 100Mi). Kubelet begins evicting pods
+    based on priority and memory usage.
+    
+  symptoms:
+    - type: node-condition
+      condition: MemoryPressure
+      status: "True"
+      reason: "KubeletHasInsufficientMemory"
+      message: "kubelet has insufficient memory available"
+    - type: event
+      reason: Evicted
+      message: "The node was low on resource: memory"
+    - type: pod-status
+      status: Failed
+      reason: Evicted
+      
+  affectedResources:
+    - kind: Node
+      name: worker-node-2
+    - kind: Pod
+      selector:
+        status.phase: Failed
+        status.reason: Evicted
+        
+  metrics:
+    - name: kube_node_status_condition
+      labels:
+        condition: MemoryPressure
+        status: "true"
+      value: 1
+    - name: node_memory_MemAvailable_bytes
+      value: 52428800  # 50Mi - below threshold
+    - name: kubelet_evictions_total
+      labels:
+        eviction_signal: memory.available
+      value: 5
+      
+  logs:
+    - source: kubelet
+      level: warning
+      patterns:
+        - "eviction manager: attempting to reclaim memory"
+        - "evicting pod due to memory pressure"
+        - "memory.available below threshold"
+    - source: system
+      level: warning
+      patterns:
+        - "oom_kill_process"
+        - "Out of memory"
+        
+  rootCause:
+    component: node-resources
+    type: resource-exhaustion
+    details: |
+      Memory exhaustion on the node. Common causes:
+      - Pod memory leaks
+      - Requests/limits misconfigured (overcommit)
+      - Burst traffic causing memory spike
+      - Large number of pods scheduled
+      
+  remediation:
+    steps:
+      - action: identify-memory-hogs
+        command: "kubectl top pods -A --sort-by=memory | head -20"
+        description: "Find pods consuming most memory"
+      - action: check-node-allocatable
+        command: "kubectl describe node worker-node-2 | grep -A5 Allocatable"
+        description: "Review node allocatable resources"
+      - action: review-pod-limits
+        command: "kubectl get pods -o jsonpath='{range .items[*]}{.metadata.name}{\" \"}{.spec.containers[*].resources.limits.memory}{\"\\n\"}{end}'"
+        description: "Check memory limits configuration"
+      - action: cordon-and-drain
+        command: "kubectl cordon worker-node-2 && kubectl drain worker-node-2 --ignore-daemonsets"
+        description: "Prevent new scheduling and migrate workloads"
+    
+  detection:
+    promql: 'kube_node_status_condition{condition="MemoryPressure",status="true"} == 1'
+    alertName: KubeNodeMemoryPressure
+    severity: warning

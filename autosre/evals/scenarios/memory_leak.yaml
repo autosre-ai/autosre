@@ -1,0 +1,77 @@
+name: memory_leak
+description: "Gradual memory leak causing OOM kills"
+difficulty: medium
+
+setup_steps:
+  - "Deploy service with simulated memory leak"
+  - "Wait for memory pressure to build"
+  - "OOMKiller terminates pod"
+
+alert:
+  name: "KubePodCrashLooping"
+  severity: high
+  service_name: payment-service
+  namespace: production
+  summary: "Pod payment-service-abc123 is crash looping"
+  description: "Pod has restarted 5 times in the last 10 minutes due to OOMKilled"
+  labels:
+    alertname: KubePodCrashLooping
+    namespace: production
+    pod: payment-service-abc123
+    reason: OOMKilled
+    container: payment-service
+  annotations:
+    runbook_url: "https://runbooks.example.com/memory-troubleshooting"
+
+services:
+  - name: payment-service
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 2
+    labels:
+      app: payment-service
+      team: payments
+    annotations:
+      autosre.io/dependencies: "database,redis-cache"
+      
+  - name: database
+    namespace: production
+    status: healthy
+    replicas: 3
+    ready_replicas: 3
+    
+  - name: redis-cache
+    namespace: production
+    status: healthy
+    replicas: 2
+    ready_replicas: 2
+
+changes:
+  - id: change-001
+    change_type: deployment
+    service_name: payment-service
+    description: "Deployed v2.4.1 - Added new caching layer"
+    author: dev@example.com
+    commit_sha: abc123def
+    timestamp: "2024-01-15T10:30:00Z"
+    successful: true
+
+metrics:
+  container_memory_usage_bytes:
+    payment-service:
+      - timestamp: "2024-01-15T10:35:00Z"
+        value: 524288000  # 500MB
+      - timestamp: "2024-01-15T10:40:00Z"
+        value: 734003200  # 700MB
+      - timestamp: "2024-01-15T10:45:00Z"
+        value: 943718400  # 900MB
+      - timestamp: "2024-01-15T10:50:00Z"
+        value: 1073741824 # 1GB - limit hit
+
+expected_root_cause: "Memory leak in payment-service introduced in v2.4.1 deployment"
+expected_service: payment-service
+expected_runbook: memory-troubleshooting
+expected_action: "Rollback to v2.4.0 or increase memory limits temporarily"
+
+max_time_seconds: 120

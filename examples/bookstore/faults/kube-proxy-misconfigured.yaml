@@ -1,0 +1,102 @@
+# Scenario: kube-proxy Misconfigured - Service Routing Broken
+# Category: Cluster Issues
+# Severity: Critical
+# Description: kube-proxy misconfiguration causing service connectivity failures
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: kube-proxy-misconfigured
+  labels:
+    category: cluster-issues
+    severity: critical
+    component: kube-proxy
+spec:
+  description: |
+    kube-proxy is misconfigured or not running properly, causing service
+    discovery and load balancing to fail. Pods cannot reach services by
+    ClusterIP or DNS name.
+    
+  symptoms:
+    - type: service-connectivity
+      error: "connection refused"
+      target: "ClusterIP services"
+    - type: dns-resolution
+      status: "Works"
+      description: "DNS resolves but connection fails"
+    - type: iptables-rules
+      description: "Missing or incorrect iptables/ipvs rules"
+      
+  affectedResources:
+    - kind: DaemonSet
+      name: kube-proxy
+      namespace: kube-system
+    - kind: Service
+      type: ClusterIP
+      status: "Unreachable"
+    - kind: Endpoints
+      description: "Endpoints exist but traffic not routed"
+        
+  metrics:
+    - name: kube_daemonset_status_number_unavailable
+      labels:
+        daemonset: kube-proxy
+      value: 3
+    - name: kubeproxy_sync_proxy_rules_duration_seconds
+      percentile: p99
+      value: 60  # Very slow sync
+    - name: kubeproxy_network_programming_duration_seconds
+      value: 30
+      
+  logs:
+    - source: kube-proxy
+      level: error
+      patterns:
+        - "failed to sync iptables rules"
+        - "can't find interface"
+        - "conntrack operation failed"
+        - "Invalid service mode"
+    - source: kube-proxy
+      level: warning
+      patterns:
+        - "stale conntrack entries"
+        - "using iptables fallback"
+        
+  rootCause:
+    component: kube-proxy
+    type: misconfiguration
+    details: |
+      kube-proxy misconfiguration. Common causes:
+      - Wrong proxy mode (iptables vs ipvs)
+      - ConfigMap misconfigured
+      - kube-proxy pods crashing
+      - IPVS modules not loaded
+      - iptables version incompatibility
+      - conntrack table exhausted
+      - Network plugin conflict
+      
+  remediation:
+    steps:
+      - action: check-kube-proxy-pods
+        command: "kubectl get pods -n kube-system -l k8s-app=kube-proxy"
+        description: "Check kube-proxy pod status"
+      - action: check-kube-proxy-logs
+        command: "kubectl logs -n kube-system -l k8s-app=kube-proxy --tail=100"
+        description: "Review kube-proxy logs"
+      - action: verify-configmap
+        command: "kubectl get configmap -n kube-system kube-proxy -o yaml"
+        description: "Check kube-proxy configuration"
+      - action: check-iptables-rules
+        command: "iptables -t nat -L KUBE-SERVICES | head -50"
+        description: "Verify iptables rules exist"
+      - action: check-ipvs-rules
+        command: "ipvsadm -Ln"
+        description: "Check IPVS rules if using IPVS mode"
+      - action: restart-kube-proxy
+        command: "kubectl rollout restart daemonset -n kube-system kube-proxy"
+        description: "Restart kube-proxy DaemonSet"
+    
+  detection:
+    promql: 'kube_daemonset_status_number_unavailable{daemonset="kube-proxy"} > 0'
+    alertName: KubeProxyUnavailable
+    severity: critical

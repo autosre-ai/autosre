@@ -1,0 +1,176 @@
+# Scenario: Excessive Capabilities Added
+# Category: Container Security
+# Description: Container has excessive Linux capabilities
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: capabilities-added
+  labels:
+    category: security
+    subcategory: container-security
+    severity: high
+    service: bookstore-api
+spec:
+  description: |
+    A container has been granted excessive Linux capabilities beyond what's
+    needed for its function. This increases attack surface and potential
+    for privilege escalation.
+  
+  symptoms:
+    - type: security-alert
+      source: falco
+      message: "Container with dangerous capabilities: SYS_ADMIN, NET_RAW"
+    - type: compliance-alert
+      source: kube-bench
+      message: "5.2.7 Minimize the admission of containers with added capabilities"
+    - type: policy-violation
+      source: opa-gatekeeper
+      message: "Container has disallowed capabilities"
+
+  securityRisk:
+    severity: high
+    dangerousCapabilities:
+      - name: "SYS_ADMIN"
+        risk: "Can perform privileged operations, mount filesystems"
+        attackVector: "Container escape via mount"
+      - name: "NET_RAW"
+        risk: "Can create raw sockets, perform network attacks"
+        attackVector: "ARP spoofing, packet injection"
+      - name: "SYS_PTRACE"
+        risk: "Can debug other processes"
+        attackVector: "Credential theft from other containers"
+      - name: "NET_ADMIN"
+        risk: "Can modify network configuration"
+        attackVector: "Traffic interception, firewall bypass"
+      - name: "SYS_MODULE"
+        risk: "Can load kernel modules"
+        attackVector: "Rootkit installation"
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "Elevated attack surface"
+
+  detection:
+    - method: kubectl
+      command: |
+        kubectl get pods -A -o json | jq -r '
+          .items[] | 
+          select(.spec.containers[].securityContext.capabilities.add != null) |
+          {name: .metadata.name, namespace: .metadata.namespace, caps: .spec.containers[].securityContext.capabilities.add}'
+    - method: falco
+      rule: |
+        - rule: Container with Dangerous Capabilities
+          desc: Detect container started with dangerous capabilities
+          condition: >
+            container_started and
+            (container.cap.add intersects (sys_admin, sys_ptrace, net_raw))
+          output: >
+            Container with dangerous caps (container=%container.name caps=%container.cap.add)
+          priority: WARNING
+    - method: trivy
+      command: |
+        trivy k8s --report all --severity HIGH,CRITICAL deployment/bookstore-api
+
+  remediation:
+    automated: true
+    steps:
+      - action: identify-capabilities
+        command: |
+          kubectl get deployment bookstore-api -n bookstore -o json | \
+            jq '.spec.template.spec.containers[].securityContext.capabilities'
+      - action: analyze-necessity
+        description: "Determine which capabilities are actually needed"
+        checklist:
+          - "Does app need to bind to ports < 1024? (NET_BIND_SERVICE)"
+          - "Does app need to change file ownership? (CHOWN)"
+          - "Does app need to modify UID/GID? (SETUID, SETGID)"
+      - action: drop-all-add-minimal
+        description: "Drop all capabilities, add only what's needed"
+        command: |
+          kubectl patch deployment bookstore-api -n bookstore --type='json' -p='[
+            {
+              "op": "replace",
+              "path": "/spec/template/spec/containers/0/securityContext/capabilities",
+              "value": {
+                "drop": ["ALL"],
+                "add": []
+              }
+            }
+          ]'
+      - action: verify-application
+        description: "Test that application still works"
+        command: |
+          kubectl rollout status deployment/bookstore-api -n bookstore
+          curl -sf http://bookstore-api/health
+
+  capabilityGuide:
+    minimalCaps:
+      description: "Most applications need no special capabilities"
+      config: |
+        securityContext:
+          capabilities:
+            drop: ["ALL"]
+    webApp:
+      description: "Web app that needs to bind to port 80/443"
+      config: |
+        securityContext:
+          capabilities:
+            drop: ["ALL"]
+            add: ["NET_BIND_SERVICE"]
+    networkTool:
+      description: "Network diagnostic tool"
+      config: |
+        securityContext:
+          capabilities:
+            drop: ["ALL"]
+            add: ["NET_RAW", "NET_ADMIN"]
+      warning: "Only in debugging namespaces with strict RBAC"
+
+  prevention:
+    - type: pod-security-standards
+      description: "Use restricted PSS"
+      command: |
+        kubectl label namespace bookstore \
+          pod-security.kubernetes.io/enforce=restricted
+    - type: opa-gatekeeper
+      constraint: |
+        apiVersion: constraints.gatekeeper.sh/v1beta1
+        kind: K8sPSPCapabilities
+        metadata:
+          name: restrict-capabilities
+        spec:
+          match:
+            kinds:
+            - apiGroups: [""]
+              kinds: ["Pod"]
+          parameters:
+            allowedCapabilities: []
+            requiredDropCapabilities:
+            - ALL
+    - type: admission-controller
+      description: "Block containers with dangerous capabilities"
+
+  verification:
+    - type: capability-check
+      command: |
+        kubectl get pods -n bookstore -l app=bookstore-api -o json | \
+          jq '.items[].spec.containers[].securityContext.capabilities'
+      expected: '{"drop": ["ALL"], "add": []}'
+    - type: runtime-check
+      command: |
+        kubectl exec -n bookstore deploy/bookstore-api -- cat /proc/1/status | grep Cap
+      expected: "Minimal capabilities"
+    - type: policy-test
+      command: |
+        kubectl apply --dry-run=server -f pod-with-caps.yaml
+      expected: "Rejected by admission policy"
+
+  references:
+    - url: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
+      title: "Kubernetes Security Context"
+    - url: https://man7.org/linux/man-pages/man7/capabilities.7.html
+      title: "Linux Capabilities"
+    - url: https://blog.aquasec.com/kubernetes-capabilities-risk-assessment
+      title: "Kubernetes Capabilities Risk Assessment"

@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Sidebar } from '@/components/dashboard/sidebar';
 import { Header } from '@/components/dashboard/header';
 import { CommandPalette } from '@/components/dashboard/command-palette';
@@ -9,17 +8,7 @@ import { useSidebar } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { useInvestigations } from '@/hooks/use-api';
 
-// Create query client
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      retry: 1,
-    },
-  },
-});
-
-function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
+export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { isCollapsed } = useSidebar();
   const { data: investigations } = useInvestigations();
   
@@ -46,13 +35,5 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
         </div>
       </main>
     </div>
-  );
-}
-
-export function DashboardLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <DashboardLayoutInner>{children}</DashboardLayoutInner>
-    </QueryClientProvider>
   );
 }

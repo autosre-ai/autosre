@@ -1,0 +1,97 @@
+# Scenario: PVC Resize Failed - Volume Expansion Error
+# Category: Storage Issues
+# Severity: Medium
+# Description: PersistentVolumeClaim resize operation failed
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: pvc-resize-failed
+  labels:
+    category: storage-issues
+    severity: medium
+    component: volume-expansion
+spec:
+  description: |
+    PVC resize request failed. The volume expansion could not complete
+    due to storage class limitations, quota issues, or filesystem errors.
+    
+  symptoms:
+    - type: pvc-condition
+      condition: FileSystemResizePending
+      status: "True"
+      duration: ">30 minutes"
+    - type: pvc-condition
+      condition: Resizing
+      status: "True"
+      message: "resize failed"
+    - type: event
+      reason: VolumeResizeFailed
+      message: "failed to expand volume"
+      
+  affectedResources:
+    - kind: PersistentVolumeClaim
+      name: data-postgres-0
+      condition: FileSystemResizePending
+    - kind: Pod
+      name: postgres-0
+      description: "Restart needed for resize"
+        
+  metrics:
+    - name: kube_persistentvolumeclaim_resource_requests_storage_bytes
+      labels:
+        persistentvolumeclaim: data-postgres-0
+      value: 107374182400  # Requested 100Gi
+    - name: kubelet_volume_stats_capacity_bytes
+      labels:
+        persistentvolumeclaim: data-postgres-0
+      value: 53687091200  # Still 50Gi
+      
+  logs:
+    - source: kube-controller-manager
+      level: error
+      patterns:
+        - "volume expansion failed"
+        - "failed to resize volume"
+        - "quota exceeded"
+    - source: kubelet
+      level: warning
+      patterns:
+        - "filesystem expansion failed"
+        - "resize2fs failed"
+        - "xfs_growfs failed"
+        
+  rootCause:
+    component: volume-expansion
+    type: operation-failed
+    details: |
+      PVC resize failure. Common causes:
+      - StorageClass doesn't support expansion
+      - Cloud provider quota exceeded
+      - Maximum disk size reached
+      - Filesystem resize requires pod restart
+      - CSI driver doesn't support online resize
+      - Filesystem corruption preventing resize
+      
+  remediation:
+    steps:
+      - action: check-pvc-conditions
+        command: "kubectl get pvc data-postgres-0 -o yaml | grep -A10 conditions"
+        description: "Check PVC conditions for error details"
+      - action: check-storage-class
+        command: "kubectl get storageclass standard -o yaml | grep allowVolumeExpansion"
+        description: "Verify StorageClass supports expansion"
+      - action: check-events
+        command: "kubectl get events --field-selector involvedObject.name=data-postgres-0"
+        description: "Review PVC events for errors"
+      - action: restart-pod
+        command: "kubectl delete pod postgres-0"
+        description: "Restart pod to complete filesystem resize"
+      - action: verify-resize
+        command: "kubectl exec postgres-0 -- df -h /var/lib/postgresql"
+        description: "Verify filesystem shows new size"
+    
+  detection:
+    promql: 'kube_persistentvolumeclaim_status_condition{condition="FileSystemResizePending",status="true"} > 0'
+    alertName: PVCResizePending
+    severity: warning

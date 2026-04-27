@@ -1,0 +1,160 @@
+# Scenario: Incomplete Certificate Chain
+# Category: Network Security
+# Description: SSL certificate chain is incomplete causing verification failures
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: certificate-chain-incomplete
+  labels:
+    category: security
+    subcategory: network-security
+    severity: high
+    service: bookstore-api
+spec:
+  description: |
+    The TLS certificate chain is incomplete - intermediate certificates are
+    missing. Some clients (especially mobile, older browsers) fail to verify
+    the certificate, causing connection errors.
+  
+  symptoms:
+    - type: error
+      source: mobile-app
+      message: "SSL certificate problem: unable to get local issuer certificate"
+    - type: error
+      source: python-client
+      message: "certificate verify failed: unable to get issuer certificate"
+    - type: log
+      source: nginx
+      pattern: "SSL_do_handshake() failed (SSL: error:... certificate verify failed)"
+    - type: user-complaint
+      description: "Some users see 'Connection not secure' warning"
+    - type: metric
+      name: ssl_handshake_errors_total
+      labels:
+        error: "incomplete_chain"
+      condition: "increase > 10 in 5m"
+
+  affectedClients:
+    vulnerable:
+      - "Mobile apps without ATS exceptions"
+      - "Older Android devices (< 7.0)"
+      - "Python requests without custom CA bundle"
+      - "Java applications with default truststore"
+      - "curl without --insecure flag"
+    notAffected:
+      - "Modern browsers (fetch intermediate certs)"
+      - "Clients with custom CA bundles"
+
+  rootCause:
+    type: certificate-misconfiguration
+    component: tls-termination
+    details: |
+      The certificate was installed without intermediate certificates. While
+      some clients (modern browsers) can fetch intermediates, others cannot.
+    possibleCauses:
+      - "Only leaf certificate uploaded to ingress secret"
+      - "cert-manager not configured to include full chain"
+      - "Manual certificate installation missed intermediates"
+      - "Certificate renewal dropped intermediate"
+
+  detection:
+    - method: openssl-check
+      command: |
+        echo | openssl s_client -connect api.example.com:443 -servername api.example.com 2>&1 | \
+          grep -E "(verify|Verify)"
+    - method: ssl-checker
+      command: |
+        curl -sf "https://api.ssllabs.com/api/v3/analyze?host=api.example.com&fromCache=on" | \
+          jq '.endpoints[0].details.certChains[0].issues'
+    - method: certificate-inspection
+      command: |
+        kubectl get secret api-tls -n bookstore -o jsonpath='{.data.tls\.crt}' | \
+          base64 -d | openssl crl2pkcs7 -nocrl -certfile /dev/stdin | \
+          openssl pkcs7 -print_certs -noout | grep -c "subject="
+      expected: "Should be > 1 (leaf + intermediates)"
+
+  remediation:
+    automated: true
+    steps:
+      - action: download-full-chain
+        description: "Get the complete certificate chain"
+        command: |
+          # For Let's Encrypt
+          curl -o fullchain.pem https://letsencrypt.org/certs/lets-encrypt-r3-cross-signed.pem
+          cat leaf-cert.pem fullchain.pem > combined.pem
+      - action: verify-chain
+        description: "Verify the chain is complete"
+        command: |
+          openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt combined.pem
+      - action: update-secret
+        description: "Update Kubernetes TLS secret with full chain"
+        command: |
+          kubectl create secret tls api-tls \
+            --cert=combined.pem \
+            --key=private.key \
+            --dry-run=client -o yaml | kubectl apply -f -
+      - action: reload-ingress
+        command: |
+          kubectl rollout restart deployment/ingress-nginx-controller -n ingress-nginx
+
+  certManagerFix:
+    description: "If using cert-manager, ensure full chain"
+    config: |
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: api-tls
+      spec:
+        secretName: api-tls
+        issuerRef:
+          name: letsencrypt-prod
+          kind: ClusterIssuer
+        dnsNames:
+        - api.example.com
+        # cert-manager includes full chain by default for ACME issuers
+
+  prevention:
+    - type: ssl-monitoring
+      description: "Regular SSL health checks"
+      tools:
+        - "SSL Labs API checks"
+        - "Prometheus blackbox exporter"
+      config: |
+        # Prometheus alerting rule
+        - alert: IncompleteSSLChain
+          expr: probe_ssl_last_chain_info{chain_valid="false"} > 0
+          for: 5m
+          labels:
+            severity: high
+    - type: automation
+      description: "Use cert-manager for certificate management"
+      implementation: |
+        cert-manager automatically includes full chain for ACME certificates
+    - type: testing
+      description: "Test certificate from multiple client types"
+      command: |
+        # Test from strict client
+        curl --cacert /etc/ssl/certs/ca-certificates.crt https://api.example.com/
+
+  verification:
+    - type: chain-verification
+      command: |
+        echo | openssl s_client -connect api.example.com:443 -servername api.example.com 2>&1 | \
+          grep "Verify return code: 0"
+      expected: "Verify return code: 0 (ok)"
+    - type: ssl-labs
+      url: "https://www.ssllabs.com/ssltest/analyze.html?d=api.example.com"
+      expected: "Chain issues: None"
+    - type: curl-test
+      command: |
+        curl -sf https://api.example.com/health
+      expected: "200 OK without certificate errors"
+
+  references:
+    - url: https://www.ssllabs.com/ssltest/
+      title: "SSL Labs Server Test"
+    - url: https://whatsmychaincert.com/
+      title: "What's My Chain Cert?"
+    - url: https://cert-manager.io/docs/
+      title: "cert-manager Documentation"

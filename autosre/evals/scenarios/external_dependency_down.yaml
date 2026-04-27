@@ -1,0 +1,51 @@
+name: external_dependency_down
+description: "Third-party API service is down"
+difficulty: medium
+
+setup_steps:
+  - "Mock external API returning errors"
+  - "Watch dependent services degrade"
+
+alert:
+  name: "ExternalDependencyErrors"
+  severity: high
+  service_name: payment-gateway
+  namespace: production
+  summary: "High error rate connecting to Stripe API"
+  description: "Payment processing failing due to Stripe API returning 503 errors"
+  labels:
+    alertname: ExternalDependencyErrors
+    namespace: production
+    service: payment-gateway
+    external_service: stripe-api
+    error_code: "503"
+  annotations:
+    error_rate: "100%"
+    dependency: "https://api.stripe.com"
+
+services:
+  - name: payment-gateway
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 3
+    labels:
+      app: payment-gateway
+      team: payments
+      
+  - name: checkout-service
+    namespace: production
+    status: degraded
+    replicas: 5
+    ready_replicas: 5
+    annotations:
+      autosre.io/dependencies: "payment-gateway"
+
+changes: []  # No internal changes
+
+expected_root_cause: "Stripe API outage affecting payment processing"
+expected_service: payment-gateway
+expected_runbook: external-dependency-outage
+expected_action: "Enable fallback payment provider, notify customers, monitor Stripe status page"
+
+max_time_seconds: 90

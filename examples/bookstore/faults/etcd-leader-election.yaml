@@ -1,0 +1,103 @@
+# Scenario: etcd Leader Election - etcd Instability
+# Category: Cluster Issues
+# Severity: Critical
+# Description: etcd cluster experiencing frequent leader elections
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: etcd-leader-election
+  labels:
+    category: cluster-issues
+    severity: critical
+    component: etcd
+spec:
+  description: |
+    etcd cluster is experiencing frequent leader elections causing
+    temporary unavailability of the Kubernetes control plane.
+    All writes fail during elections.
+    
+  symptoms:
+    - type: etcd-leader-changes
+      rate: "5+ elections per hour"
+    - type: api-errors
+      error: "etcdserver: leader changed"
+    - type: write-failures
+      description: "Create/update operations failing intermittently"
+    - type: event-delay
+      description: "Events and status updates delayed"
+      
+  affectedResources:
+    - kind: StatefulSet
+      name: etcd
+      namespace: kube-system
+    - kind: APIServer
+      status: Degraded
+    - kind: Controller
+      status: "Reconciliation failing"
+        
+  metrics:
+    - name: etcd_server_leader_changes_seen_total
+      value: 12  # Many changes
+    - name: etcd_server_is_leader
+      value: 0  # Frequently flapping
+    - name: etcd_network_peer_round_trip_time_seconds
+      percentile: p99
+      value: 0.5  # High latency to peers
+    - name: etcd_disk_wal_fsync_duration_seconds_bucket
+      labels:
+        le: "0.1"
+      value: 0.3  # Slow disk
+      
+  logs:
+    - source: etcd
+      level: warning
+      patterns:
+        - "elected leader"
+        - "lost leader"
+        - "failed to reach quorum"
+        - "heartbeat timeout"
+        - "restarting etcd"
+    - source: kube-apiserver
+      level: error
+      patterns:
+        - "etcdserver: leader changed"
+        - "context deadline exceeded"
+        
+  rootCause:
+    component: etcd
+    type: cluster-instability
+    details: |
+      etcd leader election instability. Common causes:
+      - Network latency between etcd nodes
+      - Slow disk I/O (HDD instead of SSD)
+      - Resource contention (CPU/memory pressure)
+      - Clock skew between etcd nodes
+      - etcd member unhealthy
+      - Insufficient etcd resources
+      
+  remediation:
+    steps:
+      - action: check-etcd-health
+        command: "kubectl exec -n kube-system etcd-0 -- etcdctl endpoint health --cluster"
+        description: "Check health of all etcd endpoints"
+      - action: check-etcd-members
+        command: "kubectl exec -n kube-system etcd-0 -- etcdctl member list"
+        description: "List etcd cluster members"
+      - action: check-disk-latency
+        command: "kubectl exec -n kube-system etcd-0 -- fio --name=test --size=100M --rw=write --bs=4k --fdatasync=1 --runtime=10"
+        description: "Test disk write latency"
+      - action: check-network-latency
+        command: "kubectl exec -n kube-system etcd-0 -- ping -c 10 etcd-1"
+        description: "Check network latency between etcd nodes"
+      - action: defrag-etcd
+        command: "kubectl exec -n kube-system etcd-0 -- etcdctl defrag --cluster"
+        description: "Defragment etcd database"
+      - action: compact-etcd
+        command: "kubectl exec -n kube-system etcd-0 -- etcdctl compact $(etcdctl get --prefix --rev 0 / -w fields | grep Revision | head -1 | cut -d':' -f2)"
+        description: "Compact etcd history"
+    
+  detection:
+    promql: 'rate(etcd_server_leader_changes_seen_total[1h]) > 3'
+    alertName: etcdHighNumberOfLeaderChanges
+    severity: critical

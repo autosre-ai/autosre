@@ -1,0 +1,111 @@
+# Payment Gateway Timeout
+# Simulates slow payment processor responses
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service-gateway-timeout
+  namespace: bookstore
+  labels:
+    app: payment-service
+    tier: api
+    fault: payment-gateway-timeout
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+        tier: api
+        fault: payment-gateway-timeout
+    spec:
+      containers:
+      - name: payment
+        image: python:3.11-alpine
+        env:
+        - name: FAULT_MODE
+          value: "payment-gateway-timeout"
+        - name: GATEWAY_PROVIDER
+          value: "stripe"
+        - name: TIMEOUT_MS
+          value: "30000"
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+          import random
+          import time
+          import os
+          
+          GATEWAY = os.environ.get('GATEWAY_PROVIDER', 'stripe')
+          TIMEOUT = int(os.environ.get('TIMEOUT_MS', 30000)) / 1000
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path in ['/health', '/ready']:
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                      return
+                  
+                  self.send_response(200)
+                  self.send_header('Content-Type', 'application/json')
+                  self.end_headers()
+                  self.wfile.write(json.dumps({"status": "ok"}).encode())
+                      
+              def do_POST(self):
+                  delay = random.uniform(TIMEOUT * 0.8, TIMEOUT * 1.2)
+                  print(f"[payment-gateway] Waiting {delay:.1f}s for {GATEWAY} response...")
+                  time.sleep(delay)
+                  
+                  # After timeout, status is unknown
+                  self.send_response(504)
+                  self.send_header('Content-Type', 'application/json')
+                  self.end_headers()
+                  error = {
+                      "error": "PaymentGatewayTimeout",
+                      "message": f"Payment gateway {GATEWAY} did not respond in time",
+                      "details": {
+                          "gateway": GATEWAY,
+                          "timeout_ms": int(TIMEOUT * 1000),
+                          "actual_wait_ms": int(delay * 1000),
+                          "transaction_id": f"pi_{random.randint(10000000, 99999999)}",
+                          "payment_status": "UNKNOWN",
+                          "warning": "Payment may have been processed - do not retry automatically"
+                      },
+                      "suggestion": "Check payment status via gateway API before retrying"
+                  }
+                  self.wfile.write(json.dumps(error).encode())
+                  
+              def log_message(self, format, *args):
+                  print(f"[payment-timeout] {args[0]}")
+          
+          print(f"Payment service (GATEWAY TIMEOUT) starting - gateway={GATEWAY}, timeout={TIMEOUT}s")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15
+          timeoutSeconds: 5

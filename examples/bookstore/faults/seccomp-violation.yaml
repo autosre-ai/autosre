@@ -1,0 +1,220 @@
+# Scenario: Seccomp Violation
+# Category: Container Security
+# Description: Container syscall blocked by seccomp profile
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: seccomp-violation
+  labels:
+    category: security
+    subcategory: container-security
+    severity: medium
+    service: bookstore-api
+spec:
+  description: |
+    A container's system call was blocked by the seccomp profile. This could
+    indicate either a misconfigured profile or potentially malicious activity.
+  
+  symptoms:
+    - type: error
+      source: application
+      message: "Operation not permitted (EPERM)"
+    - type: log
+      source: audit
+      pattern: "audit: type=1326 audit(.*): auid=.*syscall=.* compat=0 ip=.* code=0x80000000"
+    - type: alert
+      source: falco
+      message: "Syscall blocked by seccomp: ptrace"
+    - type: application-crash
+      exitCode: 159
+      description: "SIGSYS - Bad system call"
+
+  securityContext:
+    expectedBehavior: |
+      Seccomp profiles restrict which system calls containers can make.
+      Violations indicate:
+      - Profile too restrictive for legitimate application needs
+      - Application attempting unauthorized operations
+      - Potential exploit attempt
+    commonBlockedSyscalls:
+      - syscall: "ptrace"
+        reason: "Process debugging/tracing"
+        risk: "Container escape"
+      - syscall: "mount"
+        reason: "Filesystem mounting"
+        risk: "Privilege escalation"
+      - syscall: "init_module"
+        reason: "Kernel module loading"
+        risk: "Rootkit installation"
+      - syscall: "reboot"
+        reason: "System reboot"
+        risk: "Denial of service"
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "Application functionality limited"
+
+  detection:
+    - method: audit-log
+      command: |
+        ausearch -m SECCOMP --start recent
+    - method: falco
+      rule: |
+        - rule: Seccomp Violation
+          desc: Detect seccomp profile violations
+          condition: >
+            syscall.type exists and
+            evt.type in (signaldeliver) and 
+            evt.arg.sig=31  # SIGSYS
+          output: "Seccomp violation (syscall=%syscall.type container=%container.name)"
+          priority: WARNING
+    - method: pod-termination
+      command: |
+        kubectl get pods -n bookstore -l app=bookstore-api -o json | \
+          jq '.items[] | select(.status.containerStatuses[].state.terminated.exitCode==159)'
+    - method: application-logs
+      command: |
+        kubectl logs -n bookstore deploy/bookstore-api | grep -i "not permitted\|EPERM"
+
+  remediation:
+    automated: partial
+    steps:
+      - action: identify-blocked-syscall
+        command: |
+          # Check audit logs for seccomp events
+          ausearch -m SECCOMP -ts recent -i | tail -20
+      - action: analyze-necessity
+        description: "Determine if syscall is legitimately needed"
+        checklist:
+          - "What application function requires this syscall?"
+          - "Is there an alternative approach?"
+          - "Is this expected application behavior?"
+      - action: create-custom-profile
+        description: "Create tailored seccomp profile if needed"
+        example: |
+          {
+            "defaultAction": "SCMP_ACT_ERRNO",
+            "architectures": ["SCMP_ARCH_X86_64"],
+            "syscalls": [
+              {
+                "names": ["read", "write", "open", "close", "fstat", ...],
+                "action": "SCMP_ACT_ALLOW"
+              },
+              {
+                "names": ["clone"],
+                "action": "SCMP_ACT_ALLOW",
+                "args": [
+                  {
+                    "index": 0,
+                    "value": 2080505856,
+                    "op": "SCMP_CMP_MASKED_EQ"
+                  }
+                ]
+              }
+            ]
+          }
+      - action: apply-custom-profile
+        command: |
+          # Copy profile to node
+          kubectl cp custom-seccomp.json node:/var/lib/kubelet/seccomp/profiles/custom.json
+          
+          # Update pod to use custom profile
+          kubectl patch deployment bookstore-api -n bookstore --type='json' -p='[
+            {
+              "op": "add",
+              "path": "/spec/template/spec/securityContext/seccompProfile",
+              "value": {
+                "type": "Localhost",
+                "localhostProfile": "profiles/custom.json"
+              }
+            }
+          ]'
+
+  profileOptions:
+    runtimeDefault:
+      description: "Use container runtime's default profile"
+      config: |
+        securityContext:
+          seccompProfile:
+            type: RuntimeDefault
+      recommendation: "Good baseline for most applications"
+    custom:
+      description: "Use custom tailored profile"
+      config: |
+        securityContext:
+          seccompProfile:
+            type: Localhost
+            localhostProfile: profiles/custom.json
+      recommendation: "For specific application needs"
+    seccompOperator:
+      description: "Use Security Profiles Operator"
+      config: |
+        apiVersion: security-profiles-operator.x-k8s.io/v1beta1
+        kind: SeccompProfile
+        metadata:
+          name: bookstore-api-profile
+        spec:
+          defaultAction: SCMP_ACT_ERRNO
+          syscalls:
+          - action: SCMP_ACT_ALLOW
+            names: [read, write, ...]
+
+  profileGeneration:
+    description: "Generate profile by tracing application"
+    methods:
+      - tool: "oci-seccomp-bpf-hook"
+        command: |
+          # Run container and trace syscalls
+          docker run --rm \
+            --security-opt seccomp=unconfined \
+            --annotation io.containers.trace-syscall=of:/tmp/trace.json \
+            bookstore-api:1.2.3
+      - tool: "security-profiles-operator"
+        config: |
+          apiVersion: security-profiles-operator.x-k8s.io/v1alpha1
+          kind: ProfileRecording
+          metadata:
+            name: bookstore-api-recording
+          spec:
+            kind: SeccompProfile
+            recorder: bpf
+            podSelector:
+              matchLabels:
+                app: bookstore-api
+
+  prevention:
+    - type: profile-testing
+      description: "Test profiles in audit mode first"
+      config: |
+        securityContext:
+          seccompProfile:
+            type: Localhost
+            localhostProfile: profiles/custom-audit.json  # SCMP_ACT_LOG instead of ERRNO
+    - type: profile-management
+      description: "Use Security Profiles Operator"
+    - type: documentation
+      description: "Document application syscall requirements"
+
+  verification:
+    - type: application-health
+      command: |
+        kubectl exec -n bookstore deploy/bookstore-api -- curl -sf http://localhost:8080/health
+      expected: "healthy"
+    - type: no-violations
+      command: |
+        ausearch -m SECCOMP -ts recent | grep -c "bookstore-api" || echo 0
+      expected: "0"
+    - type: profile-applied
+      command: |
+        kubectl get pod -n bookstore -l app=bookstore-api -o jsonpath='{.items[0].spec.securityContext.seccompProfile.type}'
+      expected: "RuntimeDefault or Localhost"
+
+  references:
+    - url: https://kubernetes.io/docs/tutorials/security/seccomp/
+      title: "Kubernetes Seccomp Tutorial"
+    - url: https://github.com/kubernetes-sigs/security-profiles-operator
+      title: "Security Profiles Operator"
+    - url: https://man7.org/linux/man-pages/man2/seccomp.2.html
+      title: "seccomp man page"

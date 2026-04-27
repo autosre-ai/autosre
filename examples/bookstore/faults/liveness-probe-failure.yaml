@@ -1,0 +1,102 @@
+# Scenario: Liveness Probe Failure
+# Expected: OpenSRE detects pod restarts due to liveness failure
+# Remediation: Check application health endpoint, verify app responsiveness
+# Root Cause: Application stops responding to health checks after delay
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: search-service-liveness-fail
+  namespace: bookstore
+  labels:
+    app: search-service
+    tier: api
+    fault: liveness-probe-failure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: search-service
+      fault: liveness-probe-failure
+  template:
+    metadata:
+      labels:
+        app: search-service
+        tier: api
+        fault: liveness-probe-failure
+    spec:
+      containers:
+      - name: search
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import time
+          import threading
+          
+          # Simulate app becoming unhealthy after 60 seconds
+          start_time = time.time()
+          health_ok = True
+          
+          def make_unhealthy():
+              global health_ok
+              time.sleep(60)  # Healthy for 60 seconds
+              health_ok = False
+              print("[FAULT] Application entered unhealthy state - liveness will fail")
+          
+          threading.Thread(target=make_unhealthy, daemon=True).start()
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path == '/health':
+                      if health_ok:
+                          self.send_response(200)
+                          self.end_headers()
+                          self.wfile.write(b'OK')
+                      else:
+                          # Return 500 to fail liveness probe
+                          self.send_response(500)
+                          self.end_headers()
+                          self.wfile.write(b'UNHEALTHY: Internal deadlock detected')
+                          print("[LIVENESS] Returning 500 - app is unhealthy")
+                  elif self.path == '/ready':
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'READY')
+                  elif self.path.startswith('/search'):
+                      self.send_response(200)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      self.wfile.write(b'{"results": []}')
+                  else:
+                      self.send_response(404)
+                      self.end_headers()
+              def log_message(self, format, *args):
+                  print(f"[search-service] {args[0]}")
+          
+          print("Search service starting on port 8080...")
+          print("[INFO] Will become unhealthy after 60 seconds")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 3

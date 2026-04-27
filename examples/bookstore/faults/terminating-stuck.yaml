@@ -1,0 +1,92 @@
+# Scenario: Pod Stuck in Terminating
+# Expected: OpenSRE detects pods stuck in Terminating state
+# Remediation: Remove finalizers, force delete, fix webhook
+# Root Cause: Finalizer blocking pod deletion
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: legacy-service-terminating-stuck
+  namespace: bookstore
+  labels:
+    app: legacy-service
+    tier: api
+    fault: terminating-stuck
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: legacy-service
+      fault: terminating-stuck
+  template:
+    metadata:
+      labels:
+        app: legacy-service
+        tier: api
+        fault: terminating-stuck
+      # Finalizer that will never complete - blocking deletion
+      finalizers:
+      - bookstore.example.com/cleanup-external-resources
+    spec:
+      # Long termination grace period
+      terminationGracePeriodSeconds: 300
+      containers:
+      - name: legacy
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          import signal
+          import time
+          import sys
+          
+          def handle_sigterm(signum, frame):
+              print("[SHUTDOWN] Received SIGTERM, starting graceful shutdown...")
+              print("[SHUTDOWN] Waiting for external cleanup (will never complete)...")
+              # Simulate stuck shutdown - never exits
+              while True:
+                  print("[SHUTDOWN] Still waiting for external resource cleanup...")
+                  time.sleep(10)
+          
+          signal.signal(signal.SIGTERM, handle_sigterm)
+          
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  self.send_response(200)
+                  self.end_headers()
+                  self.wfile.write(b'Legacy service running')
+              def log_message(self, format, *args):
+                  pass
+          
+          print("Legacy service starting on port 8080...")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - |
+                echo "[PRESTOP] Running pre-stop hook..."
+                echo "[PRESTOP] Draining connections..."
+                sleep 30
+                echo "[PRESTOP] Notifying external systems..."
+                # This will hang waiting for nonexistent service
+                wget -q -T 300 http://nonexistent-cleanup-service/notify || true
+---
+# To simulate stuck termination:
+# 1. Apply this deployment
+# 2. kubectl delete pod <pod-name> -n bookstore
+# 3. Pod will be stuck in Terminating due to finalizer
+# 4. To fix: kubectl patch pod <pod-name> -n bookstore -p '{"metadata":{"finalizers":[]}}' --type=merge

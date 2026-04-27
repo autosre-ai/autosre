@@ -1,0 +1,195 @@
+# Scenario: Session Hijacking Detected
+# Category: Authentication/Authorization
+# Description: Anomalous session activity suggesting session hijacking
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: session-hijacking-detected
+  labels:
+    category: security
+    subcategory: authentication
+    severity: critical
+    service: session-service
+spec:
+  description: |
+    Anomaly detection has identified suspicious session behavior that may
+    indicate session hijacking. A session is being used from multiple
+    geographic locations simultaneously or with inconsistent fingerprints.
+  
+  symptoms:
+    - type: security-alert
+      source: anomaly-detection
+      message: "Session SID-12345 accessed from conflicting locations within 5 minutes: US-CA and RU-MOW"
+    - type: log
+      source: session-service
+      pattern: "Session fingerprint mismatch: stored=Linux/Chrome/1920x1080, current=Windows/Firefox/1366x768"
+    - type: metric
+      name: session_anomaly_score
+      condition: "value > 0.85"
+    - type: alert
+      name: SessionHijackingDetected
+      severity: critical
+
+  affectedEntities:
+    - type: user
+      id: "user-12345"
+      impact: "Account potentially compromised"
+    - type: session
+      id: "SID-12345"
+      status: "flagged"
+
+  securityIndicators:
+    - indicator: "impossible-travel"
+      description: "Session used from locations geographically impossible within timeframe"
+      weight: 0.9
+    - indicator: "fingerprint-change"
+      description: "Browser/device fingerprint changed mid-session"
+      weight: 0.7
+    - indicator: "ip-change"
+      description: "IP address changed to different ASN"
+      weight: 0.6
+    - indicator: "behavior-anomaly"
+      description: "Unusual access patterns (time, endpoints, frequency)"
+      weight: 0.5
+
+  rootCause:
+    type: security-incident
+    component: session-management
+    possibleCauses:
+      - cause: "session-token-stolen"
+        description: "Session cookie stolen via XSS, MITM, or malware"
+        likelihood: high
+      - cause: "credential-compromise"
+        description: "User credentials phished, attacker created new session"
+        likelihood: medium
+      - cause: "vpn-switching"
+        description: "Legitimate user switching VPN servers"
+        likelihood: low
+        falsePositive: true
+      - cause: "shared-account"
+        description: "Multiple users sharing credentials"
+        likelihood: low
+        policyViolation: true
+
+  detection:
+    - method: anomaly-detection
+      query: |
+        SELECT session_id, user_id, 
+               geo_distance(prev_location, current_location) as distance,
+               time_diff_seconds
+        FROM session_events
+        WHERE distance / time_diff_seconds > 500  -- km/s (impossible travel)
+    - method: prometheus
+      query: |
+        max(session_anomaly_score) by (session_id, user_id) > 0.8
+    - method: fingerprint-matching
+      algorithm: |
+        Compare device fingerprint components:
+        - User-Agent
+        - Screen resolution
+        - Timezone
+        - Installed fonts
+        - WebGL renderer
+
+  immediateActions:
+    - action: invalidate-session
+      description: "Immediately invalidate the suspicious session"
+      command: |
+        kubectl exec -n auth deploy/session-service -- \
+          session-cli invalidate --session-id=${SESSION_ID} --reason="hijacking_detected"
+    - action: lock-account
+      description: "Temporarily lock the affected user account"
+      command: |
+        kubectl exec -n auth deploy/user-service -- \
+          user-cli lock --user-id=${USER_ID} --reason="security_investigation"
+    - action: notify-user
+      description: "Send security alert to user"
+      template: |
+        Subject: Security Alert - Unusual Activity Detected
+        
+        We detected unusual activity on your account from ${SUSPICIOUS_LOCATION}.
+        For your protection, we've signed out all devices.
+        
+        If this was you, please sign in again.
+        If not, please change your password immediately.
+    - action: preserve-evidence
+      description: "Log all session data for forensic analysis"
+      command: |
+        kubectl exec -n auth deploy/session-service -- \
+          session-cli export --session-id=${SESSION_ID} --format=json > /evidence/${SESSION_ID}.json
+
+  remediation:
+    automated: partial
+    requiresApproval: security-team
+    steps:
+      - action: investigate
+        description: "Review session activity logs"
+        tasks:
+          - "Timeline of session events"
+          - "IP addresses and geolocations"
+          - "Actions performed during suspicious period"
+          - "Check for data exfiltration"
+      - action: force-password-reset
+        description: "Require user to reset password"
+        command: |
+          kubectl exec -n auth deploy/user-service -- \
+            user-cli force-password-reset --user-id=${USER_ID}
+      - action: revoke-all-tokens
+        description: "Invalidate all user sessions and tokens"
+        command: |
+          kubectl exec -n auth deploy/session-service -- \
+            session-cli revoke-all --user-id=${USER_ID}
+      - action: mfa-enrollment
+        description: "Require MFA enrollment if not enabled"
+        manual: true
+      - action: security-review
+        description: "Review for broader compromise indicators"
+        manual: true
+
+  prevention:
+    - type: session-binding
+      description: "Bind sessions to device fingerprint"
+      config: |
+        session:
+          bindToFingerprint: true
+          fingerprintComponents:
+            - userAgent
+            - screenResolution
+            - timezone
+    - type: continuous-auth
+      description: "Implement continuous authentication"
+      features:
+        - "Behavioral biometrics"
+        - "Anomaly detection on access patterns"
+        - "Step-up authentication for sensitive actions"
+    - type: session-security
+      description: "Secure session configuration"
+      config: |
+        session:
+          cookie:
+            secure: true
+            httpOnly: true
+            sameSite: strict
+          timeout:
+            idle: 15m
+            absolute: 8h
+          rotation: true
+          rotateOnPrivilegeEscalation: true
+
+  verification:
+    - type: session-check
+      description: "Verify old session is invalid"
+      command: |
+        curl -H "Cookie: session=${OLD_SESSION_TOKEN}" \
+          http://api.example.com/api/profile
+      expectedStatus: 401
+    - type: user-access
+      description: "Verify user can access after password reset"
+      manual: true
+
+  references:
+    - url: https://owasp.org/www-community/attacks/Session_hijacking_attack
+      title: "OWASP Session Hijacking"
+    - url: https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html
+      title: "OWASP Session Management Cheat Sheet"

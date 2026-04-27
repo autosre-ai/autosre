@@ -1,0 +1,83 @@
+# Scenario: Disk Pressure (Ephemeral Storage Full)
+# Expected: OpenSRE detects DiskPressure condition, pod eviction warnings
+# Remediation: Clean up logs, increase ephemeral storage, use PVCs
+# Root Cause: Application writes excessive logs/temp files
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: report-service-disk-pressure
+  namespace: bookstore
+  labels:
+    app: report-service
+    tier: batch
+    fault: disk-pressure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: report-service
+      fault: disk-pressure
+  template:
+    metadata:
+      labels:
+        app: report-service
+        tier: batch
+        fault: disk-pressure
+    spec:
+      containers:
+      - name: report
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          import os
+          import time
+          import threading
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          
+          def fill_disk():
+              """Continuously writes to /tmp to fill ephemeral storage"""
+              os.makedirs('/tmp/reports', exist_ok=True)
+              file_num = 0
+              while True:
+                  file_path = f'/tmp/reports/report_{file_num}.pdf'
+                  # Write 10MB per file
+                  with open(file_path, 'wb') as f:
+                      f.write(b'PDF-CONTENT-FILLER' * (10 * 1024 * 1024 // 18))
+                  file_num += 1
+                  total_mb = file_num * 10
+                  print(f"[DISK] Written report_{file_num}.pdf - Total: {total_mb}MB")
+                  time.sleep(2)
+          
+          threading.Thread(target=fill_disk, daemon=True).start()
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  self.send_response(200)
+                  self.end_headers()
+                  self.wfile.write(b'Report service running')
+              def log_message(self, format, *args):
+                  pass
+          
+          print("Report service starting on port 8080...")
+          print("[WARN] Will fill ephemeral storage and trigger disk pressure")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+            ephemeral-storage: "50Mi"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+            ephemeral-storage: "100Mi"  # Will exceed quickly
+        volumeMounts:
+        - name: tmp-storage
+          mountPath: /tmp
+      volumes:
+      - name: tmp-storage
+        emptyDir:
+          sizeLimit: 100Mi

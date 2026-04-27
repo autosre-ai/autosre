@@ -1,0 +1,95 @@
+# Scenario: Namespace Terminating - Stuck Namespace Deletion
+# Category: Cluster Issues
+# Severity: Medium
+# Description: Namespace stuck in Terminating state, cannot be fully deleted
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: namespace-terminating
+  labels:
+    category: cluster-issues
+    severity: medium
+    component: namespace-controller
+spec:
+  description: |
+    Namespace is stuck in Terminating state due to finalizers that cannot
+    be removed. This blocks cleanup of resources and can prevent namespace
+    recreation with the same name.
+    
+  symptoms:
+    - type: namespace-status
+      phase: Terminating
+      duration: ">30 minutes"
+    - type: kubectl-output
+      command: "kubectl get namespace stuck-ns"
+      contains: "Terminating"
+    - type: finalizer-present
+      description: "Finalizers preventing deletion"
+      
+  affectedResources:
+    - kind: Namespace
+      name: stuck-namespace
+      status: Terminating
+    - kind: CustomResource
+      description: "CRs with finalizers blocking deletion"
+    - kind: APIService
+      description: "Unavailable API service blocking discovery"
+        
+  metrics:
+    - name: kube_namespace_status_phase
+      labels:
+        phase: Terminating
+      value: 1
+    - name: kube_namespace_created
+      labels:
+        namespace: stuck-namespace
+      value: 1672531200  # Old timestamp
+      
+  logs:
+    - source: kube-controller-manager
+      level: warning
+      patterns:
+        - "namespace still has resources"
+        - "finalizer removal blocked"
+        - "discovery failed for group"
+    - source: namespace-controller
+      level: error
+      patterns:
+        - "failed to delete all resources"
+        - "unable to retrieve list"
+        
+  rootCause:
+    component: namespace-controller
+    type: finalizer-stuck
+    details: |
+      Namespace stuck in Terminating. Common causes:
+      - Custom resources with finalizers (CRD deleted first)
+      - API service unavailable (operator deleted)
+      - Webhook blocking deletion
+      - Orphaned resources from deleted operators
+      - Network policy blocking API calls
+      - etcd corruption
+      
+  remediation:
+    steps:
+      - action: check-namespace-status
+        command: "kubectl get namespace stuck-namespace -o yaml"
+        description: "View namespace status and finalizers"
+      - action: find-remaining-resources
+        command: "kubectl api-resources --verbs=list --namespaced -o name | xargs -I {} kubectl get {} -n stuck-namespace --ignore-not-found"
+        description: "Find remaining resources in namespace"
+      - action: check-api-services
+        command: "kubectl get apiservice | grep False"
+        description: "Find unavailable API services"
+      - action: remove-finalizers-force
+        command: "kubectl get namespace stuck-namespace -o json | jq '.spec.finalizers = []' | kubectl replace --raw /api/v1/namespaces/stuck-namespace/finalize -f -"
+        description: "Force remove finalizers (use with caution)"
+      - action: delete-unavailable-apiservice
+        command: "kubectl delete apiservice v1beta1.metrics.k8s.io"
+        description: "Delete unavailable API service if orphaned"
+    
+  detection:
+    promql: 'time() - kube_namespace_created{phase="Terminating"} > 1800'
+    alertName: NamespaceStuckTerminating
+    severity: warning

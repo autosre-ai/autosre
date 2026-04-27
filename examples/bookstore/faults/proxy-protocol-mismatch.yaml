@@ -1,0 +1,95 @@
+# Scenario: Proxy Protocol Mismatch - Header Issues
+# Category: Networking Infrastructure
+# Severity: Medium
+# Description: Proxy Protocol misconfiguration causing connection failures
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: proxy-protocol-mismatch
+  labels:
+    category: networking-infrastructure
+    severity: medium
+    component: proxy-protocol
+spec:
+  description: |
+    Proxy Protocol is enabled on one end but not the other, causing
+    connection failures or garbled data. Client IP information is lost
+    or connections are rejected.
+    
+  symptoms:
+    - type: connection-error
+      description: "Immediate connection reset"
+    - type: garbled-data
+      description: "Binary data appearing in HTTP headers"
+    - type: client-ip
+      description: "All requests showing same source IP"
+      
+  affectedResources:
+    - kind: Service
+      type: LoadBalancer
+      annotations:
+        proxy-protocol: "enabled"
+    - kind: Deployment
+      name: nginx-ingress
+      status: "Receiving invalid requests"
+    - kind: ConfigMap
+      name: nginx-configuration
+        
+  metrics:
+    - name: nginx_ingress_controller_requests
+      labels:
+        status: "400"
+      rate: 1000
+    - name: nginx_ingress_controller_request_size_bucket
+      description: "Abnormal request sizes"
+    - name: loadbalancer_connection_errors
+      rate: 500
+      
+  logs:
+    - source: nginx
+      level: error
+      patterns:
+        - "client sent invalid request"
+        - "upstream prematurely closed connection"
+        - "broken header"
+    - source: application
+      level: warning
+      patterns:
+        - "invalid header"
+        - "bad request"
+        
+  rootCause:
+    component: proxy-protocol
+    type: misconfiguration
+    details: |
+      Proxy Protocol mismatch. Common causes:
+      - LB has proxy protocol, backend doesn't expect it
+      - Backend expects proxy protocol, LB not sending
+      - Wrong proxy protocol version (v1 vs v2)
+      - Proxy protocol enabled on wrong listener
+      - Mixed configuration across replicas
+      - Health check not using proxy protocol
+      
+  remediation:
+    steps:
+      - action: check-lb-config
+        command: "kubectl get svc my-service -o yaml | grep proxy"
+        description: "Check service proxy protocol annotation"
+      - action: check-ingress-config
+        command: "kubectl get configmap nginx-configuration -n ingress-nginx -o yaml | grep proxy-protocol"
+        description: "Check ingress proxy protocol setting"
+      - action: enable-backend-proxy-protocol
+        command: "kubectl patch configmap nginx-configuration -n ingress-nginx -p '{\"data\":{\"use-proxy-protocol\":\"true\"}}'"
+        description: "Enable proxy protocol on backend"
+      - action: disable-lb-proxy-protocol
+        command: "kubectl annotate svc my-service service.beta.kubernetes.io/aws-load-balancer-proxy-protocol-"
+        description: "Or disable on load balancer"
+      - action: verify-config
+        command: "curl -v http://load-balancer-ip/"
+        description: "Test connection after fix"
+    
+  detection:
+    promql: 'rate(nginx_ingress_controller_requests{status="400"}[5m]) > 100'
+    alertName: ProxyProtocolMismatch
+    severity: warning

@@ -1,0 +1,170 @@
+# Scenario: Host Network Enabled
+# Category: Container Security
+# Description: Container using host network namespace
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: host-network-enabled
+  labels:
+    category: security
+    subcategory: container-security
+    severity: high
+    service: bookstore-api
+spec:
+  description: |
+    A container is using the host network namespace (hostNetwork: true),
+    which bypasses network isolation and exposes the container to the
+    host's network stack.
+  
+  symptoms:
+    - type: security-alert
+      source: falco
+      message: "Pod with host networking started"
+    - type: compliance-alert
+      source: kube-bench
+      message: "5.2.4 Minimize the admission of containers wishing to share the host network namespace"
+    - type: policy-violation
+      source: opa-gatekeeper
+      message: "hostNetwork is not allowed"
+
+  securityRisk:
+    severity: high
+    description: |
+      Containers with host networking can:
+      - Bind to host ports directly
+      - Access services listening on localhost
+      - Sniff network traffic on the host
+      - Bypass network policies completely
+      - Access node metadata services
+    attackScenarios:
+      - "Access kubelet API on localhost"
+      - "Reach cloud metadata endpoint (169.254.169.254)"
+      - "Sniff inter-pod traffic"
+      - "Access node-level services"
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "Network isolation bypassed"
+
+  detection:
+    - method: kubectl
+      command: |
+        kubectl get pods -A -o json | jq -r '
+          .items[] | 
+          select(.spec.hostNetwork == true) |
+          "\(.metadata.namespace)/\(.metadata.name)"'
+    - method: falco
+      rule: |
+        - rule: Pod with Host Networking
+          desc: Detect pod using host network namespace
+          condition: >
+            container_started and k8s.pod.hostnetwork=true
+          output: >
+            Pod with host networking (pod=%k8s.pod.name namespace=%k8s.ns.name)
+          priority: WARNING
+    - method: network-test
+      command: |
+        # If container can access host services, it's using host network
+        kubectl exec -n bookstore deploy/bookstore-api -- \
+          curl -sf http://localhost:10250/healthz
+
+  remediation:
+    automated: true
+    steps:
+      - action: identify-deployment
+        command: |
+          kubectl get deployment bookstore-api -n bookstore -o yaml | grep hostNetwork
+      - action: determine-reason
+        description: "Why is hostNetwork being used?"
+        commonReasons:
+          - "Binding to port < 1024 (use NET_BIND_SERVICE instead)"
+          - "Node port binding (use NodePort service)"
+          - "Performance concerns (rarely valid)"
+          - "Accessing node services (use proper service endpoints)"
+      - action: remove-host-network
+        command: |
+          kubectl patch deployment bookstore-api -n bookstore --type='json' -p='[
+            {
+              "op": "remove",
+              "path": "/spec/template/spec/hostNetwork"
+            }
+          ]'
+      - action: use-service-instead
+        description: "Use Kubernetes Service for port exposure"
+        example: |
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: bookstore-api
+          spec:
+            type: NodePort
+            ports:
+            - port: 80
+              nodePort: 30080
+            selector:
+              app: bookstore-api
+
+  legitimateUseCases:
+    description: "Very rare cases where hostNetwork may be needed"
+    examples:
+      - workload: "CNI plugins"
+        reason: "Need to configure host networking"
+        namespace: "kube-system only"
+      - workload: "Ingress controllers"
+        reason: "Some deployments bind to host ports 80/443"
+        alternative: "Use NodePort or LoadBalancer instead"
+      - workload: "Node-level monitoring"
+        reason: "Access host metrics"
+        alternative: "Use hostPath mounts for /proc, /sys"
+    policy: |
+      If hostNetwork is legitimately required:
+      1. Must be in kube-system or dedicated infrastructure namespace
+      2. Requires security team approval
+      3. Must have additional network policies
+      4. Extra monitoring required
+
+  prevention:
+    - type: pod-security-standards
+      command: |
+        kubectl label namespace bookstore \
+          pod-security.kubernetes.io/enforce=restricted
+    - type: opa-gatekeeper
+      constraint: |
+        apiVersion: constraints.gatekeeper.sh/v1beta1
+        kind: K8sPSPHostNamespace
+        metadata:
+          name: deny-host-network
+        spec:
+          match:
+            kinds:
+            - apiGroups: [""]
+              kinds: ["Pod"]
+            excludedNamespaces:
+            - kube-system
+          parameters:
+            allowHostNetwork: false
+    - type: admission-webhook
+      description: "Block pods with hostNetwork"
+
+  verification:
+    - type: pod-spec
+      command: |
+        kubectl get pods -n bookstore -l app=bookstore-api -o jsonpath='{.items[0].spec.hostNetwork}'
+      expected: "null or false"
+    - type: network-isolation
+      command: |
+        kubectl exec -n bookstore deploy/bookstore-api -- \
+          curl -sf --connect-timeout 2 http://localhost:10250/healthz 2>&1 || echo "ISOLATED"
+      expected: "ISOLATED"
+    - type: policy-test
+      command: |
+        kubectl apply --dry-run=server -f hostnetwork-pod.yaml
+      expected: "Rejected by admission policy"
+
+  references:
+    - url: https://kubernetes.io/docs/concepts/security/pod-security-standards/
+      title: "Pod Security Standards"
+    - url: https://cheatsheetseries.owasp.org/cheatsheets/Kubernetes_Security_Cheat_Sheet.html
+      title: "OWASP Kubernetes Security"

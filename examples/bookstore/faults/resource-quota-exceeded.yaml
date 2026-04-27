@@ -1,0 +1,76 @@
+# Scenario: Resource Quota Exceeded
+# Expected: OpenSRE detects FailedCreate events due to quota exceeded
+# Remediation: Increase quota, optimize resource requests, cleanup old workloads
+# Root Cause: Namespace resource quota exhausted
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: bookstore-quota-restrictive
+  namespace: bookstore
+  labels:
+    fault: resource-quota-exceeded
+spec:
+  hard:
+    # Very restrictive quota for demo
+    requests.cpu: "100m"
+    requests.memory: "128Mi"
+    limits.cpu: "200m"
+    limits.memory: "256Mi"
+    pods: "2"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service-quota-exceeded
+  namespace: bookstore
+  labels:
+    app: notification-service
+    tier: api
+    fault: resource-quota-exceeded
+spec:
+  replicas: 5  # Requesting 5 pods but quota allows only 2
+  selector:
+    matchLabels:
+      app: notification-service
+      fault: resource-quota-exceeded
+  template:
+    metadata:
+      labels:
+        app: notification-service
+        tier: api
+        fault: resource-quota-exceeded
+    spec:
+      containers:
+      - name: notification
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  self.send_response(200)
+                  self.end_headers()
+                  self.wfile.write(b'Notification service')
+              def log_message(self, format, *args):
+                  pass
+          
+          print("Notification service starting on port 8080...")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"  # 5 pods * 64Mi = 320Mi > 128Mi quota
+            cpu: "50m"      # 5 pods * 50m = 250m > 100m quota
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+---
+# Expected events:
+# Warning  FailedCreate  replicaset/notification-service-xxx  
+# Error creating: pods "notification-service-xxx" is forbidden: 
+# exceeded quota: bookstore-quota-restrictive, requested: requests.memory=64Mi, 
+# used: requests.memory=128Mi, limited: requests.memory=128Mi

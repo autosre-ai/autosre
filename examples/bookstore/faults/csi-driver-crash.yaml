@@ -1,0 +1,102 @@
+# Scenario: CSI Driver Crash - Storage Driver Failure
+# Category: Storage Issues
+# Severity: Critical
+# Description: CSI driver pods crashed, volume operations failing
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: csi-driver-crash
+  labels:
+    category: storage-issues
+    severity: critical
+    component: csi-driver
+spec:
+  description: |
+    Container Storage Interface (CSI) driver has crashed or is not
+    functioning. All volume attach/detach/mount operations fail.
+    
+  symptoms:
+    - type: daemonset-status
+      name: csi-driver-node
+      numberReady: 0
+    - type: pod-status
+      status: CrashLoopBackOff
+      container: csi-driver
+    - type: volume-operation
+      error: "VolumeAttachmentFailed"
+    - type: pvc-status
+      phase: Pending
+      message: "volume plugin not found"
+      
+  affectedResources:
+    - kind: DaemonSet
+      name: csi-driver-node
+      namespace: kube-system
+    - kind: Deployment
+      name: csi-driver-controller
+      namespace: kube-system
+    - kind: VolumeAttachment
+      status: AttachError
+        
+  metrics:
+    - name: kube_daemonset_status_number_unavailable
+      labels:
+        daemonset: csi-driver-node
+      value: 5
+    - name: kube_deployment_status_replicas_unavailable
+      labels:
+        deployment: csi-driver-controller
+      value: 3
+    - name: csi_operations_seconds_bucket
+      value: null  # No data
+      
+  logs:
+    - source: csi-driver
+      level: fatal
+      patterns:
+        - "driver crashed"
+        - "socket connection failed"
+        - "grpc: the connection is unavailable"
+    - source: kubelet
+      level: error
+      patterns:
+        - "CSI plugin not found"
+        - "failed to attach volume"
+        - "volume mount failed"
+        
+  rootCause:
+    component: csi-driver
+    type: crash
+    details: |
+      CSI driver failure. Common causes:
+      - CSI driver pod OOM killed
+      - Driver incompatible with Kubernetes version
+      - Missing RBAC permissions
+      - Cloud provider API issues
+      - Driver socket file deleted
+      - Container runtime issues
+      - Resource limits too restrictive
+      
+  remediation:
+    steps:
+      - action: check-csi-pods
+        command: "kubectl get pods -n kube-system -l app=csi-driver"
+        description: "Check CSI driver pod status"
+      - action: check-csi-logs
+        command: "kubectl logs -n kube-system -l app=csi-driver -c csi-driver --previous"
+        description: "Review CSI driver logs for crash reason"
+      - action: check-csi-socket
+        command: "kubectl exec -n kube-system csi-driver-node-xxxxx -- ls -la /csi/csi.sock"
+        description: "Verify CSI socket file exists"
+      - action: restart-csi
+        command: "kubectl rollout restart daemonset -n kube-system csi-driver-node && kubectl rollout restart deployment -n kube-system csi-driver-controller"
+        description: "Restart CSI driver components"
+      - action: increase-resources
+        command: "kubectl set resources daemonset csi-driver-node -n kube-system -c csi-driver --limits=memory=512Mi"
+        description: "Increase CSI driver resource limits"
+    
+  detection:
+    promql: 'kube_daemonset_status_number_unavailable{daemonset=~".*csi.*"} > 0'
+    alertName: CSIDriverUnavailable
+    severity: critical

@@ -1,0 +1,130 @@
+# Database Replication Lag
+# Simulates read replicas being behind primary
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-service-db-replication-lag
+  namespace: bookstore
+  labels:
+    app: catalog-service
+    tier: api
+    fault: db-replication-lag
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: catalog-service
+  template:
+    metadata:
+      labels:
+        app: catalog-service
+        tier: api
+        fault: db-replication-lag
+    spec:
+      containers:
+      - name: catalog
+        image: python:3.11-alpine
+        env:
+        - name: FAULT_MODE
+          value: "db-replication-lag"
+        - name: LAG_SECONDS
+          value: "30"
+        - name: STALE_READ_PROBABILITY
+          value: "0.7"
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+          import random
+          import time
+          import os
+          
+          LAG_SECONDS = int(os.environ.get('LAG_SECONDS', 30))
+          STALE_PROB = float(os.environ.get('STALE_READ_PROBABILITY', 0.7))
+          
+          # Simulated "old" data
+          STALE_INVENTORY = {
+              "BOOK-001": {"stock": 100, "updated_at": "2024-01-15T10:00:00Z"},
+              "BOOK-002": {"stock": 50, "updated_at": "2024-01-15T09:30:00Z"},
+          }
+          CURRENT_INVENTORY = {
+              "BOOK-001": {"stock": 0, "updated_at": "2024-01-15T10:30:00Z"},  # Actually sold out!
+              "BOOK-002": {"stock": 2, "updated_at": "2024-01-15T10:28:00Z"},
+          }
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path in ['/health', '/ready']:
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                      return
+                  
+                  # Simulate reading from lagged replica
+                  is_stale = random.random() < STALE_PROB
+                  lag = random.randint(LAG_SECONDS - 10, LAG_SECONDS + 30) if is_stale else 0
+                  
+                  self.send_response(200)
+                  self.send_header('Content-Type', 'application/json')
+                  self.send_header('X-Replication-Lag-Seconds', str(lag))
+                  self.send_header('X-Read-From', 'replica-2' if is_stale else 'primary')
+                  self.end_headers()
+                  
+                  if is_stale:
+                      print(f"[db-lag] WARNING: Serving stale data (lag: {lag}s)")
+                      data = STALE_INVENTORY
+                  else:
+                      data = CURRENT_INVENTORY
+                  
+                  response = {
+                      "inventory": data,
+                      "metadata": {
+                          "read_from": "replica-2" if is_stale else "primary",
+                          "replication_lag_seconds": lag,
+                          "stale_data_warning": is_stale,
+                          "consistency": "eventual" if is_stale else "strong"
+                      }
+                  }
+                  self.wfile.write(json.dumps(response).encode())
+                      
+              def do_POST(self):
+                  # Writes go to primary - but reads might not see them immediately
+                  self.send_response(201)
+                  self.send_header('Content-Type', 'application/json')
+                  self.send_header('X-Write-To', 'primary')
+                  self.send_header('X-Expected-Replication-Delay', str(LAG_SECONDS))
+                  self.end_headers()
+                  response = {
+                      "status": "created",
+                      "warning": f"Write successful. Replicas may take up to {LAG_SECONDS}s to reflect changes."
+                  }
+                  self.wfile.write(json.dumps(response).encode())
+                  
+              def log_message(self, format, *args):
+                  print(f"[catalog-repl-lag] {args[0]}")
+          
+          print(f"Catalog service (REPLICATION LAG) starting - lag={LAG_SECONDS}s, stale_probability={STALE_PROB}")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15

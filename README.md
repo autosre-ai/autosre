@@ -7,7 +7,7 @@
 **AI-Powered Incident Response for SRE Teams**
 
 [![CI](https://github.com/srisainath/opensre/actions/workflows/ci.yaml/badge.svg)](https://github.com/srisainath/opensre/actions/workflows/ci.yaml)
-[![Tests](https://img.shields.io/badge/tests-384%20passed-brightgreen)](https://github.com/srisainath/opensre/actions)
+[![Tests](https://img.shields.io/badge/tests-468%20passed-brightgreen)](https://github.com/srisainath/opensre/actions)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
@@ -77,7 +77,7 @@ You tap **Approve**. Go back to sleep.
 | 🔌 **Pluggable Skills** | Prometheus, Kubernetes, AWS, Slack, PagerDuty, and more |
 | 📚 **Runbook Integration** | Your runbooks inform AI decisions |
 | 🔒 **Safe by Default** | Dangerous actions always require approval |
-| 🏠 **Local LLM Support** | Works with Ollama — your data never leaves your network |
+| 🏠 **Local LLM Support** | Works with Ollama + Qwen3 — private, offline, free |
 | 📖 **Open Source** | Apache 2.0 licensed, community-driven |
 
 ---
@@ -125,9 +125,9 @@ pip install opensre
 export OPENSRE_PROMETHEUS_URL=http://prometheus:9090
 
 # LLM provider (choose one)
-# Option A: Local with Ollama (recommended for privacy)
+# Option A: Local with Ollama (recommended for privacy/cost)
 export OPENSRE_LLM_PROVIDER=ollama
-export OPENSRE_OLLAMA_MODEL=llama3:8b
+export OPENSRE_OLLAMA_MODEL=qwen3:14b  # Or llama3:8b for faster/smaller
 
 # Option B: OpenAI
 export OPENSRE_LLM_PROVIDER=openai
@@ -357,10 +357,79 @@ python demo.py
 ## 🔒 Security
 
 - **Human-in-the-Loop**: All remediation actions require explicit approval
-- **Local LLM**: Use Ollama to keep sensitive data on-premises
+- **Local LLM**: Use Ollama with Qwen3 to keep sensitive data on-premises
 - **Audit Logging**: Every action is logged with full context
 - **RBAC**: Fine-grained permissions for users and service accounts
 - **Secret Management**: Integrates with Vault, AWS Secrets Manager
+
+---
+
+## 🏠 Local LLM Setup (Qwen3)
+
+Run AI-powered incident analysis completely offline and free:
+
+```bash
+# Install Ollama
+brew install ollama  # macOS
+# Or: curl -fsSL https://ollama.com/install.sh | sh
+
+# Start Ollama server
+ollama serve &
+
+# Pull Qwen3 (recommended for 16GB+ RAM)
+ollama pull qwen3:14b
+
+# Or use a smaller model (8GB RAM)
+ollama pull qwen3:8b
+# Or llama3:8b as fallback
+```
+
+### Check LLM Status
+
+```bash
+opensre llm status
+```
+
+### Analyze an Incident Locally
+
+```bash
+opensre llm analyze -a '{"service": "checkout", "error_rate": "8%"}' -m qwen3:14b
+```
+
+### Use in Code
+
+```python
+from opensre.core.llm import get_llm, OllamaProvider
+
+# Auto-select best available provider (prefers local)
+llm = get_llm("auto")
+
+# Or explicitly use Ollama
+llm = OllamaProvider(model="qwen3:14b")
+
+# Analyze incident
+response = llm.analyze_incident(
+    alert={"service": "checkout", "error_rate": "8%"},
+    metrics=[{"name": "memory", "value": "1.8GB"}]
+)
+print(response.content)
+
+# Enable thinking/reasoning mode (Qwen3)
+response = llm.generate("Why is this service crashing?", thinking=True)
+if response.thinking:
+    print(f"Reasoning: {response.thinking}")
+print(response.content)
+```
+
+### Why Local LLM?
+
+| | Cloud API | Local (Ollama) |
+|---|---|---|
+| **Privacy** | Data sent externally | Data stays local |
+| **Cost** | Per-token billing | Free |
+| **Speed** | Network latency | Instant |
+| **Offline** | Requires internet | Works offline |
+| **Quality** | GPT-4/Claude best | Qwen3 is close! |
 
 ---
 

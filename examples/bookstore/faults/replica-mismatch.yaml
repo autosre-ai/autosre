@@ -1,0 +1,83 @@
+# Scenario: Replica Mismatch (Desired != Available)
+# Expected: OpenSRE detects deployment with unavailable replicas
+# Remediation: Fix pod issues, check resource constraints, review events
+# Root Cause: Some pods fail to schedule or start due to various issues
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-service-replica-mismatch
+  namespace: bookstore
+  labels:
+    app: worker-service
+    tier: backend
+    fault: replica-mismatch
+spec:
+  replicas: 5  # Want 5 replicas
+  selector:
+    matchLabels:
+      app: worker-service
+      fault: replica-mismatch
+  template:
+    metadata:
+      labels:
+        app: worker-service
+        tier: backend
+        fault: replica-mismatch
+    spec:
+      # Anti-affinity that prevents scheduling all 5 pods
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: worker-service
+                fault: replica-mismatch
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: worker
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          import time
+          import random
+          import sys
+          
+          print("Worker service starting...")
+          
+          # Some workers crash randomly
+          if random.random() < 0.4:  # 40% chance to crash
+              print("[FATAL] Worker initialization failed!")
+              time.sleep(5)
+              sys.exit(1)
+          
+          print("Worker ready, processing jobs...")
+          while True:
+              time.sleep(60)
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          exec:
+            command:
+            - cat
+            - /tmp/ready
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        # Note: /tmp/ready is never created, so pods won't be ready
+---
+# Expected deployment status:
+# NAME                        READY   UP-TO-DATE   AVAILABLE   AGE
+# worker-service-replica      2/5     5            2           1m
+#
+# Conditions:
+# - Type: Available
+#   Status: "False"
+#   Reason: MinimumReplicasUnavailable

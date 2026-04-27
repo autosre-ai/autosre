@@ -1,0 +1,221 @@
+# Scenario: License Compliance Failed
+# Category: Compliance
+# Description: Software license violations detected
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: license-compliance-failed
+  labels:
+    category: security
+    subcategory: compliance
+    severity: high
+    service: all
+spec:
+  description: |
+    Software license compliance violations have been detected. This could
+    include using software beyond license limits, GPL violations in
+    proprietary code, or expired commercial licenses.
+  
+  symptoms:
+    - type: compliance-alert
+      source: license-scanner
+      message: "GPL-3.0 dependency detected in proprietary product"
+    - type: audit-finding
+      source: sbom-analysis
+      message: "License conflict: AGPL component in SaaS without source disclosure"
+    - type: commercial-alert
+      description: "Oracle database license exceeded: 4 CPUs used, 2 licensed"
+
+  licenseViolationTypes:
+    copyleft:
+      - license: "GPL-3.0"
+        requirement: "Derivative works must be open sourced"
+        violation: "Using in closed-source product"
+      - license: "AGPL-3.0"
+        requirement: "Network use triggers source disclosure"
+        violation: "SaaS deployment without source release"
+    commercial:
+      - software: "Oracle Database"
+        model: "Per-CPU licensing"
+        licensed: 2
+        used: 4
+        violation: "Exceeded CPU count"
+      - software: "JetBrains IDE"
+        model: "Per-seat"
+        licensed: 10
+        used: 15
+        violation: "Exceeded seat count"
+    restriction:
+      - license: "CC BY-NC"
+        requirement: "Non-commercial use only"
+        violation: "Using in commercial product"
+
+  affectedComponents:
+    openSource:
+      - package: "crypto-lib"
+        version: "2.1.0"
+        license: "GPL-3.0"
+        location: "bookstore-api"
+        issue: "GPL in proprietary product"
+      - package: "analytics-sdk"
+        version: "1.5.0"
+        license: "AGPL-3.0"
+        location: "recommendation-service"
+        issue: "AGPL in SaaS without compliance"
+    commercial:
+      - software: "Oracle Database Enterprise"
+        version: "19c"
+        issue: "License quantity exceeded"
+
+  detection:
+    - method: sbom-scan
+      command: |
+        # Generate SBOM and check licenses
+        syft packages ./app -o spdx-json | \
+          jq '.packages[] | select(.licenseDeclared | contains("GPL") or contains("AGPL"))'
+    - method: license-audit
+      tools:
+        - "FOSSA"
+        - "Snyk"
+        - "WhiteSource"
+        - "Black Duck"
+      command: |
+        fossa analyze
+        fossa test --policy production
+    - method: commercial-audit
+      command: |
+        # Check Oracle CPU usage
+        sqlplus -s "/ as sysdba" <<EOF
+        SELECT * FROM V\$LICENSE;
+        EOF
+
+  legalRisk:
+    openSource:
+      consequences:
+        - "Forced source code disclosure"
+        - "Injunction against distribution"
+        - "Monetary damages"
+        - "Reputational damage"
+      precedents:
+        - "Artifex v. Hancom (GPL enforcement)"
+        - "SFC v. Vizio (GPL compliance)"
+    commercial:
+      consequences:
+        - "Audit by vendor"
+        - "Back-licensing fees"
+        - "Penalties and interest"
+        - "Business disruption"
+
+  remediation:
+    automated: false
+    requiresApproval: legal-team
+    steps:
+      - action: assess-scope
+        description: "Full license inventory"
+        command: |
+          # Generate comprehensive SBOM
+          syft packages . -o spdx-json > sbom.json
+          # Analyze licenses
+          licensee detect .
+      - action: evaluate-options
+        description: "For each violation, determine remediation"
+        copyleftOptions:
+          - option: "Replace with permissively licensed alternative"
+            example: "Replace GPL crypto-lib with MIT-licensed alternative"
+            feasibility: "High"
+          - option: "Open source the affected code"
+            consideration: "Business impact of disclosing source"
+            feasibility: "Medium"
+          - option: "Obtain commercial license"
+            note: "Some GPL projects offer dual licensing"
+            feasibility: "Varies"
+          - option: "Isolate as separate service"
+            note: "API boundary may avoid derivative work status"
+            feasibility: "Depends on architecture"
+        commercialOptions:
+          - option: "Purchase additional licenses"
+            feasibility: "High"
+          - option: "Reduce usage to licensed amount"
+            feasibility: "Medium"
+          - option: "Negotiate enterprise agreement"
+            feasibility: "High"
+      - action: replace-dependency
+        description: "Replace problematic dependency"
+        command: |
+          # Example: Replace GPL library
+          npm uninstall crypto-lib
+          npm install crypto-js  # MIT licensed
+      - action: purchase-licenses
+        description: "Acquire needed commercial licenses"
+        manual: true
+      - action: document-compliance
+        description: "Maintain compliance documentation"
+        requirements:
+          - "SBOM for all products"
+          - "License inventory"
+          - "Compliance decisions documented"
+
+  prevention:
+    - type: policy-definition
+      description: "Define acceptable licenses"
+      config: |
+        licensePolicies:
+          allowed:
+            - MIT
+            - Apache-2.0
+            - BSD-2-Clause
+            - BSD-3-Clause
+            - ISC
+          restricted:  # Requires legal review
+            - LGPL-2.1
+            - LGPL-3.0
+            - MPL-2.0
+            - EPL-2.0
+          prohibited:  # Never use
+            - GPL-2.0
+            - GPL-3.0
+            - AGPL-3.0
+            - CC-BY-NC-*
+    - type: ci-checks
+      description: "Block non-compliant dependencies in CI"
+      githubAction: |
+        - name: License Check
+          uses: fossa-contrib/fossa-action@v2
+          with:
+            api-key: ${{ secrets.FOSSA_API_KEY }}
+            run-tests: true
+    - type: pre-commit
+      description: "Check before code enters repo"
+      command: |
+        # Pre-commit hook
+        npx license-checker --failOn "GPL;AGPL"
+    - type: sbom-generation
+      description: "Generate SBOM for every release"
+      command: |
+        syft packages . -o spdx-json > sbom-${VERSION}.json
+
+  verification:
+    - type: license-scan
+      command: |
+        fossa test --policy production
+      expected: "All checks passed"
+    - type: prohibited-check
+      command: |
+        npx license-checker --failOn "GPL;AGPL"
+      expected: "No GPL/AGPL dependencies"
+    - type: commercial-compliance
+      command: |
+        # Verify Oracle licensing
+        sqlplus -s "/ as sysdba" -c "SELECT SESSIONS_MAX FROM V\$LICENSE;"
+      expected: "<= licensed amount"
+
+  references:
+    - url: https://www.gnu.org/licenses/gpl-faq.html
+      title: "GNU GPL FAQ"
+    - url: https://opensource.org/licenses
+      title: "OSI License List"
+    - url: https://spdx.org/licenses/
+      title: "SPDX License List"
+    - url: https://www.oracle.com/corporate/pricing/
+      title: "Oracle Licensing"

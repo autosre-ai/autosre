@@ -1,0 +1,187 @@
+# Scenario: Host Path Mounted
+# Category: Container Security
+# Description: Container has mounted host filesystem paths
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: host-path-mounted
+  labels:
+    category: security
+    subcategory: container-security
+    severity: high
+    service: bookstore-api
+spec:
+  description: |
+    A container has mounted paths from the host filesystem using hostPath
+    volumes. This can expose sensitive host data and enable container escape.
+  
+  symptoms:
+    - type: security-alert
+      source: falco
+      message: "Sensitive hostPath mounted: /etc/kubernetes"
+    - type: compliance-alert
+      source: kube-bench
+      message: "5.2.5 Minimize the admission of containers with hostPath volumes"
+    - type: policy-violation
+      source: opa-gatekeeper
+      message: "hostPath volumes are not allowed"
+
+  securityRisk:
+    severity: high
+    dangerousPaths:
+      - path: "/"
+        risk: "Full host filesystem access - critical"
+      - path: "/etc"
+        risk: "Access to host configuration, credentials"
+      - path: "/var/run/docker.sock"
+        risk: "Container escape via Docker API"
+      - path: "/var/run/containerd/containerd.sock"
+        risk: "Container escape via containerd"
+      - path: "/var/lib/kubelet"
+        risk: "Access to pod secrets and configs"
+      - path: "/etc/kubernetes"
+        risk: "Access to cluster credentials"
+      - path: "/root"
+        risk: "Access to root user files"
+    attackScenarios:
+      - "Read /etc/shadow for password hashes"
+      - "Write to /etc/cron.d for persistence"
+      - "Access Docker socket for container escape"
+      - "Read kubelet credentials"
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "Host filesystem exposed"
+
+  detection:
+    - method: kubectl
+      command: |
+        kubectl get pods -A -o json | jq -r '
+          .items[] | 
+          select(.spec.volumes[].hostPath != null) |
+          {name: .metadata.name, namespace: .metadata.namespace, paths: [.spec.volumes[].hostPath.path]}'
+    - method: dangerous-paths
+      command: |
+        kubectl get pods -A -o json | jq -r '
+          .items[] | 
+          select(.spec.volumes[].hostPath.path | 
+            . == "/" or . == "/etc" or . == "/var/run/docker.sock" or 
+            startswith("/var/lib/kubelet") or startswith("/etc/kubernetes")) |
+          "\(.metadata.namespace)/\(.metadata.name): \(.spec.volumes[].hostPath.path)"'
+    - method: falco
+      rule: |
+        - rule: Sensitive hostPath Mount
+          desc: Detect sensitive host paths mounted in container
+          condition: >
+            container_started and 
+            (k8s.pod.volumes.hostpath intersects ("/", "/etc", "/var/run/docker.sock"))
+          output: >
+            Sensitive hostPath mounted (pod=%k8s.pod.name path=%k8s.pod.volumes.hostpath)
+          priority: CRITICAL
+
+  remediation:
+    automated: partial
+    steps:
+      - action: identify-mounts
+        command: |
+          kubectl get deployment bookstore-api -n bookstore -o json | \
+            jq '.spec.template.spec.volumes[] | select(.hostPath != null)'
+      - action: determine-necessity
+        description: "Why is hostPath being used?"
+        alternatives:
+          - original: "/var/log"
+            alternative: "Use logging sidecar or DaemonSet log collector"
+          - original: "/data"
+            alternative: "Use PersistentVolume with dynamic provisioning"
+          - original: "/tmp"
+            alternative: "Use emptyDir volume"
+          - original: "/dev"
+            alternative: "Use specific device with CSI driver"
+      - action: replace-with-pv
+        description: "Replace hostPath with PersistentVolume"
+        example: |
+          # Before - INSECURE
+          volumes:
+          - name: data
+            hostPath:
+              path: /data/bookstore
+          
+          # After - SECURE
+          volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: bookstore-data
+      - action: use-empty-dir
+        description: "Use emptyDir for temporary data"
+        example: |
+          volumes:
+          - name: tmp
+            emptyDir: {}
+          - name: cache
+            emptyDir:
+              sizeLimit: 500Mi
+
+  allowedUseCases:
+    description: "Limited cases where hostPath may be acceptable"
+    examples:
+      - workload: "Log collectors (Fluentd, Filebeat)"
+        path: "/var/log (readOnly)"
+        namespace: "kube-system"
+        controls: "readOnly: true, specific subpath"
+      - workload: "Monitoring (node-exporter)"
+        path: "/proc, /sys (readOnly)"
+        namespace: "monitoring"
+        controls: "readOnly: true"
+      - workload: "CSI drivers"
+        path: "Specific device paths"
+        namespace: "kube-system"
+        controls: "CSI driver specific"
+    policy: |
+      If hostPath is required:
+      1. Use readOnly: true whenever possible
+      2. Use most specific subpath
+      3. Document the requirement
+      4. Security team approval
+      5. Extra monitoring
+
+  prevention:
+    - type: pod-security-standards
+      command: |
+        kubectl label namespace bookstore \
+          pod-security.kubernetes.io/enforce=restricted
+    - type: opa-gatekeeper
+      constraint: |
+        apiVersion: constraints.gatekeeper.sh/v1beta1
+        kind: K8sPSPHostFilesystem
+        metadata:
+          name: restrict-hostpath
+        spec:
+          match:
+            kinds:
+            - apiGroups: [""]
+              kinds: ["Pod"]
+          parameters:
+            allowedHostPaths:
+            - pathPrefix: "/var/log"
+              readOnly: true
+    - type: admission-webhook
+      description: "Block sensitive hostPath mounts"
+
+  verification:
+    - type: volume-check
+      command: |
+        kubectl get pods -n bookstore -l app=bookstore-api -o json | \
+          jq '[.items[].spec.volumes[] | select(.hostPath != null)] | length'
+      expected: "0"
+    - type: policy-test
+      command: |
+        kubectl apply --dry-run=server -f hostpath-pod.yaml
+      expected: "Rejected by admission policy"
+
+  references:
+    - url: https://kubernetes.io/docs/concepts/storage/volumes/#hostpath
+      title: "Kubernetes hostPath"
+    - url: https://kubernetes.io/docs/concepts/security/pod-security-standards/
+      title: "Pod Security Standards"

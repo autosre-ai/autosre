@@ -1,0 +1,102 @@
+# Scenario: Service Mesh Config Error - Istio Misconfigured
+# Category: Networking Infrastructure
+# Severity: High
+# Description: Service mesh (Istio) misconfiguration breaking traffic routing
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: service-mesh-config-error
+  labels:
+    category: networking-infrastructure
+    severity: high
+    component: istio
+spec:
+  description: |
+    Service mesh configuration error causing traffic routing failures.
+    VirtualServices, DestinationRules, or mTLS settings are misconfigured.
+    
+  symptoms:
+    - type: proxy-status
+      error: "upstream connect error"
+    - type: mtls-error
+      description: "TLS handshake failures between services"
+    - type: traffic-routing
+      description: "Traffic not reaching intended destination"
+      
+  affectedResources:
+    - kind: VirtualService
+      name: frontend-vs
+      status: Invalid
+    - kind: DestinationRule
+      name: frontend-dr
+      status: Misconfigured
+    - kind: PeerAuthentication
+      name: default
+      status: Conflicting
+        
+  metrics:
+    - name: istio_requests_total
+      labels:
+        response_code: "503"
+        destination_service: frontend
+      rate: 100
+    - name: pilot_xds_pushes
+      labels:
+        type: error
+      rate: 50
+    - name: envoy_cluster_upstream_cx_connect_fail
+      rate: 200
+      
+  logs:
+    - source: istiod
+      level: error
+      patterns:
+        - "validation failed"
+        - "conflicting configuration"
+        - "invalid destination"
+    - source: envoy
+      level: warning
+      patterns:
+        - "upstream connect error"
+        - "no healthy upstream"
+        - "CERTIFICATE_VERIFY_FAILED"
+        
+  rootCause:
+    component: istio
+    type: misconfiguration
+    details: |
+      Service mesh misconfiguration. Common causes:
+      - VirtualService referencing missing host
+      - DestinationRule subset mismatch
+      - mTLS mode mismatch between services
+      - Gateway configuration error
+      - Sidecar injection disabled
+      - Conflicting traffic policies
+      - AuthorizationPolicy blocking traffic
+      
+  remediation:
+    steps:
+      - action: check-proxy-status
+        command: "istioctl proxy-status"
+        description: "Check all sidecar sync status"
+      - action: analyze-config
+        command: "istioctl analyze -A"
+        description: "Run Istio configuration analyzer"
+      - action: check-virtual-services
+        command: "kubectl get virtualservices -A -o yaml"
+        description: "Review VirtualService configurations"
+      - action: check-destination-rules
+        command: "kubectl get destinationrules -A -o yaml"
+        description: "Review DestinationRule configurations"
+      - action: debug-sidecar
+        command: "istioctl proxy-config clusters deployment/frontend"
+        description: "Debug sidecar proxy configuration"
+      - action: fix-mtls
+        command: "kubectl apply -f - <<< 'apiVersion: security.istio.io/v1beta1\nkind: PeerAuthentication\nmetadata:\n  name: default\nspec:\n  mtls:\n    mode: PERMISSIVE'"
+        description: "Set permissive mTLS while debugging"
+    
+  detection:
+    promql: 'rate(istio_requests_total{response_code="503"}[5m]) > 10'
+    alertName: IstioHighErrorRate
+    severity: warning

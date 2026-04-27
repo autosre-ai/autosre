@@ -1,0 +1,117 @@
+# Scenario: Local Storage Node Affinity - Wrong Node
+# Category: Storage Issues
+# Severity: High
+# Description: Pod cannot schedule because local PV is on different node
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: local-storage-node-affinity
+  labels:
+    category: storage-issues
+    severity: high
+    component: local-storage
+spec:
+  description: |
+    Pod using a local PersistentVolume cannot schedule because the PV
+    is bound to a specific node that is unavailable or cordoned.
+    
+  symptoms:
+    - type: pod-status
+      status: Pending
+      reason: Unschedulable
+      message: "node(s) had volume node affinity conflict"
+    - type: pv-node-affinity
+      node: worker-node-5
+      podTargetNode: worker-node-8
+    - type: node-status
+      node: worker-node-5
+      condition: NotReady
+      
+  affectedResources:
+    - kind: PersistentVolume
+      name: local-pv-001
+      nodeAffinity: worker-node-5
+    - kind: Pod
+      name: database-0
+      status: Pending
+    - kind: Node
+      name: worker-node-5
+      status: NotReady
+        
+  metrics:
+    - name: kube_pod_status_unschedulable
+      labels:
+        pod: database-0
+      value: 1
+    - name: kube_node_status_condition
+      labels:
+        node: worker-node-5
+        condition: Ready
+        status: "false"
+      value: 1
+      
+  logs:
+    - source: kube-scheduler
+      level: info
+      patterns:
+        - "volume node affinity conflict"
+        - "node(s) didn't match Pod's node selectors"
+        - "1 node(s) had volume node affinity conflict"
+    - source: persistent-volume-controller
+      level: warning
+      patterns:
+        - "node affinity does not match"
+        
+  rootCause:
+    component: local-storage
+    type: scheduling-conflict
+    details: |
+      Local PV node affinity conflict. Common causes:
+      - Node with local PV is down
+      - Node cordoned for maintenance
+      - Pod anti-affinity conflicting with PV affinity
+      - Node removed from cluster
+      - Node label changed
+      - Cluster autoscaler deleted node
+      
+  remediation:
+    steps:
+      - action: check-pv-node-affinity
+        command: "kubectl get pv local-pv-001 -o jsonpath='{.spec.nodeAffinity}'"
+        description: "Check which node the PV is bound to"
+      - action: check-node-status
+        command: "kubectl get node worker-node-5"
+        description: "Verify target node status"
+      - action: fix-node
+        command: "kubectl uncordon worker-node-5"
+        description: "Uncordon node if manually cordoned"
+      - action: migrate-data
+        command: "kubectl exec -it helper-pod -- rsync -av /local-data/ /new-data/"
+        description: "Migrate data to new node if node is gone"
+      - action: recreate-pv
+        command: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: PersistentVolume
+          metadata:
+            name: local-pv-001-new
+          spec:
+            storageClassName: local-storage
+            local:
+              path: /data/local-pv
+            nodeAffinity:
+              required:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values:
+                    - worker-node-8
+          EOF
+        description: "Create new PV on available node"
+    
+  detection:
+    promql: 'kube_pod_status_unschedulable == 1'
+    alertName: PodUnschedulableDueToLocalStorage
+    severity: warning

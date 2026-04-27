@@ -1,0 +1,78 @@
+# Scenario: Graceful Shutdown Timeout
+# Expected: OpenSRE detects SIGKILL after grace period, data loss risk
+# Remediation: Handle SIGTERM properly, increase terminationGracePeriodSeconds
+# Root Cause: App doesn't handle SIGTERM, force killed after grace period
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: long-running-task-sigkill
+  namespace: bookstore
+  labels:
+    app: batch-processor
+    tier: batch
+    fault: graceful-shutdown-timeout
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: batch-processor
+      fault: graceful-shutdown-timeout
+  template:
+    metadata:
+      labels:
+        app: batch-processor
+        tier: batch
+        fault: graceful-shutdown-timeout
+    spec:
+      terminationGracePeriodSeconds: 10  # Only 10 seconds grace
+      containers:
+      - name: processor
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          import time
+          import signal
+          
+          # App ignores SIGTERM - bad practice!
+          def ignore_sigterm(signum, frame):
+              print("[WARN] Received SIGTERM but ignoring it...")
+              print("[WARN] Still processing critical batch...")
+          
+          signal.signal(signal.SIGTERM, ignore_sigterm)
+          
+          print("Batch processor starting...")
+          batch_num = 0
+          
+          while True:
+              batch_num += 1
+              print(f"[BATCH] Processing batch {batch_num}...")
+              print(f"[BATCH] This takes 60 seconds to complete...")
+              
+              # Simulates long-running batch that can't be interrupted
+              for i in range(60):
+                  time.sleep(1)
+                  if i % 10 == 0:
+                      print(f"[BATCH] Progress: {i}/60 seconds")
+              
+              print(f"[BATCH] Batch {batch_num} complete!")
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+---
+# When pod is deleted:
+# 1. k8s sends SIGTERM
+# 2. App logs "ignoring SIGTERM"
+# 3. After 10 seconds, k8s sends SIGKILL
+# 4. Batch is killed mid-processing = data loss
+#
+# Events:
+# Normal   Killing  pod/batch-processor-xxx  
+# Stopping container processor (timed out after 10s)

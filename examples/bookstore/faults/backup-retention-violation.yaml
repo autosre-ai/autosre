@@ -1,0 +1,202 @@
+# Scenario: Backup Retention Violation
+# Category: Compliance
+# Description: Backups not meeting retention requirements
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: backup-retention-violation
+  labels:
+    category: security
+    subcategory: compliance
+    severity: high
+    service: backup-service
+spec:
+  description: |
+    Backup retention policies are not being met. Either backups are being
+    deleted too early, not created as scheduled, or retention is misconfigured.
+    This violates compliance requirements and risks data loss.
+  
+  symptoms:
+    - type: compliance-alert
+      source: backup-monitor
+      message: "Backup retention violation: Only 15 days of backups available, 30 days required"
+    - type: audit-finding
+      source: compliance-scan
+      message: "SOC2 A1.2: Backup availability requirement not met"
+    - type: metric
+      name: backup_age_oldest_days
+      condition: "< required_retention_days"
+
+  complianceContext:
+    requirements:
+      - framework: "SOC2"
+        control: "A1.2"
+        requirement: "30 days minimum backup retention"
+      - framework: "PCI-DSS"
+        requirement: "9.5.1"
+        description: "Store backup media in a secure location"
+      - framework: "HIPAA"
+        rule: "164.308(a)(7)(ii)(A)"
+        description: "Data backup plan"
+      - framework: "GDPR"
+        note: "Retention must be justified and documented"
+
+  affectedResources:
+    - type: database
+      name: "bookstore-db"
+      requiredRetention: "30 days"
+      actualRetention: "15 days"
+    - type: s3-bucket
+      name: "bookstore-backups"
+      issue: "Lifecycle policy deleting too early"
+
+  detection:
+    - method: backup-inventory
+      command: |
+        # List backups and their ages
+        aws rds describe-db-snapshots --db-instance-identifier bookstore-db \
+          --query 'DBSnapshots[*].[DBSnapshotIdentifier,SnapshotCreateTime]' --output table
+    - method: oldest-backup
+      command: |
+        # Find oldest available backup
+        aws rds describe-db-snapshots --db-instance-identifier bookstore-db \
+          --query 'sort_by(DBSnapshots, &SnapshotCreateTime)[0].SnapshotCreateTime'
+    - method: lifecycle-policy
+      command: |
+        # Check S3 lifecycle policies
+        aws s3api get-bucket-lifecycle-configuration --bucket bookstore-backups
+    - method: velero
+      command: |
+        # Check Velero backup status
+        velero backup get
+
+  rootCause:
+    type: configuration-error
+    possibleCauses:
+      - "S3 lifecycle policy expiring backups early"
+      - "Backup job not running (CronJob failed)"
+      - "Storage quota causing old backup deletion"
+      - "Retention setting misconfigured"
+      - "Manual deletion of backups"
+      - "Cross-region replication not configured"
+
+  remediation:
+    automated: partial
+    steps:
+      - action: assess-gap
+        description: "Determine backup gap"
+        command: |
+          # Calculate backup coverage
+          OLDEST=$(aws rds describe-db-snapshots --db-instance-identifier bookstore-db \
+            --query 'sort_by(DBSnapshots, &SnapshotCreateTime)[0].SnapshotCreateTime' --output text)
+          echo "Oldest backup: $OLDEST"
+          echo "Days coverage: $(( ($(date +%s) - $(date -d "$OLDEST" +%s)) / 86400 ))"
+      - action: fix-lifecycle-policy
+        description: "Correct S3 lifecycle policy"
+        command: |
+          aws s3api put-bucket-lifecycle-configuration --bucket bookstore-backups \
+            --lifecycle-configuration '{
+              "Rules": [{
+                "ID": "BackupRetention",
+                "Status": "Enabled",
+                "Filter": {"Prefix": "backups/"},
+                "Expiration": {"Days": 90},
+                "Transitions": [{
+                  "Days": 30,
+                  "StorageClass": "GLACIER"
+                }]
+              }]
+            }'
+      - action: fix-rds-retention
+        description: "Update RDS backup retention"
+        command: |
+          aws rds modify-db-instance --db-instance-identifier bookstore-db \
+            --backup-retention-period 30 --apply-immediately
+      - action: fix-velero-schedule
+        description: "Update Velero backup schedule"
+        manifest: |
+          apiVersion: velero.io/v1
+          kind: Schedule
+          metadata:
+            name: daily-backup
+          spec:
+            schedule: "0 3 * * *"
+            template:
+              ttl: 720h  # 30 days
+              includedNamespaces:
+              - bookstore
+      - action: trigger-immediate-backup
+        description: "Create immediate backup to fill gap"
+        command: |
+          velero backup create manual-$(date +%Y%m%d) --include-namespaces bookstore
+
+  backupStrategy:
+    retention:
+      daily: "30 days"
+      weekly: "12 weeks"
+      monthly: "12 months"
+      yearly: "7 years (if compliance requires)"
+    locations:
+      primary: "Same region"
+      secondary: "Different region (DR)"
+      offsite: "Different cloud provider or offline"
+    testing:
+      frequency: "Monthly"
+      scope: "Full restore to test environment"
+
+  prevention:
+    - type: monitoring
+      description: "Alert on backup gaps"
+      rules:
+        - "Alert if no backup in 24 hours"
+        - "Alert if oldest backup < retention requirement"
+        - "Alert on backup job failures"
+      prometheus: |
+        - alert: BackupRetentionViolation
+          expr: backup_oldest_age_days < 30
+          for: 1h
+          labels:
+            severity: high
+    - type: immutable-backups
+      description: "Prevent backup deletion"
+      s3: |
+        aws s3api put-object-lock-configuration --bucket backups \
+          --object-lock-configuration '{
+            "ObjectLockEnabled": "Enabled",
+            "Rule": {
+              "DefaultRetention": {
+                "Mode": "GOVERNANCE",
+                "Days": 90
+              }
+            }
+          }'
+    - type: cross-region
+      description: "Replicate backups to another region"
+    - type: testing
+      description: "Regular backup restore testing"
+
+  verification:
+    - type: retention-check
+      command: |
+        OLDEST=$(aws rds describe-db-snapshots --db-instance-identifier bookstore-db \
+          --query 'sort_by(DBSnapshots, &SnapshotCreateTime)[0].SnapshotCreateTime' --output text)
+        DAYS=$(( ($(date +%s) - $(date -d "$OLDEST" +%s)) / 86400 ))
+        [ $DAYS -ge 30 ] && echo "PASS" || echo "FAIL: Only $DAYS days"
+      expected: "PASS"
+    - type: backup-count
+      command: |
+        aws rds describe-db-snapshots --db-instance-identifier bookstore-db \
+          --query 'length(DBSnapshots)'
+      expected: ">= 30"
+    - type: lifecycle-policy
+      command: |
+        aws s3api get-bucket-lifecycle-configuration --bucket bookstore-backups | \
+          jq '.Rules[0].Expiration.Days'
+      expected: ">= 30"
+
+  references:
+    - url: https://velero.io/docs/
+      title: "Velero Backup"
+    - url: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithAutomatedBackups.html
+      title: "AWS RDS Backups"

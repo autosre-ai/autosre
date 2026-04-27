@@ -1,0 +1,112 @@
+# CDN Failure
+# Simulates static assets being unavailable from CDN
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-cdn-failure
+  namespace: bookstore
+  labels:
+    app: frontend
+    tier: web
+    fault: cdn-failure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+        tier: web
+        fault: cdn-failure
+    spec:
+      containers:
+      - name: frontend
+        image: python:3.11-alpine
+        env:
+        - name: FAULT_MODE
+          value: "cdn-failure"
+        - name: CDN_PROVIDER
+          value: "cloudfront"
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+          import random
+          import os
+          
+          CDN = os.environ.get('CDN_PROVIDER', 'cloudfront')
+          
+          FAILED_ASSETS = [
+              "/static/js/bundle.min.js",
+              "/static/css/styles.css",
+              "/static/images/logo.png",
+              "/static/fonts/roboto.woff2",
+          ]
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path in ['/health', '/ready']:
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                      return
+                  
+                  if '/static/' in self.path or random.random() < 0.5:
+                      asset = random.choice(FAILED_ASSETS)
+                      print(f"[cdn] FAILURE: Cannot load {asset} from {CDN}")
+                      
+                      self.send_response(503)
+                      self.send_header('Content-Type', 'application/json')
+                      self.send_header('X-CDN-Error', 'true')
+                      self.end_headers()
+                      error = {
+                          "error": "CDNFailure",
+                          "message": "Failed to retrieve static asset from CDN",
+                          "details": {
+                              "cdn_provider": CDN,
+                              "asset_path": asset,
+                              "origin_fallback": False,
+                              "edge_location": "IAD53",
+                              "error_code": "OriginConnectionError",
+                              "cache_status": "MISS"
+                          },
+                          "affected_assets": FAILED_ASSETS,
+                          "suggestion": "Check CDN origin health and enable origin failover"
+                      }
+                      self.wfile.write(json.dumps(error).encode())
+                  else:
+                      self.send_response(200)
+                      self.send_header('Content-Type', 'text/html')
+                      self.end_headers()
+                      self.wfile.write(b'<html><body>Page without styles</body></html>')
+                      
+              def log_message(self, format, *args):
+                  print(f"[frontend-cdn] {args[0]}")
+          
+          print(f"Frontend (CDN FAILURE) starting - cdn={CDN}")
+          HTTPServer(('0.0.0.0', 80), Handler).serve_forever()
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 15

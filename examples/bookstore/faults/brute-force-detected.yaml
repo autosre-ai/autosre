@@ -1,0 +1,210 @@
+# Scenario: Brute Force Attack Detected
+# Category: Authentication/Authorization
+# Description: Rate limiting triggered due to brute force login attempts
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: brute-force-detected
+  labels:
+    category: security
+    subcategory: authentication
+    severity: high
+    service: auth-service
+spec:
+  description: |
+    A brute force attack has been detected against the authentication endpoint.
+    Multiple failed login attempts from the same IP or targeting the same account
+    have triggered rate limiting and security alerts.
+  
+  symptoms:
+    - type: security-alert
+      source: rate-limiter
+      message: "Rate limit exceeded: 50 failed login attempts from IP 192.168.1.100 in 5 minutes"
+    - type: log
+      source: auth-service
+      pattern: "Login failed for user 'admin@example.com' - attempt 47 of 50"
+    - type: metric
+      name: login_failures_total
+      labels:
+        reason: "invalid_password"
+      condition: "rate > 10/min for single IP"
+    - type: metric
+      name: rate_limit_exceeded_total
+      labels:
+        endpoint: "/api/auth/login"
+      condition: "increase > 100 in 5m"
+    - type: alert
+      name: BruteForceAttackDetected
+      severity: high
+
+  attackCharacteristics:
+    patterns:
+      - name: "credential-stuffing"
+        description: "Testing leaked username/password pairs"
+        indicators:
+          - "Many different usernames"
+          - "Single attempt per username"
+          - "Distributed source IPs"
+      - name: "password-spraying"
+        description: "Testing common passwords against many accounts"
+        indicators:
+          - "Same password used repeatedly"
+          - "Many different usernames"
+          - "Low attempts per account"
+      - name: "targeted-attack"
+        description: "Focusing on specific high-value account"
+        indicators:
+          - "Single username targeted"
+          - "Many password attempts"
+          - "Potentially from single IP"
+
+  affectedServices:
+    - name: auth-service
+      namespace: auth
+      impact: "Legitimate users may be rate-limited"
+    - name: api-gateway
+      namespace: bookstore
+      impact: "Increased load from attack traffic"
+
+  detection:
+    - method: rate-limiter
+      query: |
+        Rate limit events where attempts > threshold within window
+    - method: prometheus
+      query: |
+        sum(rate(login_failures_total[5m])) by (source_ip) > 10 OR
+        sum(rate(login_failures_total[5m])) by (username) > 5
+    - method: waf-logs
+      query: |
+        action:block AND rule_id:brute_force_protection
+    - method: fail2ban
+      command: |
+        fail2ban-client status auth-service
+
+  immediateActions:
+    - action: block-source-ip
+      description: "Block attacking IP at WAF/firewall level"
+      command: |
+        # Add to WAF blocklist
+        kubectl exec -n security deploy/waf -- \
+          waf-cli block-ip --ip=${ATTACKER_IP} --duration=24h --reason="brute_force"
+    - action: enforce-captcha
+      description: "Enable CAPTCHA for affected endpoint"
+      command: |
+        kubectl set env deployment/auth-service CAPTCHA_ENABLED=true -n auth
+    - action: lock-targeted-accounts
+      description: "Temporarily lock accounts under attack"
+      command: |
+        kubectl exec -n auth deploy/user-service -- \
+          user-cli lock --username=${TARGET_USERNAME} --reason="brute_force_protection" --duration=30m
+    - action: notify-security
+      description: "Alert security team"
+      automated: true
+
+  remediation:
+    automated: partial
+    steps:
+      - action: analyze-attack
+        description: "Understand attack pattern and scope"
+        tasks:
+          - "Identify all source IPs"
+          - "List targeted accounts"
+          - "Determine attack type (credential stuffing vs password spray)"
+          - "Check if any accounts were compromised"
+      - action: block-attack-sources
+        description: "Block at network level"
+        command: |
+          # Block IP range if distributed
+          kubectl apply -f - <<EOF
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          metadata:
+            name: block-brute-force-ips
+            namespace: auth
+          spec:
+            podSelector:
+              matchLabels:
+                app: auth-service
+            ingress:
+            - from:
+              - ipBlock:
+                  cidr: 0.0.0.0/0
+                  except:
+                  - ${ATTACKER_CIDR}
+          EOF
+      - action: review-rate-limits
+        description: "Adjust rate limiting thresholds"
+        config: |
+          rateLimiting:
+            login:
+              perIp:
+                attempts: 5
+                window: 5m
+                lockout: 15m
+              perAccount:
+                attempts: 3
+                window: 10m
+                lockout: 30m
+              global:
+                attempts: 1000
+                window: 1m
+      - action: check-compromises
+        description: "Verify no successful unauthorized access"
+        query: |
+          SELECT * FROM login_events
+          WHERE username IN (${TARGETED_USERNAMES})
+          AND status = 'success'
+          AND timestamp BETWEEN ${ATTACK_START} AND ${ATTACK_END}
+
+  prevention:
+    - type: rate-limiting
+      description: "Implement progressive rate limiting"
+      config: |
+        Progressive lockout:
+        - 5 failures → 1 minute lockout
+        - 10 failures → 5 minute lockout
+        - 20 failures → 30 minute lockout
+        - 50 failures → Account locked + admin notification
+    - type: captcha
+      description: "CAPTCHA after N failed attempts"
+      trigger: "3 failed attempts"
+    - type: account-lockout
+      description: "Temporary account lockout policy"
+      config: |
+        lockout:
+          threshold: 5
+          duration: 15m
+          notifyUser: true
+    - type: credential-monitoring
+      description: "Check passwords against breach databases"
+      service: "HaveIBeenPwned API"
+    - type: mfa
+      description: "MFA reduces brute force effectiveness"
+      impact: "Even with correct password, attacker needs second factor"
+
+  verification:
+    - type: rate-limit-test
+      description: "Verify rate limiting is working"
+      command: |
+        for i in {1..10}; do
+          curl -s -o /dev/null -w "%{http_code}\n" \
+            -X POST https://api.example.com/auth/login \
+            -d '{"username":"test","password":"wrong"}'
+        done
+      expected: "429 after threshold"
+    - type: metric
+      query: rate(login_failures_total[5m])
+      condition: "< 1 per IP"
+    - type: waf-check
+      description: "Verify blocking is active"
+      command: |
+        curl -s -H "X-Forwarded-For: ${ATTACKER_IP}" \
+          https://api.example.com/auth/login
+      expected: "403 Forbidden"
+
+  references:
+    - url: https://owasp.org/www-community/controls/Blocking_Brute_Force_Attacks
+      title: "OWASP Blocking Brute Force Attacks"
+    - url: https://cheatsheetseries.owasp.org/cheatsheets/Credential_Stuffing_Prevention_Cheat_Sheet.html
+      title: "OWASP Credential Stuffing Prevention"

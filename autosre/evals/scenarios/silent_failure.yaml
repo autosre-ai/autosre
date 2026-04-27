@@ -1,0 +1,84 @@
+name: silent_failure
+description: "Service appears healthy but processing is broken"
+difficulty: hard
+
+setup_steps:
+  - "Deploy service with silent bug"
+  - "Health checks pass but business logic fails"
+  - "Detect via downstream effects"
+
+alert:
+  name: "BusinessMetricAnomaly"
+  severity: medium
+  service_name: notification-service
+  namespace: production
+  summary: "Email send rate dropped to near zero"
+  description: "notification-service is healthy but no emails being sent for 30 minutes"
+  labels:
+    alertname: BusinessMetricAnomaly
+    namespace: production
+    service: notification-service
+    metric: emails_sent_total
+  annotations:
+    current_rate: "0.1/min"
+    expected_rate: "100/min"
+    started_at: "2024-01-15T10:00:00Z"
+
+services:
+  - name: notification-service
+    namespace: production
+    status: healthy
+    replicas: 2
+    ready_replicas: 2  # Pods are healthy!
+    labels:
+      app: notification-service
+      team: comms
+    annotations:
+      autosre.io/dependencies: "email-provider,message-queue"
+      
+  - name: email-provider
+    namespace: production
+    status: healthy
+    replicas: 1
+    ready_replicas: 1
+    
+  - name: message-queue
+    namespace: production
+    status: healthy
+    replicas: 3
+    ready_replicas: 3
+
+changes:
+  - id: change-011
+    change_type: deployment
+    service_name: notification-service
+    description: "Deployed v2.1.0 - Updated email templates"
+    author: dev@example.com
+    commit_sha: silent123
+    previous_version: v2.0.5
+    new_version: v2.1.0
+    timestamp: "2024-01-15T09:55:00Z"
+    successful: true
+    
+  - id: change-012
+    change_type: config_change
+    service_name: notification-service
+    description: "Updated SMTP credentials"
+    author: ops@example.com
+    timestamp: "2024-01-15T09:50:00Z"
+    successful: true
+
+metrics:
+  emails_sent_total:
+    notification-service:
+      - timestamp: "2024-01-15T09:00:00Z"
+        value: 6000
+      - timestamp: "2024-01-15T10:00:00Z"
+        value: 6002  # Essentially stopped
+
+expected_root_cause: "SMTP credential rotation broke authentication, emails silently failing"
+expected_service: notification-service
+expected_runbook: notification-troubleshooting
+expected_action: "Check SMTP credentials, verify with email provider, rollback credential change"
+
+max_time_seconds: 180

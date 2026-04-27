@@ -1,0 +1,106 @@
+# Scenario: Load Balancer Unhealthy - LB Health Check Failing
+# Category: Networking Infrastructure
+# Severity: Critical
+# Description: Load balancer health checks failing, no traffic reaching backends
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: load-balancer-unhealthy
+  labels:
+    category: networking-infrastructure
+    severity: critical
+    component: load-balancer
+spec:
+  description: |
+    Cloud load balancer health checks are failing for all backends.
+    External traffic cannot reach the application. Service appears down
+    to external users.
+    
+  symptoms:
+    - type: service-status
+      type: LoadBalancer
+      externalIP: "Exists"
+      connectivity: "No response"
+    - type: health-check
+      status: Unhealthy
+      backends: 0
+    - type: user-impact
+      description: "502 Bad Gateway errors"
+      
+  affectedResources:
+    - kind: Service
+      name: frontend
+      type: LoadBalancer
+    - kind: Endpoints
+      name: frontend
+      status: "Has addresses"
+    - kind: Ingress
+      name: frontend-ingress
+      status: "LB unhealthy"
+        
+  metrics:
+    - name: loadbalancer_backend_health
+      labels:
+        service: frontend
+      value: 0  # No healthy backends
+    - name: nginx_ingress_controller_requests
+      labels:
+        status: "502"
+      rate: 1000
+    - name: probe_success
+      labels:
+        target: frontend-lb
+      value: 0
+      
+  logs:
+    - source: cloud-controller
+      level: error
+      patterns:
+        - "health check failed"
+        - "no healthy backends"
+        - "all backends unhealthy"
+    - source: gce-lb-controller
+      level: warning
+      patterns:
+        - "HealthCheck unhealthy"
+        - "instance became unhealthy"
+        
+  rootCause:
+    component: load-balancer
+    type: health-check-failure
+    details: |
+      Load balancer health check failures. Common causes:
+      - Health check path returns non-200
+      - Health check port mismatched
+      - Pods not ready (readiness probe failing)
+      - Firewall blocking health check traffic
+      - Health check timeout too short
+      - Application startup too slow
+      - All pods crashed
+      
+  remediation:
+    steps:
+      - action: check-lb-health
+        command: "gcloud compute backend-services get-health frontend-backend"
+        description: "Check load balancer backend health"
+      - action: check-endpoints
+        command: "kubectl get endpoints frontend -o yaml"
+        description: "Verify endpoints exist"
+      - action: check-pod-readiness
+        command: "kubectl get pods -l app=frontend -o wide"
+        description: "Check pod readiness status"
+      - action: test-health-endpoint
+        command: "kubectl exec -it test-pod -- curl http://frontend-pod:8080/healthz"
+        description: "Test health endpoint directly"
+      - action: check-firewall
+        command: "gcloud compute firewall-rules list --filter='name:health-check'"
+        description: "Verify health check firewall rules"
+      - action: fix-health-check
+        command: "kubectl patch service frontend -p '{\"spec\":{\"healthCheckNodePort\":30000}}'"
+        description: "Adjust health check configuration"
+    
+  detection:
+    promql: 'loadbalancer_backend_healthy_count == 0'
+    alertName: LoadBalancerNoHealthyBackends
+    severity: critical

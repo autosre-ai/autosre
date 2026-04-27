@@ -1,0 +1,95 @@
+# Scenario: Firewall Blocking - Security Group Issues
+# Category: Networking Infrastructure
+# Severity: High
+# Description: Firewall or security group rules blocking legitimate traffic
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: firewall-blocking
+  labels:
+    category: networking-infrastructure
+    severity: high
+    component: firewall
+spec:
+  description: |
+    Firewall rules or cloud security groups are blocking legitimate traffic.
+    Services cannot communicate as expected.
+    
+  symptoms:
+    - type: connection-error
+      error: "connection timed out"
+    - type: service-communication
+      description: "Service A cannot reach Service B"
+    - type: health-check
+      description: "Health checks failing from load balancer"
+      
+  affectedResources:
+    - kind: Service
+      description: "Affected by blocked ports"
+    - kind: Pod
+      description: "Cannot reach required endpoints"
+    - kind: Ingress
+      description: "External traffic blocked"
+        
+  metrics:
+    - name: firewall_dropped_packets_count
+      rate: 1000
+    - name: network_policy_denied_connections
+      rate: 500
+    - name: probe_success
+      labels:
+        job: connectivity-test
+      value: 0
+      
+  logs:
+    - source: firewall
+      level: info
+      patterns:
+        - "BLOCKED"
+        - "DENY"
+        - "rule matched: drop"
+    - source: application
+      level: error
+      patterns:
+        - "connection timed out"
+        - "network unreachable"
+        - "no route to host"
+        
+  rootCause:
+    component: firewall
+    type: misconfiguration
+    details: |
+      Firewall blocking traffic. Common causes:
+      - Security group rule removed or modified
+      - Network policy too restrictive
+      - Default deny policy applied
+      - Recent IaC/Terraform change
+      - Compliance scan auto-remediation
+      - Cloud firewall rule priority issue
+      
+  remediation:
+    steps:
+      - action: check-security-groups
+        command: "gcloud compute firewall-rules list --filter='network:my-vpc'"
+        description: "List firewall rules"
+      - action: check-network-policies
+        command: "kubectl get networkpolicy -A"
+        description: "List Kubernetes network policies"
+      - action: test-connectivity
+        command: "kubectl exec -it test-pod -- nc -zv target-service 8080"
+        description: "Test connectivity between pods"
+      - action: check-recent-changes
+        command: "gcloud logging read 'resource.type=\"gce_firewall_rule\" AND protoPayload.methodName:\"update\"' --limit=10"
+        description: "Check recent firewall changes"
+      - action: add-firewall-rule
+        command: "gcloud compute firewall-rules create allow-internal --network=my-vpc --allow=tcp:8080 --source-ranges=10.0.0.0/8"
+        description: "Add missing firewall rule"
+      - action: fix-network-policy
+        command: "kubectl delete networkpolicy restrictive-policy -n production"
+        description: "Remove overly restrictive network policy"
+    
+  detection:
+    promql: 'rate(firewall_dropped_packets_count[5m]) > 100'
+    alertName: FirewallBlockingTraffic
+    severity: warning

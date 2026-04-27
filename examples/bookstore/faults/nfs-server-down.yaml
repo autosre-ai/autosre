@@ -1,0 +1,101 @@
+# Scenario: NFS Server Down - NFS Unavailable
+# Category: Storage Issues
+# Severity: Critical
+# Description: NFS server is unreachable, causing mount failures
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: nfs-server-down
+  labels:
+    category: storage-issues
+    severity: critical
+    component: nfs
+spec:
+  description: |
+    NFS server is down or unreachable. Pods using NFS volumes are hung
+    waiting for I/O or cannot start due to mount failures.
+    
+  symptoms:
+    - type: pod-status
+      status: ContainerCreating
+      message: "mount: nfs-server.example.com:/data: Connection timed out"
+    - type: pod-behavior
+      description: "Running pods hung on NFS I/O"
+    - type: event
+      reason: FailedMount
+      message: "mount failed: mount.nfs: Connection timed out"
+      
+  affectedResources:
+    - kind: PersistentVolume
+      name: nfs-data
+      status: Available
+      backend: "nfs-server.example.com:/data"
+    - kind: Pod
+      selector:
+        uses: nfs-pvc
+      status: Hung
+        
+  metrics:
+    - name: kubelet_volume_stats_available_bytes
+      labels:
+        namespace: default
+        persistentvolumeclaim: nfs-data
+      value: null  # No data
+    - name: nfs_server_up
+      labels:
+        server: nfs-server.example.com
+      value: 0
+      
+  logs:
+    - source: kubelet
+      level: error
+      patterns:
+        - "mount.nfs: Connection timed out"
+        - "nfs: server not responding"
+        - "mount.nfs: access denied"
+    - source: container
+      level: error
+      patterns:
+        - "Stale file handle"
+        - "No route to host"
+        - "Connection refused"
+        
+  rootCause:
+    component: nfs-server
+    type: dependency-failure
+    details: |
+      NFS server failure. Common causes:
+      - NFS server crashed or rebooted
+      - Network connectivity issues
+      - NFS service not running
+      - Firewall blocking NFS ports
+      - NFS export not configured
+      - DNS resolution failure
+      - NFS server disk full
+      
+  remediation:
+    steps:
+      - action: check-nfs-connectivity
+        command: "ping -c 3 nfs-server.example.com"
+        description: "Test network connectivity to NFS server"
+      - action: test-nfs-mount
+        command: "showmount -e nfs-server.example.com"
+        description: "List NFS exports from server"
+      - action: check-nfs-ports
+        command: "nc -zv nfs-server.example.com 2049"
+        description: "Test NFS port connectivity"
+      - action: restart-nfs-server
+        command: "ssh nfs-server 'systemctl restart nfs-server'"
+        description: "Restart NFS server service"
+      - action: check-exports
+        command: "ssh nfs-server 'cat /etc/exports'"
+        description: "Verify NFS exports configuration"
+      - action: restart-affected-pods
+        command: "kubectl delete pods -l app=nfs-consumer --force"
+        description: "Restart pods stuck on NFS mount"
+    
+  detection:
+    promql: 'probe_success{job="nfs-blackbox"} == 0'
+    alertName: NFSServerDown
+    severity: critical

@@ -1,0 +1,166 @@
+# Scenario: Vault Connection Failed
+# Category: Secrets Management
+# Description: Unable to connect to secrets backend
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: vault-connection-failed
+  labels:
+    category: security
+    subcategory: secrets-management
+    severity: critical
+    service: vault
+spec:
+  description: |
+    Applications cannot connect to the Vault secrets backend. This could be
+    due to network issues, Vault service being down, or authentication failures.
+  
+  symptoms:
+    - type: error
+      source: vault-agent
+      message: "Error connecting to Vault: dial tcp vault.vault.svc:8200: connection refused"
+    - type: error
+      source: external-secrets-operator
+      message: "could not get secret data from provider: vault: connection error"
+    - type: log
+      source: bookstore-api
+      pattern: "Vault client error: context deadline exceeded"
+    - type: metric
+      name: vault_client_requests_total
+      labels:
+        status: "error"
+      condition: "rate > 10/min"
+    - type: pod-status
+      name: vault-0
+      status: "CrashLoopBackOff|NotReady"
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "Cannot fetch secrets at startup"
+    - name: external-secrets-operator
+      namespace: external-secrets
+      impact: "Cannot sync secrets to Kubernetes"
+    - name: vault-agent
+      namespace: "*"
+      impact: "Sidecar cannot render secrets"
+
+  rootCause:
+    type: connectivity-failure
+    component: vault-service
+    possibleCauses:
+      - "Vault pods crashed or evicted"
+      - "Vault service endpoint not ready"
+      - "Network policy blocking traffic"
+      - "DNS resolution failure"
+      - "TLS certificate issues"
+      - "Vault storage backend unavailable"
+
+  detection:
+    - method: service-check
+      command: |
+        kubectl get endpoints vault -n vault
+    - method: pod-status
+      command: |
+        kubectl get pods -n vault -l app.kubernetes.io/name=vault
+    - method: connectivity-test
+      command: |
+        kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
+          curl -sf http://vault.vault.svc:8200/v1/sys/health
+    - method: prometheus
+      query: |
+        up{job="vault"} == 0
+
+  remediation:
+    automated: true
+    steps:
+      - action: check-vault-pods
+        command: |
+          kubectl get pods -n vault -l app.kubernetes.io/name=vault -o wide
+          kubectl describe pods -n vault -l app.kubernetes.io/name=vault
+      - action: check-vault-logs
+        command: |
+          kubectl logs -n vault -l app.kubernetes.io/name=vault --tail=100
+      - action: check-storage-backend
+        description: "Verify storage backend is accessible"
+        command: |
+          # For Consul backend
+          kubectl exec -n vault vault-0 -- vault status
+          # Check Consul health
+          kubectl exec -n consul consul-0 -- consul members
+      - action: check-network-policy
+        command: |
+          kubectl get networkpolicies -n vault
+          kubectl describe networkpolicy -n vault
+      - action: restart-vault
+        command: |
+          kubectl rollout restart statefulset/vault -n vault
+      - action: check-dns
+        command: |
+          kubectl run -it --rm debug --image=busybox --restart=Never -- \
+            nslookup vault.vault.svc.cluster.local
+      - action: verify-connectivity
+        command: |
+          kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
+            curl -v http://vault.vault.svc:8200/v1/sys/health
+
+  prevention:
+    - type: ha-deployment
+      description: "Run Vault in HA mode with multiple replicas"
+    - type: health-probes
+      description: "Configure robust health checks"
+      config: |
+        livenessProbe:
+          httpGet:
+            path: /v1/sys/health?standbyok=true
+            port: 8200
+          initialDelaySeconds: 60
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204
+            port: 8200
+          initialDelaySeconds: 5
+          periodSeconds: 5
+    - type: monitoring
+      description: "Proactive Vault health monitoring"
+      rules:
+        - alert: VaultDown
+          expr: up{job="vault"} == 0
+          for: 1m
+          severity: critical
+    - type: pod-disruption-budget
+      description: "Prevent all Vault pods from being evicted"
+      config: |
+        apiVersion: policy/v1
+        kind: PodDisruptionBudget
+        metadata:
+          name: vault-pdb
+          namespace: vault
+        spec:
+          minAvailable: 1
+          selector:
+            matchLabels:
+              app.kubernetes.io/name: vault
+
+  verification:
+    - type: health-check
+      command: |
+        curl -sf http://vault.vault.svc:8200/v1/sys/health
+      expected: "200 OK"
+    - type: secret-read
+      command: |
+        vault read secret/data/test
+      expected: "Secret data returned"
+    - type: pod-restart
+      description: "Verify dependent pods can restart and get secrets"
+      command: |
+        kubectl delete pod -n bookstore -l app=bookstore-api
+        kubectl wait --for=condition=ready pod -n bookstore -l app=bookstore-api --timeout=120s
+
+  references:
+    - url: https://www.vaultproject.io/docs/internals/high-availability
+      title: "Vault High Availability"
+    - url: https://www.vaultproject.io/api-docs/system/health
+      title: "Vault Health API"

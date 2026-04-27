@@ -1,0 +1,32 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.14.3, pytest-9.0.2, pluggy-1.6.0 -- /Users/sadusumilli/clawd/projects/opensre/.venv/bin/python3.14
+cachedir: .pytest_cache
+rootdir: /Users/sadusumilli/clawd/projects/opensre
+configfile: pyproject.toml
+plugins: respx-0.22.0, mock-3.15.1, cov-7.1.0, asyncio-1.3.0, Faker-40.11.1, anyio-4.13.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 21 items
+
+tests/integration/test_investigations.py::TestOrchestratorBasic::test_orchestrator_initializes PASSED [  4%]
+tests/integration/test_investigations.py::TestOrchestratorBasic::test_investigate_returns_result PASSED [  9%]
+tests/integration/test_investigations.py::TestOrchestratorBasic::test_investigate_timeout PASSED [ 14%]
+tests/integration/test_investigations.py::TestScenarioDefinitions::test_all_scenarios_have_required_fields PASSED [ 19%]
+tests/integration/test_investigations.py::TestScenarioDefinitions::test_deployable_scenarios_have_manifests PASSED [ 23%]
+tests/integration/test_investigations.py::TestScenarioDefinitions::test_scenario_count PASSED [ 28%]
+tests/integration/test_investigations.py::TestMemoryScenario::test_memory_hog_detection PASSED [ 33%]
+tests/integration/test_investigations.py::TestCrashloopScenario::test_crashloop_detection PASSED [ 38%]
+tests/integration/test_investigations.py::TestCPUScenario::test_cpu_hog_detection PASSED [ 42%]
+tests/integration/test_investigations.py::TestOOMScenario::test_oom_detection PASSED [ 47%]
+tests/integration/test_investigations.py::TestHealthCheck::test_healthy_namespace PASSED [ 52%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[memory_hog] PASSED [ 57%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[cpu_hog] PASSED [ 61%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[crashloop] PASSED [ 66%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[oom_kill] PASSED [ 71%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[latency_issue] PASSED [ 76%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[error_rate] PASSED [ 80%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[healthy_check] PASSED [ 85%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[network_issue] PASSED [ 90%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[disk_pressure] PASSED [ 95%]
+tests/integration/test_investigations.py::TestAllScenarios::test_scenario_completes[pending_pods] PASSED [100%]
+
+======================== 21 passed in 304.83s (0:05:04) ========================

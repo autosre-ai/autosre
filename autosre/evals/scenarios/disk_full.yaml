@@ -1,0 +1,50 @@
+name: disk_full
+description: "Disk space exhausted on persistent volume"
+difficulty: easy
+
+setup_steps:
+  - "Fill up persistent volume"
+  - "Watch service fail to write"
+
+alert:
+  name: "PersistentVolumeFillingUp"
+  severity: critical
+  service_name: logging-service
+  namespace: monitoring
+  summary: "Persistent volume 95% full for logging-service"
+  description: "PVC data-logging-service-0 is at 95% capacity"
+  labels:
+    alertname: PersistentVolumeFillingUp
+    namespace: monitoring
+    persistentvolumeclaim: data-logging-service-0
+    pod: logging-service-0
+  annotations:
+    usage_percent: "95%"
+    bytes_used: "950GB"
+    bytes_total: "1000GB"
+
+services:
+  - name: logging-service
+    namespace: monitoring
+    status: degraded
+    replicas: 3
+    ready_replicas: 2
+    labels:
+      app: loki
+      team: platform
+
+changes:
+  - id: change-008
+    change_type: config_change
+    service_name: logging-service
+    description: "Extended log retention from 7 to 30 days"
+    author: platform@example.com
+    timestamp: "2024-01-10T09:00:00Z"
+    successful: true
+
+expected_root_cause: "Log retention increased without expanding storage"
+expected_service: logging-service
+expected_runbook: disk-cleanup
+expected_action: "Reduce retention to 7 days, expand PVC, or add log rotation"
+
+max_time_seconds: 60

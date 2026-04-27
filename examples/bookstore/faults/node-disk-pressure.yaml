@@ -1,0 +1,102 @@
+# Scenario: Node Disk Pressure - Node Disk Full
+# Category: Node Issues
+# Severity: High
+# Description: Node filesystem usage exceeds eviction threshold
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: node-disk-pressure
+  labels:
+    category: node-issues
+    severity: high
+    component: kubelet
+spec:
+  description: |
+    Node enters DiskPressure condition when filesystem usage exceeds the
+    eviction threshold (default: 85%). Affects image pulls, container logs,
+    and ephemeral storage for pods.
+    
+  symptoms:
+    - type: node-condition
+      condition: DiskPressure
+      status: "True"
+      reason: "KubeletHasDiskPressure"
+      message: "kubelet has disk pressure"
+    - type: event
+      reason: FreeDiskSpaceFailed
+      message: "failed to garbage collect required amount of images"
+    - type: pod-status
+      status: Pending
+      reason: OutOfDisk
+      
+  affectedResources:
+    - kind: Node
+      name: worker-node-3
+    - kind: Pod
+      conditions:
+        - type: PodScheduled
+          status: "False"
+          reason: Unschedulable
+        
+  metrics:
+    - name: kube_node_status_condition
+      labels:
+        condition: DiskPressure
+        status: "true"
+      value: 1
+    - name: node_filesystem_avail_bytes
+      labels:
+        mountpoint: "/"
+      value: 5368709120  # 5GB remaining
+    - name: node_filesystem_size_bytes
+      labels:
+        mountpoint: "/"
+      value: 107374182400  # 100GB total (95% used)
+      
+  logs:
+    - source: kubelet
+      level: warning
+      patterns:
+        - "disk pressure condition detected"
+        - "eviction manager: attempting to reclaim disk"
+        - "image garbage collection failed"
+    - source: containerd
+      level: error
+      patterns:
+        - "no space left on device"
+        - "failed to create container"
+        
+  rootCause:
+    component: node-storage
+    type: resource-exhaustion
+    details: |
+      Disk space exhaustion on node. Common causes:
+      - Container logs not rotated
+      - Unused images accumulating
+      - Large emptyDir volumes
+      - Application writing excessive data
+      - /var/lib/containerd or /var/lib/docker growing
+      
+  remediation:
+    steps:
+      - action: check-disk-usage
+        command: "df -h /"
+        description: "Check filesystem usage"
+      - action: cleanup-images
+        command: "crictl rmi --prune"
+        description: "Remove unused container images"
+      - action: cleanup-containers
+        command: "crictl rm $(crictl ps -a -q --state exited)"
+        description: "Remove exited containers"
+      - action: check-large-directories
+        command: "du -h /var/lib/containerd /var/log/containers | sort -hr | head -20"
+        description: "Find large directories"
+      - action: configure-log-rotation
+        command: "kubectl edit configmap -n kube-system kubelet-config"
+        description: "Adjust log rotation settings"
+    
+  detection:
+    promql: '(node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.15'
+    alertName: KubeNodeDiskPressure
+    severity: warning

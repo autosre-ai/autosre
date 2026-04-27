@@ -1,0 +1,108 @@
+# Scenario: CoreDNS Overloaded - DNS Latency Spike
+# Category: Cluster Issues
+# Severity: Critical
+# Description: CoreDNS experiencing high latency causing cluster-wide DNS issues
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: coredns-overloaded
+  labels:
+    category: cluster-issues
+    severity: critical
+    component: coredns
+spec:
+  description: |
+    CoreDNS is overloaded causing DNS resolution delays and failures.
+    This affects all pod-to-pod and pod-to-service communication that
+    relies on DNS names.
+    
+  symptoms:
+    - type: dns-latency
+      percentile: p99
+      value: 5000ms  # 5 seconds
+    - type: dns-errors
+      rate: 100
+      error: "SERVFAIL"
+    - type: application-errors
+      pattern: "name resolution failed"
+    - type: pod-status
+      description: "Readiness probes failing due to DNS timeout"
+      
+  affectedResources:
+    - kind: Deployment
+      name: coredns
+      namespace: kube-system
+    - kind: Service
+      name: kube-dns
+      namespace: kube-system
+    - kind: Pod
+      all: true
+      description: "All pods affected"
+        
+  metrics:
+    - name: coredns_dns_request_duration_seconds_bucket
+      labels:
+        le: "5"
+      value: 0.3  # 70% of requests > 5s
+    - name: coredns_dns_responses_total
+      labels:
+        rcode: SERVFAIL
+      rate: 50
+    - name: coredns_panics_total
+      rate: 2
+    - name: coredns_cache_misses_total
+      rate: 500
+      
+  logs:
+    - source: coredns
+      level: error
+      patterns:
+        - "no healthy upstream"
+        - "i/o timeout"
+        - "connection refused"
+        - "SERVFAIL"
+    - source: coredns
+      level: warning
+      patterns:
+        - "Slowloris attack detected"
+        - "query rate limit exceeded"
+        
+  rootCause:
+    component: coredns
+    type: resource-exhaustion
+    details: |
+      CoreDNS overload. Common causes:
+      - Insufficient replicas for cluster size
+      - DNS query storm (operator bug, polling)
+      - ndots:5 causing excessive lookups
+      - External DNS server unreachable
+      - Resource limits too low
+      - Cache size too small
+      - CoreDNS pod OOM killed
+      
+  remediation:
+    steps:
+      - action: check-coredns-pods
+        command: "kubectl get pods -n kube-system -l k8s-app=kube-dns"
+        description: "Check CoreDNS pod status"
+      - action: check-coredns-metrics
+        command: "kubectl get --raw /metrics | grep coredns"
+        description: "Review CoreDNS metrics"
+      - action: scale-coredns
+        command: "kubectl scale deployment coredns -n kube-system --replicas=5"
+        description: "Add more CoreDNS replicas"
+      - action: check-coredns-config
+        command: "kubectl get configmap coredns -n kube-system -o yaml"
+        description: "Review CoreDNS configuration"
+      - action: add-ndots-override
+        command: "kubectl patch deployment my-app --patch '{\"spec\":{\"template\":{\"spec\":{\"dnsConfig\":{\"options\":[{\"name\":\"ndots\",\"value\":\"2\"}]}}}}}'"
+        description: "Reduce ndots for high-query apps"
+      - action: increase-resources
+        command: "kubectl set resources deployment coredns -n kube-system --limits=cpu=500m,memory=512Mi"
+        description: "Increase CoreDNS resources"
+    
+  detection:
+    promql: 'histogram_quantile(0.99, sum(rate(coredns_dns_request_duration_seconds_bucket[5m])) by (le)) > 2'
+    alertName: CoreDNSLatencyHigh
+    severity: critical

@@ -1,0 +1,135 @@
+# Redis Memory Full
+# Simulates cache eviction due to maxmemory limit
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-service-redis-oom
+  namespace: bookstore
+  labels:
+    app: catalog-service
+    tier: api
+    fault: redis-memory-full
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: catalog-service
+  template:
+    metadata:
+      labels:
+        app: catalog-service
+        tier: api
+        fault: redis-memory-full
+    spec:
+      containers:
+      - name: catalog
+        image: python:3.11-alpine
+        env:
+        - name: FAULT_MODE
+          value: "redis-memory-full"
+        - name: CACHE_MISS_RATE
+          value: "0.8"
+        - name: EVICTION_POLICY
+          value: "volatile-lru"
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+          import random
+          import time
+          import os
+          
+          MISS_RATE = float(os.environ.get('CACHE_MISS_RATE', 0.8))
+          EVICTION_POLICY = os.environ.get('EVICTION_POLICY', 'volatile-lru')
+          
+          evicted_keys = 0
+          
+          class Handler(BaseHTTPRequestHandler):
+              global evicted_keys
+              
+              def do_GET(self):
+                  global evicted_keys
+                  
+                  if self.path in ['/health', '/ready']:
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                      return
+                  
+                  # High cache miss rate due to evictions
+                  cache_hit = random.random() > MISS_RATE
+                  
+                  if not cache_hit:
+                      evicted_keys += 1
+                      print(f"[redis-oom] CACHE MISS - key evicted (policy: {EVICTION_POLICY})")
+                      
+                      # Simulate database fallback
+                      time.sleep(random.uniform(0.1, 0.5))
+                  
+                  self.send_response(200)
+                  self.send_header('Content-Type', 'application/json')
+                  self.send_header('X-Cache', 'HIT' if cache_hit else 'MISS')
+                  self.send_header('X-Cache-Evictions', str(evicted_keys))
+                  self.end_headers()
+                  
+                  response = {
+                      "books": [{"id": 1, "title": "Sample Book"}],
+                      "cache": {
+                          "hit": cache_hit,
+                          "eviction_count": evicted_keys,
+                          "eviction_policy": EVICTION_POLICY,
+                          "memory_usage_percent": random.uniform(98, 100),
+                          "warning": "maxmemory reached - keys being evicted" if not cache_hit else None
+                      }
+                  }
+                  self.wfile.write(json.dumps(response).encode())
+                      
+              def do_POST(self):
+                  # Cache write might fail
+                  if random.random() < 0.5:
+                      print(f"[redis-oom] OOM command not allowed when used memory > 'maxmemory'")
+                      
+                      self.send_response(200)  # Request succeeds but cache write fails
+                      self.send_header('Content-Type', 'application/json')
+                      self.send_header('X-Cache-Write', 'FAILED')
+                      self.end_headers()
+                      response = {
+                          "status": "created",
+                          "cache_write": False,
+                          "cache_error": "OOM command not allowed when used memory > 'maxmemory'"
+                      }
+                      self.wfile.write(json.dumps(response).encode())
+                  else:
+                      self.send_response(201)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      self.wfile.write(json.dumps({"status": "created", "cached": True}).encode())
+                  
+              def log_message(self, format, *args):
+                  print(f"[catalog-redis-oom] {args[0]}")
+          
+          print(f"Catalog service (REDIS OOM) starting - miss_rate={MISS_RATE}, policy={EVICTION_POLICY}")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15

@@ -1,0 +1,166 @@
+# Scenario: HSTS Not Configured
+# Category: Network Security
+# Description: HTTP Strict Transport Security header missing
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: hsts-missing
+  labels:
+    category: security
+    subcategory: network-security
+    severity: medium
+    service: bookstore-api
+spec:
+  description: |
+    The HTTP Strict Transport Security (HSTS) header is not configured,
+    leaving users vulnerable to protocol downgrade attacks and cookie
+    hijacking.
+  
+  symptoms:
+    - type: security-scan
+      source: zap
+      message: "Missing HSTS header"
+    - type: compliance-alert
+      source: security-audit
+      message: "OWASP A05:2021 - Security Misconfiguration"
+    - type: header-check
+      missing: "Strict-Transport-Security"
+
+  securityRisk:
+    description: |
+      Without HSTS, attackers can perform:
+      - SSL stripping attacks
+      - Cookie hijacking via HTTP
+      - Protocol downgrade attacks
+      - Man-in-the-middle attacks on first connection
+    vulnerableWindows:
+      - "First visit before HTTPS redirect"
+      - "After browser cache expires"
+      - "On public/untrusted networks"
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "Users vulnerable to MITM attacks"
+
+  detection:
+    - method: curl
+      command: |
+        curl -sI https://api.example.com | grep -i strict-transport-security
+      expected: "Header should be present"
+    - method: security-headers
+      url: "https://securityheaders.com/?q=api.example.com"
+    - method: prometheus
+      query: |
+        http_response_header_present{header="strict-transport-security"} == 0
+
+  remediation:
+    automated: true
+    steps:
+      - action: add-hsts-ingress
+        description: "Add HSTS header via ingress annotation"
+        command: |
+          kubectl annotate ingress bookstore-api -n bookstore \
+            nginx.ingress.kubernetes.io/configuration-snippet='add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;' \
+            --overwrite
+      - action: verify-header
+        command: |
+          curl -sI https://api.example.com | grep -i strict-transport-security
+        expected: "max-age=31536000"
+
+  configurationOptions:
+    minimal:
+      header: "Strict-Transport-Security: max-age=31536000"
+      description: "Basic HSTS, 1 year"
+      suitable: "Single domain, testing"
+    recommended:
+      header: "Strict-Transport-Security: max-age=31536000; includeSubDomains"
+      description: "Includes all subdomains"
+      suitable: "Production, multiple subdomains"
+    maximum:
+      header: "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload"
+      description: "Includes preload for browser lists"
+      suitable: "High-security sites"
+      requirements:
+        - "Serve valid certificate"
+        - "Redirect HTTP to HTTPS"
+        - "All subdomains must support HTTPS"
+        - "Submit to hstspreload.org"
+
+  ingressConfigurations:
+    nginx:
+      annotation: |
+        nginx.ingress.kubernetes.io/configuration-snippet: |
+          add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+    traefik:
+      middleware: |
+        apiVersion: traefik.containo.us/v1alpha1
+        kind: Middleware
+        metadata:
+          name: hsts
+        spec:
+          headers:
+            stsSeconds: 31536000
+            stsIncludeSubdomains: true
+            stsPreload: true
+    istio:
+      virtualService: |
+        apiVersion: networking.istio.io/v1beta1
+        kind: VirtualService
+        spec:
+          http:
+          - headers:
+              response:
+                set:
+                  strict-transport-security: "max-age=31536000; includeSubDomains; preload"
+
+  prevention:
+    - type: default-config
+      description: "Include HSTS in default ingress template"
+    - type: policy-enforcement
+      description: "OPA policy requiring HSTS"
+      policy: |
+        package kubernetes.admission
+        
+        deny[msg] {
+          input.request.kind.kind == "Ingress"
+          not has_hsts_annotation(input.request.object)
+          msg := "Ingress must include HSTS configuration"
+        }
+    - type: security-scanning
+      description: "Include header checks in CI/CD"
+
+  hstsPreload:
+    description: "Submit to browser preload list for maximum protection"
+    requirements:
+      - "Valid certificate"
+      - "Redirect all HTTP to HTTPS"
+      - "HSTS header on base domain"
+      - "max-age >= 31536000"
+      - "includeSubDomains directive"
+      - "preload directive"
+    submission: "https://hstspreload.org/"
+    warning: |
+      Preload is difficult to undo. Ensure all subdomains support HTTPS
+      before submitting.
+
+  verification:
+    - type: header-check
+      command: |
+        curl -sI https://api.example.com | grep -i "strict-transport-security"
+      expected: "max-age=31536000"
+    - type: security-headers
+      url: "https://securityheaders.com/?q=api.example.com"
+      expected: "A+ rating"
+    - type: ssl-labs
+      url: "https://www.ssllabs.com/ssltest/"
+      expected: "HSTS enabled, long max-age"
+
+  references:
+    - url: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security
+      title: "MDN - HSTS"
+    - url: https://hstspreload.org/
+      title: "HSTS Preload List"
+    - url: https://cheatsheetseries.owasp.org/cheatsheets/HTTP_Strict_Transport_Security_Cheat_Sheet.html
+      title: "OWASP HSTS Cheat Sheet"

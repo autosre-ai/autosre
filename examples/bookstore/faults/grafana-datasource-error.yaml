@@ -1,0 +1,97 @@
+# Scenario: Grafana Datasource Error - Dashboard Broken
+# Category: Observability Infrastructure
+# Severity: Medium
+# Description: Grafana cannot connect to datasource, dashboards show errors
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: grafana-datasource-error
+  labels:
+    category: observability-infrastructure
+    severity: medium
+    component: grafana
+spec:
+  description: |
+    Grafana datasource connection is failing. Dashboards show errors
+    instead of data. Users cannot visualize metrics.
+    
+  symptoms:
+    - type: grafana-dashboard
+      error: "Datasource error"
+      message: "502 Bad Gateway"
+    - type: grafana-explore
+      description: "Query execution fails"
+    - type: datasource-health
+      status: "Error"
+      
+  affectedResources:
+    - kind: Deployment
+      name: grafana
+      namespace: monitoring
+    - kind: ConfigMap
+      name: grafana-datasources
+      description: "Datasource configuration"
+    - kind: Secret
+      name: grafana-datasource-credentials
+        
+  metrics:
+    - name: grafana_datasource_request_total
+      labels:
+        status: error
+      rate: 100
+    - name: grafana_api_response_status_total
+      labels:
+        code: "500"
+      rate: 50
+      
+  logs:
+    - source: grafana
+      level: error
+      patterns:
+        - "Data source request failed"
+        - "connection refused"
+        - "unauthorized"
+    - source: grafana
+      level: warning
+      patterns:
+        - "Request Cancelled"
+        - "context deadline exceeded"
+        
+  rootCause:
+    component: grafana-datasource
+    type: connectivity
+    details: |
+      Datasource connection failure. Common causes:
+      - Prometheus/Loki URL wrong
+      - Datasource service down
+      - Authentication credentials expired
+      - Network policy blocking connection
+      - TLS certificate issues
+      - Datasource overloaded
+      
+  remediation:
+    steps:
+      - action: check-datasource-config
+        command: "kubectl get configmap grafana-datasources -n monitoring -o yaml"
+        description: "Review datasource configuration"
+      - action: test-datasource
+        command: "kubectl exec -it grafana-xxxxx -n monitoring -- curl http://prometheus:9090/api/v1/status/config"
+        description: "Test connectivity to datasource"
+      - action: check-datasource-health
+        command: "curl -H 'Authorization: Bearer $TOKEN' http://grafana/api/datasources/proxy/1/api/v1/query?query=up"
+        description: "Test datasource through Grafana API"
+      - action: check-credentials
+        command: "kubectl get secret grafana-datasource-credentials -n monitoring -o yaml"
+        description: "Verify credentials secret"
+      - action: fix-datasource-url
+        command: "kubectl patch configmap grafana-datasources -n monitoring --type=merge -p '{\"data\":{\"datasources.yaml\":\"...\"}}'"
+        description: "Update datasource URL"
+      - action: restart-grafana
+        command: "kubectl rollout restart deployment grafana -n monitoring"
+        description: "Restart Grafana to reload config"
+    
+  detection:
+    promql: 'rate(grafana_datasource_request_total{status="error"}[5m]) > 10'
+    alertName: GrafanaDatasourceError
+    severity: warning

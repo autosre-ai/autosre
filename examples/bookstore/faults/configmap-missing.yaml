@@ -1,0 +1,66 @@
+# Scenario: ConfigMap Missing
+# Expected: OpenSRE detects pod failing to start, CreateContainerConfigError
+# Remediation: Create missing ConfigMap, fix ConfigMap name reference
+# Root Cause: Pod references a ConfigMap that doesn't exist
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: email-service-configmap-missing
+  namespace: bookstore
+  labels:
+    app: email-service
+    tier: api
+    fault: configmap-missing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: email-service
+      fault: configmap-missing
+  template:
+    metadata:
+      labels:
+        app: email-service
+        tier: api
+        fault: configmap-missing
+    spec:
+      containers:
+      - name: email
+        image: python:3.11-alpine
+        command: ["python", "-c", "print('Starting...'); import time; time.sleep(3600)"]
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        # Reference to non-existent ConfigMap
+        - name: SMTP_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: email-config-nonexistent  # This ConfigMap doesn't exist
+              key: smtp_host
+        - name: SMTP_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: email-config-nonexistent
+              key: smtp_port
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        volumeMounts:
+        - name: config
+          mountPath: /etc/email-config
+      volumes:
+      - name: config
+        configMap:
+          name: email-config-nonexistent  # Also referenced as volume
+---
+# Expected events:
+# Warning  FailedMount  pod/email-service-xxx  
+# MountVolume.SetUp failed: configmap "email-config-nonexistent" not found
+# 
+# Pod status:
+# ContainerCreating or CreateContainerConfigError

@@ -1,0 +1,106 @@
+# Scenario: Storage Class Missing - SC Doesn't Exist
+# Category: Storage Issues
+# Severity: High
+# Description: PVC references a StorageClass that doesn't exist
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: storage-class-missing
+  labels:
+    category: storage-issues
+    severity: high
+    component: storage-class
+spec:
+  description: |
+    PVC references a StorageClass that doesn't exist in the cluster.
+    Dynamic provisioning fails and pods remain pending.
+    
+  symptoms:
+    - type: pvc-status
+      phase: Pending
+      message: "storageclass.storage.k8s.io \"fast-ssd\" not found"
+    - type: event
+      reason: ProvisioningFailed
+      message: "no volume plugin matched"
+    - type: pod-status
+      status: Pending
+      reason: "FailedMount"
+      
+  affectedResources:
+    - kind: PersistentVolumeClaim
+      name: data-app-0
+      status: Pending
+    - kind: StorageClass
+      name: fast-ssd
+      status: NotFound
+    - kind: Pod
+      name: app-0
+      status: Pending
+        
+  metrics:
+    - name: kube_persistentvolumeclaim_status_phase
+      labels:
+        phase: Pending
+        storageclass: fast-ssd
+      value: 3
+    - name: kube_storageclass_info
+      labels:
+        storageclass: fast-ssd
+      value: 0  # Doesn't exist
+      
+  logs:
+    - source: kube-controller-manager
+      level: error
+      patterns:
+        - "storageclass not found"
+        - "no volume plugin matched"
+        - "failed to provision volume"
+    - source: persistent-volume-controller
+      level: warning
+      patterns:
+        - "waiting for a volume to be created"
+        
+  rootCause:
+    component: storage-class
+    type: misconfiguration
+    details: |
+      Missing StorageClass. Common causes:
+      - StorageClass deleted accidentally
+      - Cluster migration without SC recreation
+      - Typo in StorageClass name
+      - Helm chart default doesn't match cluster
+      - Different environments have different SC names
+      - CSI driver not installed
+      
+  remediation:
+    steps:
+      - action: list-storage-classes
+        command: "kubectl get storageclass"
+        description: "List available StorageClasses"
+      - action: check-pvc-spec
+        command: "kubectl get pvc data-app-0 -o jsonpath='{.spec.storageClassName}'"
+        description: "Check which StorageClass PVC expects"
+      - action: create-storage-class
+        command: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: storage.k8s.io/v1
+          kind: StorageClass
+          metadata:
+            name: fast-ssd
+          provisioner: pd.csi.storage.gke.io
+          parameters:
+            type: pd-ssd
+          allowVolumeExpansion: true
+          reclaimPolicy: Delete
+          volumeBindingMode: WaitForFirstConsumer
+          EOF
+        description: "Create the missing StorageClass"
+      - action: patch-pvc
+        command: "kubectl patch pvc data-app-0 -p '{\"spec\":{\"storageClassName\":\"standard\"}}'"
+        description: "Or update PVC to use existing StorageClass"
+    
+  detection:
+    promql: 'kube_persistentvolumeclaim_status_phase{phase="Pending"} > 0 and on(persistentvolumeclaim) kube_persistentvolumeclaim_info'
+    alertName: PVCStorageClassMissing
+    severity: warning

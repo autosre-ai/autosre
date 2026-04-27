@@ -1,0 +1,112 @@
+# Feature Flag Misconfigured
+# Simulates wrong feature flag state causing issues
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-feature-flag-error
+  namespace: bookstore
+  labels:
+    app: frontend
+    tier: web
+    fault: feature-flag-misconfigured
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+        tier: web
+        fault: feature-flag-misconfigured
+    spec:
+      containers:
+      - name: frontend
+        image: python:3.11-alpine
+        env:
+        - name: FAULT_MODE
+          value: "feature-flag-misconfigured"
+        - name: FLAG_ERROR_RATE
+          value: "0.6"
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+          import random
+          import os
+          
+          FLAG_ERROR_RATE = float(os.environ.get('FLAG_ERROR_RATE', 0.6))
+          
+          # Feature flags with wrong states
+          BROKEN_FLAGS = {
+              "new_checkout_flow": {"expected": True, "actual": False, "impact": "Users see old checkout"},
+              "dark_mode": {"expected": True, "actual": True, "impact": "None"},
+              "payment_v2": {"expected": False, "actual": True, "impact": "Untested payment flow active in production"},
+              "beta_features": {"expected": False, "actual": True, "impact": "Beta features exposed to all users"},
+              "maintenance_mode": {"expected": False, "actual": True, "impact": "Site appears down to users"},
+          }
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path in ['/health', '/ready']:
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                      return
+                  
+                  if self.path == '/flags' or random.random() < FLAG_ERROR_RATE:
+                      broken_flag = random.choice([k for k, v in BROKEN_FLAGS.items() if v['expected'] != v['actual']])
+                      flag_info = BROKEN_FLAGS[broken_flag]
+                      
+                      print(f"[feature-flag] MISCONFIGURED: {broken_flag} - expected={flag_info['expected']}, actual={flag_info['actual']}")
+                      
+                      self.send_response(200)  # Flag service works, but values are wrong
+                      self.send_header('Content-Type', 'application/json')
+                      self.send_header('X-Feature-Flag-Warning', 'true')
+                      self.end_headers()
+                      response = {
+                          "flags": BROKEN_FLAGS,
+                          "warning": {
+                              "misconfigured_flag": broken_flag,
+                              "expected_value": flag_info['expected'],
+                              "actual_value": flag_info['actual'],
+                              "impact": flag_info['impact']
+                          },
+                          "suggestion": "Review feature flag configuration in LaunchDarkly/Flagsmith"
+                      }
+                      self.wfile.write(json.dumps(response).encode())
+                  else:
+                      self.send_response(200)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      self.wfile.write(json.dumps({"status": "ok"}).encode())
+                      
+              def log_message(self, format, *args):
+                  print(f"[frontend-flags] {args[0]}")
+          
+          print(f"Frontend (FEATURE FLAG ERROR) starting - error_rate={FLAG_ERROR_RATE}")
+          HTTPServer(('0.0.0.0', 80), Handler).serve_forever()
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 15

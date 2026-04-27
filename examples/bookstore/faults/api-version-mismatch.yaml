@@ -1,0 +1,128 @@
+# API Version Mismatch
+# Simulates deprecated/removed API endpoints
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway-version-mismatch
+  namespace: bookstore
+  labels:
+    app: api-gateway
+    tier: api
+    fault: api-version-mismatch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+        tier: api
+        fault: api-version-mismatch
+    spec:
+      containers:
+      - name: gateway
+        image: python:3.11-alpine
+        env:
+        - name: FAULT_MODE
+          value: "api-version-mismatch"
+        - name: CURRENT_VERSION
+          value: "v3"
+        - name: DEPRECATED_VERSION
+          value: "v1"
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+          import os
+          
+          CURRENT = os.environ.get('CURRENT_VERSION', 'v3')
+          DEPRECATED = os.environ.get('DEPRECATED_VERSION', 'v1')
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path in ['/health', '/ready']:
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                      return
+                  
+                  # Check for deprecated API version
+                  if f'/api/{DEPRECATED}/' in self.path or self.path.startswith(f'/{DEPRECATED}/'):
+                      print(f"[api-version] ERROR: API {DEPRECATED} has been deprecated")
+                      
+                      self.send_response(410)  # Gone
+                      self.send_header('Content-Type', 'application/json')
+                      self.send_header('X-API-Deprecated', 'true')
+                      self.send_header('X-API-Sunset-Date', '2024-01-01')
+                      self.end_headers()
+                      error = {
+                          "error": "APIVersionDeprecated",
+                          "message": f"API version {DEPRECATED} has been deprecated and removed",
+                          "details": {
+                              "requested_version": DEPRECATED,
+                              "current_version": CURRENT,
+                              "sunset_date": "2024-01-01",
+                              "migration_guide": f"https://api.bookstore.com/docs/migrate-{DEPRECATED}-to-{CURRENT}"
+                          },
+                          "suggestion": f"Update client to use /api/{CURRENT}/ endpoints"
+                      }
+                      self.wfile.write(json.dumps(error).encode())
+                  elif '/api/v2/' in self.path:
+                      # v2 returns deprecation warning but still works
+                      self.send_response(200)
+                      self.send_header('Content-Type', 'application/json')
+                      self.send_header('Deprecation', 'true')
+                      self.send_header('Sunset', 'Sat, 01 Jun 2024 00:00:00 GMT')
+                      self.send_header('Link', f'</api/{CURRENT}>; rel="successor-version"')
+                      self.end_headers()
+                      response = {
+                          "data": [],
+                          "warning": f"API v2 is deprecated. Please migrate to {CURRENT}",
+                          "sunset_date": "2024-06-01"
+                      }
+                      self.wfile.write(json.dumps(response).encode())
+                  else:
+                      # Unknown version
+                      self.send_response(404)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      error = {
+                          "error": "APIVersionNotFound",
+                          "message": "Unknown API version",
+                          "supported_versions": ["v2", CURRENT]
+                      }
+                      self.wfile.write(json.dumps(error).encode())
+                      
+              def do_POST(self):
+                  return self.do_GET()
+                  
+              def log_message(self, format, *args):
+                  print(f"[api-version] {args[0]}")
+          
+          print(f"API Gateway (VERSION MISMATCH) starting - current={CURRENT}, deprecated={DEPRECATED}")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15

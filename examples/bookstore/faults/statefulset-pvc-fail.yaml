@@ -1,0 +1,83 @@
+# Scenario: StatefulSet Volume Claim Template Issue
+# Expected: OpenSRE detects StatefulSet pods stuck due to PVC issues
+# Remediation: Fix volumeClaimTemplate, ensure storage class exists
+# Root Cause: StatefulSet can't create PVCs for new pods
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: database-cluster-pvc-fail
+  namespace: bookstore
+  labels:
+    app: database-cluster
+    tier: data
+    fault: statefulset-pvc-fail
+spec:
+  serviceName: database-cluster
+  replicas: 3
+  selector:
+    matchLabels:
+      app: database-cluster
+      fault: statefulset-pvc-fail
+  template:
+    metadata:
+      labels:
+        app: database-cluster
+        tier: data
+        fault: statefulset-pvc-fail
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        env:
+        - name: POSTGRES_PASSWORD
+          value: "cluster-secret"
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - containerPort: 5432
+          name: postgres
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: fast-ssd-nonexistent  # Storage class doesn't exist
+      resources:
+        requests:
+          storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: database-cluster
+  namespace: bookstore
+  labels:
+    fault: statefulset-pvc-fail
+spec:
+  clusterIP: None  # Headless service
+  selector:
+    app: database-cluster
+    fault: statefulset-pvc-fail
+  ports:
+  - port: 5432
+    name: postgres
+---
+# Expected behavior:
+# 1. StatefulSet creates PVC: data-database-cluster-pvc-fail-0
+# 2. PVC stays Pending - storage class not found
+# 3. Pod database-cluster-pvc-fail-0 stays Pending
+# 4. StatefulSet won't create pod-1 until pod-0 is Running
+# 
+# kubectl get pvc:
+# NAME                              STATUS    VOLUME   CAPACITY   STORAGECLASS
+# data-database-cluster-pvc-fail-0  Pending                       fast-ssd-nonexistent

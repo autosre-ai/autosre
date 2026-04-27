@@ -1,0 +1,99 @@
+# Scenario: Volume Attachment Stuck - Mount Issues
+# Category: Storage Issues
+# Severity: High
+# Description: VolumeAttachment stuck, volume cannot be mounted to pod
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: volume-attachment-stuck
+  labels:
+    category: storage-issues
+    severity: high
+    component: volume-attachment
+spec:
+  description: |
+    VolumeAttachment resource is stuck in attaching/detaching state.
+    Pods cannot mount the volume and remain in ContainerCreating status.
+    
+  symptoms:
+    - type: volume-attachment-status
+      attached: false
+      detachError: "volume still attached to node"
+    - type: pod-status
+      status: ContainerCreating
+      duration: ">10 minutes"
+    - type: event
+      reason: FailedAttachVolume
+      message: "Multi-Attach error for volume"
+      
+  affectedResources:
+    - kind: VolumeAttachment
+      name: csi-xxxxx
+      status: AttachError
+    - kind: Pod
+      name: app-pod
+      status: ContainerCreating
+    - kind: Node
+      description: "Volume stuck attached to wrong node"
+        
+  metrics:
+    - name: storage_operation_duration_seconds
+      labels:
+        operation_name: volume_attach
+      percentile: p99
+      value: 600  # 10 minutes
+    - name: attachdetach_controller_forced_detaches
+      rate: 5
+      
+  logs:
+    - source: kubelet
+      level: error
+      patterns:
+        - "failed to attach volume"
+        - "Multi-Attach error"
+        - "volume is already exclusively attached"
+    - source: attach-detach-controller
+      level: warning
+      patterns:
+        - "timed out waiting for attach"
+        - "force detaching volume"
+        - "volume detach failed"
+        
+  rootCause:
+    component: volume-attachment
+    type: stuck-operation
+    details: |
+      Volume attachment stuck. Common causes:
+      - Previous pod didn't clean up properly
+      - Node died with volume attached
+      - CSI driver detach failed
+      - RWO volume still attached to old node
+      - Cloud provider API timeout
+      - Force delete pod left dangling attachment
+      
+  remediation:
+    steps:
+      - action: check-volume-attachments
+        command: "kubectl get volumeattachment | grep <pv-name>"
+        description: "Find volume attachments for the PV"
+      - action: check-attachment-details
+        command: "kubectl get volumeattachment csi-xxxxx -o yaml"
+        description: "Review attachment status and error"
+      - action: identify-attached-node
+        command: "kubectl get volumeattachment csi-xxxxx -o jsonpath='{.spec.nodeName}'"
+        description: "Find which node volume is attached to"
+      - action: force-detach
+        command: "kubectl delete volumeattachment csi-xxxxx --force --grace-period=0"
+        description: "Force delete stuck attachment"
+      - action: cloud-force-detach
+        command: "gcloud compute instances detach-disk old-node --disk=disk-name"
+        description: "Force detach at cloud provider level"
+      - action: restart-pod
+        command: "kubectl delete pod app-pod --force --grace-period=0"
+        description: "Force delete stuck pod and let it reschedule"
+    
+  detection:
+    promql: 'storage_operation_duration_seconds{operation_name="volume_attach"} > 300'
+    alertName: VolumeAttachmentSlow
+    severity: warning

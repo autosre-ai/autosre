@@ -1,0 +1,88 @@
+# Scenario: Node Not Ready - Kubelet Issues
+# Category: Node Issues
+# Severity: Critical
+# Description: Node transitions to NotReady state due to kubelet communication failure
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: node-not-ready
+  labels:
+    category: node-issues
+    severity: critical
+    component: kubelet
+spec:
+  description: |
+    Node becomes NotReady when kubelet fails to report status to the API server.
+    This can happen due to kubelet crashes, resource exhaustion, or network issues.
+    
+  symptoms:
+    - type: node-condition
+      condition: Ready
+      status: "False"
+      reason: "KubeletNotReady"
+      message: "Kubelet stopped posting node status"
+    - type: event
+      reason: NodeNotReady
+      message: "Node status is now: NodeNotReady"
+    - type: pod-status
+      status: Unknown
+      reason: NodeLost
+      
+  affectedResources:
+    - kind: Node
+      name: worker-node-1
+    - kind: Pod
+      selector:
+        spec.nodeName: worker-node-1
+        
+  metrics:
+    - name: kube_node_status_condition
+      labels:
+        condition: Ready
+        status: "false"
+      value: 1
+    - name: kubelet_running_pods
+      value: 0
+      
+  logs:
+    - source: kubelet
+      level: error
+      patterns:
+        - "failed to update node status"
+        - "unable to sync node status"
+        - "PLEG is not healthy"
+    - source: kube-controller-manager
+      level: warning
+      patterns:
+        - "node worker-node-1 hasn't reported status for"
+        
+  rootCause:
+    component: kubelet
+    type: process-failure
+    details: |
+      Kubelet process crashed or became unresponsive. Common causes:
+      - OOM killer terminated kubelet
+      - Disk pressure causing slow I/O
+      - Container runtime (containerd/docker) hung
+      - Network partition from control plane
+      
+  remediation:
+    steps:
+      - action: check-kubelet-status
+        command: "systemctl status kubelet"
+        description: "Verify kubelet process state"
+      - action: check-kubelet-logs
+        command: "journalctl -u kubelet -n 100"
+        description: "Review kubelet logs for errors"
+      - action: restart-kubelet
+        command: "systemctl restart kubelet"
+        description: "Restart kubelet service"
+      - action: verify-recovery
+        command: "kubectl get node worker-node-1"
+        description: "Confirm node returns to Ready state"
+    
+  detection:
+    promql: 'kube_node_status_condition{condition="Ready",status="true"} == 0'
+    alertName: KubeNodeNotReady
+    severity: critical

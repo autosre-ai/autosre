@@ -1,0 +1,94 @@
+# Scenario: VPA Recommendation Ignored Leading to OOM
+# Expected: OpenSRE detects OOMKilled pods, VPA recommendations not applied
+# Remediation: Apply VPA recommendations, use updateMode Auto, adjust limits
+# Root Cause: VPA in "Off" mode but app needs more memory than limits allow
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: indexer-service-vertical-oom
+  namespace: bookstore
+  labels:
+    app: indexer-service
+    tier: batch
+    fault: vertical-oom
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: indexer-service
+      fault: vertical-oom
+  template:
+    metadata:
+      labels:
+        app: indexer-service
+        tier: batch
+        fault: vertical-oom
+    spec:
+      containers:
+      - name: indexer
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          import time
+          
+          print("Indexer service starting...")
+          print("[WARN] Memory limit is too low, VPA recommends increase")
+          
+          # Allocate memory to trigger OOM
+          data = []
+          while True:
+              # Allocate 10MB chunks
+              data.append('X' * (10 * 1024 * 1024))
+              print(f"[INDEXER] Processing batch, memory used: {len(data) * 10}MB")
+              time.sleep(1)
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "32Mi"   # Too low - VPA would recommend higher
+            cpu: "25m"
+          limits:
+            memory: "64Mi"   # Will OOM - VPA recommends 512Mi
+            cpu: "50m"
+---
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: indexer-service-vpa
+  namespace: bookstore
+  labels:
+    fault: vertical-oom
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: indexer-service-vertical-oom
+  updatePolicy:
+    updateMode: "Off"  # VPA is disabled - recommendations ignored
+  resourcePolicy:
+    containerPolicies:
+    - containerName: indexer
+      minAllowed:
+        cpu: "25m"
+        memory: "64Mi"
+      maxAllowed:
+        cpu: "1"
+        memory: "2Gi"
+---
+# VPA will show recommendations like:
+# status:
+#   recommendation:
+#     containerRecommendations:
+#     - containerName: indexer
+#       lowerBound:
+#         cpu: "100m"
+#         memory: "256Mi"
+#       target:
+#         cpu: "250m"
+#         memory: "512Mi"
+#       upperBound:
+#         cpu: "500m"
+#         memory: "1Gi"
+# But updateMode: Off means these are never applied

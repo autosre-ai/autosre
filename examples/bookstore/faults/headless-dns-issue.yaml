@@ -1,0 +1,132 @@
+# Scenario: Headless Service DNS Issue
+# Expected: OpenSRE detects DNS lookup returning no records
+# Remediation: Check pod readiness, verify service selector, DNS policy
+# Root Cause: Headless service returns no A records when pods aren't ready
+apiVersion: v1
+kind: Service
+metadata:
+  name: database-headless-dns-issue
+  namespace: bookstore
+  labels:
+    app: database
+    fault: headless-dns-issue
+spec:
+  clusterIP: None  # Headless service
+  selector:
+    app: database-pods
+    fault: headless-dns-issue
+  ports:
+  - port: 5432
+    name: postgres
+  publishNotReadyAddresses: false  # Only publish ready pods
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: database-pods-not-ready
+  namespace: bookstore
+  labels:
+    app: database-pods
+    tier: data
+    fault: headless-dns-issue
+spec:
+  serviceName: database-headless-dns-issue
+  replicas: 3
+  selector:
+    matchLabels:
+      app: database-pods
+      fault: headless-dns-issue
+  template:
+    metadata:
+      labels:
+        app: database-pods
+        tier: data
+        fault: headless-dns-issue
+    spec:
+      containers:
+      - name: postgres
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          
+          # Pods are running but never become "ready"
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path == '/health':
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                  elif self.path == '/ready':
+                      # Always return not ready
+                      self.send_response(503)
+                      self.end_headers()
+                      self.wfile.write(b'NOT READY: Primary election pending')
+                  else:
+                      self.send_response(404)
+                      self.end_headers()
+              def log_message(self, format, *args):
+                  pass
+          
+          print("Database pod starting (will never be ready)...")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 5432
+          name: postgres
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+# Client trying to connect via headless service DNS
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: database-client-dns-fail
+  namespace: bookstore
+  labels:
+    app: database-client
+    fault: headless-dns-issue
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: database-client
+  template:
+    metadata:
+      labels:
+        app: database-client
+    spec:
+      containers:
+      - name: client
+        image: busybox:1.36
+        command: ['sh', '-c']
+        args:
+        - |
+          while true; do
+            echo "Resolving database-headless-dns-issue..."
+            nslookup database-headless-dns-issue.bookstore.svc.cluster.local
+            if [ $? -ne 0 ]; then
+              echo "[DNS-FAIL] No A records found - pods not ready"
+            fi
+            sleep 10
+          done
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+---
+# Because pods are not ready, headless service DNS returns no records
+# nslookup output: "** server can't find database-headless-dns-issue: NXDOMAIN"

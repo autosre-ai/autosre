@@ -1,0 +1,106 @@
+# Scenario: Ingress Controller Crash - nginx/traefik Down
+# Category: Networking Infrastructure
+# Severity: Critical
+# Description: Ingress controller crashed, all ingress routes unavailable
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: ingress-controller-crash
+  labels:
+    category: networking-infrastructure
+    severity: critical
+    component: ingress-controller
+spec:
+  description: |
+    Ingress controller (nginx-ingress, traefik, etc.) has crashed or is
+    not running. All Ingress resources are non-functional and HTTP routing
+    is broken.
+    
+  symptoms:
+    - type: deployment-status
+      name: nginx-ingress-controller
+      replicas: 0
+      available: 0
+    - type: ingress-status
+      description: "All ingresses return 502/503"
+    - type: user-impact
+      description: "External HTTP traffic fails"
+      
+  affectedResources:
+    - kind: Deployment
+      name: nginx-ingress-controller
+      namespace: ingress-nginx
+      status: "0/3 replicas"
+    - kind: Ingress
+      all: true
+      status: "Not functional"
+    - kind: Service
+      name: ingress-nginx-controller
+      status: "No backends"
+        
+  metrics:
+    - name: kube_deployment_status_replicas_available
+      labels:
+        deployment: nginx-ingress-controller
+      value: 0
+    - name: nginx_ingress_controller_requests
+      value: null  # No data
+    - name: kube_pod_container_status_restarts_total
+      labels:
+        container: controller
+        pod: nginx-ingress-controller
+      rate: 10
+      
+  logs:
+    - source: nginx-ingress-controller
+      level: fatal
+      patterns:
+        - "nginx: error"
+        - "out of memory"
+        - "panic: runtime error"
+    - source: pod
+      level: error
+      patterns:
+        - "CrashLoopBackOff"
+        - "OOMKilled"
+        - "Error: cannot open configuration"
+        
+  rootCause:
+    component: ingress-controller
+    type: crash
+    details: |
+      Ingress controller failure. Common causes:
+      - Controller pod OOM killed
+      - Invalid ingress configuration
+      - Too many ingress resources
+      - TLS secret missing or invalid
+      - ConfigMap corruption
+      - Resource limits too low
+      - Node failure
+      
+  remediation:
+    steps:
+      - action: check-controller-pods
+        command: "kubectl get pods -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx"
+        description: "Check ingress controller pod status"
+      - action: check-logs
+        command: "kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx --previous --tail=200"
+        description: "Review crash logs"
+      - action: check-events
+        command: "kubectl get events -n ingress-nginx --sort-by='.lastTimestamp' | tail -20"
+        description: "Check recent events"
+      - action: validate-ingresses
+        command: "kubectl get ingress -A -o yaml | kubectl apply --dry-run=client -f -"
+        description: "Validate all ingress configurations"
+      - action: increase-resources
+        command: "kubectl set resources deployment nginx-ingress-controller -n ingress-nginx --limits=memory=2Gi"
+        description: "Increase controller resources"
+      - action: restart-controller
+        command: "kubectl rollout restart deployment nginx-ingress-controller -n ingress-nginx"
+        description: "Restart ingress controller"
+    
+  detection:
+    promql: 'kube_deployment_status_replicas_available{deployment=~".*ingress.*controller.*"} == 0'
+    alertName: IngressControllerDown
+    severity: critical

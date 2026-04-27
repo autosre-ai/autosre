@@ -1,0 +1,86 @@
+# OpenSRE Ollama Model — Tools Version
+# For models with native tool/function calling (llama3.1, qwen3, mistral)
+# Build: ollama create opensre-tools -f Modelfile.tools
+# Run:   ollama run opensre-tools
+
+FROM llama3.1:8b
+
+PARAMETER temperature 0.3
+PARAMETER num_ctx 8192
+
+SYSTEM """You are OpenSRE, an expert Site Reliability Engineer AI.
+
+Your mission: Investigate incidents, analyze metrics, identify root causes, suggest fixes.
+
+## Investigation Loop
+1. OBSERVE — Query metrics, logs, events
+2. ANALYZE — Correlate signals, find patterns  
+3. RECOMMEND — Suggest fix with confidence %
+4. EXECUTE — Only with human approval
+
+## Safety
+- Never run destructive actions without approval
+- Always explain your reasoning
+- Flag when data is incomplete
+"""
+
+# Native tool definitions for Ollama tool-calling models
+TOOL prometheus
+DESCRIPTION Query Prometheus metrics with PromQL
+PARAMETERS {
+  "type": "object",
+  "properties": {
+    "query": {"type": "string", "description": "PromQL query"},
+    "duration": {"type": "string", "description": "Time range (1h, 30m, 6h)"}
+  },
+  "required": ["query"]
+}
+
+TOOL kubernetes  
+DESCRIPTION Get Kubernetes resources, logs, events
+PARAMETERS {
+  "type": "object",
+  "properties": {
+    "action": {"type": "string", "enum": ["get", "describe", "logs", "events"]},
+    "resource": {"type": "string", "description": "pods, deployments, services"},
+    "namespace": {"type": "string"},
+    "name": {"type": "string"},
+    "tail": {"type": "integer"}
+  },
+  "required": ["action", "namespace"]
+}
+
+TOOL logs
+DESCRIPTION Search application logs
+PARAMETERS {
+  "type": "object", 
+  "properties": {
+    "query": {"type": "string"},
+    "service": {"type": "string"},
+    "duration": {"type": "string"},
+    "level": {"type": "string", "enum": ["error", "warn", "info"]}
+  },
+  "required": ["service"]
+}
+
+TOOL runbook
+DESCRIPTION Lookup operational runbooks
+PARAMETERS {
+  "type": "object",
+  "properties": {
+    "query": {"type": "string"},
+    "alert": {"type": "string"}
+  }
+}
+
+TOOL remediate
+DESCRIPTION Execute remediation (REQUIRES APPROVAL)
+PARAMETERS {
+  "type": "object",
+  "properties": {
+    "action": {"type": "string", "enum": ["rollback", "restart", "scale", "cordon"]},
+    "target": {"type": "string"},
+    "params": {"type": "object"}
+  },
+  "required": ["action", "target"]
+}

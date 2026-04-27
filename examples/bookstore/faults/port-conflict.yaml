@@ -1,0 +1,92 @@
+# Scenario: Container Port Conflict
+# Expected: OpenSRE detects container crash due to port already in use
+# Remediation: Fix port configuration, use different ports, check sidecar
+# Root Cause: Multiple containers trying to bind to same port
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: multi-container-port-conflict
+  namespace: bookstore
+  labels:
+    app: multi-service
+    tier: api
+    fault: port-conflict
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: multi-service
+      fault: port-conflict
+  template:
+    metadata:
+      labels:
+        app: multi-service
+        tier: api
+        fault: port-conflict
+    spec:
+      containers:
+      # First container binds to 8080
+      - name: api
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  self.send_response(200)
+                  self.end_headers()
+                  self.wfile.write(b'API Service')
+              def log_message(self, format, *args):
+                  pass
+          
+          print("API service binding to port 8080...")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+      # Second container ALSO tries to bind to 8080
+      - name: metrics
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import sys
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  self.send_response(200)
+                  self.end_headers()
+                  self.wfile.write(b'Metrics')
+              def log_message(self, format, *args):
+                  pass
+          
+          try:
+              print("Metrics service binding to port 8080...")
+              HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+          except OSError as e:
+              print(f"[FATAL] Cannot bind to port 8080: {e}")
+              print("[FATAL] Address already in use by another container")
+              sys.exit(1)
+        ports:
+        - containerPort: 8080  # CONFLICT - same port as api container
+          name: metrics
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+---
+# Expected: metrics container crashes with "Address already in use"
+# Pod shows: READY 1/2 - one container running, one CrashLoopBackOff

@@ -1,0 +1,75 @@
+# Scenario: LimitRange Violation
+# Expected: OpenSRE detects pod creation failures due to limit range
+# Remediation: Adjust pod resources, modify LimitRange, use different namespace
+# Root Cause: Pod resource requests/limits violate namespace LimitRange
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: bookstore-limitrange-strict
+  namespace: bookstore
+  labels:
+    fault: limit-range-violation
+spec:
+  limits:
+  - type: Pod
+    max:
+      cpu: "200m"
+      memory: "256Mi"
+    min:
+      cpu: "10m"
+      memory: "16Mi"
+  - type: Container
+    max:
+      cpu: "100m"
+      memory: "128Mi"
+    min:
+      cpu: "10m"
+      memory: "16Mi"
+    default:
+      cpu: "50m"
+      memory: "64Mi"
+    defaultRequest:
+      cpu: "25m"
+      memory: "32Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cache-service-limitrange-violation
+  namespace: bookstore
+  labels:
+    app: cache-service
+    tier: cache
+    fault: limit-range-violation
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cache-service
+      fault: limit-range-violation
+  template:
+    metadata:
+      labels:
+        app: cache-service
+        tier: cache
+        fault: limit-range-violation
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+          name: redis
+        resources:
+          requests:
+            # These exceed the LimitRange max for container
+            memory: "512Mi"  # Max is 128Mi
+            cpu: "500m"      # Max is 100m
+          limits:
+            memory: "1Gi"
+            cpu: "1"
+---
+# Expected error:
+# Error creating: pods "cache-service-xxx" is forbidden: 
+# [maximum cpu usage per Container is 100m, but limit is 1, 
+#  maximum memory usage per Container is 128Mi, but limit is 1Gi]

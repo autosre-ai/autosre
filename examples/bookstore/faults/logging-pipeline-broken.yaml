@@ -1,0 +1,99 @@
+# Scenario: Logging Pipeline Broken - Logs Not Shipping
+# Category: Observability Infrastructure
+# Severity: High
+# Description: Log collection pipeline broken, logs not reaching destination
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: logging-pipeline-broken
+  labels:
+    category: observability-infrastructure
+    severity: high
+    component: logging
+spec:
+  description: |
+    Log shipping pipeline is broken. Logs are not being collected from
+    pods or are not reaching the destination (Elasticsearch, Loki, etc.).
+    
+  symptoms:
+    - type: log-search
+      description: "Recent logs missing from search"
+    - type: log-lag
+      description: "Last logs are hours old"
+    - type: fluentd-status
+      description: "Fluentd pods in error state"
+      
+  affectedResources:
+    - kind: DaemonSet
+      name: fluent-bit
+      namespace: logging
+      status: "Pods failing"
+    - kind: Deployment
+      name: fluentd-aggregator
+      status: "Buffer full"
+    - kind: Service
+      name: elasticsearch
+      description: "Destination unreachable"
+        
+  metrics:
+    - name: fluentd_output_status_buffer_queue_length
+      value: 1000000  # Buffer backed up
+    - name: fluentd_output_status_emit_records
+      rate: 0  # Not emitting
+    - name: kube_daemonset_status_number_unavailable
+      labels:
+        daemonset: fluent-bit
+      value: 5
+      
+  logs:
+    - source: fluent-bit
+      level: error
+      patterns:
+        - "failed to flush chunk"
+        - "connection refused"
+        - "buffer overflow"
+    - source: fluentd
+      level: error
+      patterns:
+        - "failed to write to Elasticsearch"
+        - "buffer space has too many data"
+        
+  rootCause:
+    component: logging-pipeline
+    type: pipeline-failure
+    details: |
+      Logging pipeline broken. Common causes:
+      - Destination (ES/Loki) down or full
+      - Fluentd/Fluent-bit OOM
+      - Buffer disk full
+      - Network issues to destination
+      - Authentication failure
+      - Log format changed, parsing fails
+      - Too much log volume
+      
+  remediation:
+    steps:
+      - action: check-log-shipper
+        command: "kubectl get pods -n logging -l app=fluent-bit"
+        description: "Check log shipper pod status"
+      - action: check-shipper-logs
+        command: "kubectl logs -n logging -l app=fluent-bit --tail=100"
+        description: "Review log shipper errors"
+      - action: check-destination
+        command: "curl -s http://elasticsearch:9200/_cluster/health | jq"
+        description: "Verify log destination health"
+      - action: check-buffer
+        command: "kubectl exec -n logging fluent-bit-xxxxx -- ls -la /fluent-bit/buffer/"
+        description: "Check buffer status"
+      - action: restart-log-shipper
+        command: "kubectl rollout restart daemonset -n logging fluent-bit"
+        description: "Restart log shippers"
+      - action: clear-buffer
+        command: "kubectl exec -n logging fluent-bit-xxxxx -- rm -rf /fluent-bit/buffer/*"
+        description: "Clear stuck buffer (data loss)"
+    
+  detection:
+    promql: 'rate(fluentd_output_status_emit_records[5m]) == 0'
+    alertName: LoggingPipelineBroken
+    severity: warning

@@ -1,0 +1,103 @@
+# Scenario: Node Unresponsive - Kubelet Stopped
+# Category: Node Issues
+# Severity: Critical
+# Description: Kubelet process stopped responding, node appears frozen
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: node-unresponsive
+  labels:
+    category: node-issues
+    severity: critical
+    component: kubelet
+spec:
+  description: |
+    Kubelet process on the node has stopped responding. The node may still
+    be running but is not communicating with the control plane. Pods on
+    the node continue running but cannot be managed.
+    
+  symptoms:
+    - type: node-condition
+      condition: Ready
+      status: "Unknown"
+      reason: "NodeStatusUnknown"
+      message: "Kubelet stopped posting node status"
+    - type: api-response
+      endpoint: "/api/v1/nodes/worker-node-10/proxy/healthz"
+      error: "connection refused"
+    - type: pod-exec
+      error: "unable to upgrade connection: container not found"
+      
+  affectedResources:
+    - kind: Node
+      name: worker-node-10
+    - kind: Pod
+      selector:
+        spec.nodeName: worker-node-10
+    - kind: Endpoints
+      description: "Pods on node removed from service endpoints"
+        
+  metrics:
+    - name: up
+      labels:
+        job: kubelet
+        instance: worker-node-10
+      value: 0
+    - name: kubelet_running_pods
+      labels:
+        instance: worker-node-10
+      value: null  # No data
+    - name: node_last_seen_seconds
+      labels:
+        node: worker-node-10
+      value: 300  # 5 minutes ago
+      
+  logs:
+    - source: kube-controller-manager
+      level: warning
+      patterns:
+        - "node worker-node-10 hasn't reported status"
+        - "Taint manager: will taint node"
+        - "setting status to Unknown"
+    - source: kubelet
+      level: fatal
+      patterns:
+        - "unexpected EOF"
+        - "deadlock detected"
+        - "kubelet process exited"
+        
+  rootCause:
+    component: kubelet
+    type: process-hang
+    details: |
+      Kubelet unresponsive. Common causes:
+      - Kubelet process crash
+      - Kubelet deadlock (bug)
+      - System resource exhaustion (CPU, memory)
+      - Container runtime (containerd) hung
+      - Disk I/O completely blocked
+      - Network stack issues on node
+      
+  remediation:
+    steps:
+      - action: ssh-to-node
+        command: "ssh worker-node-10 'hostname; uptime; free -m'"
+        description: "Verify node is reachable via SSH"
+      - action: check-kubelet-process
+        command: "ssh worker-node-10 'systemctl status kubelet; ps aux | grep kubelet'"
+        description: "Check kubelet process status"
+      - action: check-system-resources
+        command: "ssh worker-node-10 'top -bn1 | head -20; df -h'"
+        description: "Check system resource usage"
+      - action: restart-kubelet
+        command: "ssh worker-node-10 'systemctl restart kubelet'"
+        description: "Restart kubelet service"
+      - action: hard-reboot
+        command: "ssh worker-node-10 'reboot' || gcloud compute instances reset worker-node-10"
+        description: "Hard reboot if kubelet restart fails"
+    
+  detection:
+    promql: 'up{job="kubelet"} == 0 or absent(up{job="kubelet"})'
+    alertName: KubeletDown
+    severity: critical

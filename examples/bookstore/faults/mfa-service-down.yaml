@@ -1,0 +1,169 @@
+# Scenario: MFA Service Down
+# Category: Authentication/Authorization
+# Description: Multi-factor authentication service unavailable
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: mfa-service-down
+  labels:
+    category: security
+    subcategory: authentication
+    severity: high
+    service: auth-service
+spec:
+  description: |
+    The multi-factor authentication (MFA) service is unavailable. Users who
+    have MFA enabled cannot complete login, and admins cannot access
+    privileged resources.
+  
+  symptoms:
+    - type: error
+      source: auth-service
+      message: "MFA verification failed: connection timeout to mfa.example.com"
+    - type: log
+      source: login-flow
+      pattern: "Unable to send OTP: TOTP service unreachable"
+    - type: metric
+      name: mfa_verification_attempts_total
+      labels:
+        status: "error"
+        reason: "service_unavailable"
+      condition: "increase > 50 in 5m"
+    - type: user-complaint
+      description: "Users reporting 'MFA verification failed' errors"
+
+  affectedServices:
+    - name: auth-service
+      namespace: auth
+      impact: "MFA-enabled users cannot login"
+    - name: admin-portal
+      namespace: bookstore
+      impact: "Admin access blocked (requires MFA)"
+    - name: user-service
+      namespace: bookstore
+      impact: "MFA enrollment/management unavailable"
+
+  rootCause:
+    type: dependency-failure
+    component: mfa-provider
+    possibleCauses:
+      - "Third-party MFA provider outage (Duo, Authy, etc.)"
+      - "Internal MFA service crashed"
+      - "Network connectivity to MFA backend"
+      - "Rate limiting by MFA provider"
+      - "SMS/voice delivery failures for OTP"
+
+  detection:
+    - method: health-check
+      command: |
+        curl -sf https://mfa.example.com/health
+    - method: prometheus
+      query: |
+        up{job="mfa-service"} == 0 OR
+        sum(rate(mfa_verification_attempts_total{status="error"}[5m])) > 10
+    - method: logs
+      query: |
+        service:auth-service AND ("MFA" OR "TOTP" OR "2FA") AND "error"
+
+  fallbackBehavior:
+    description: |
+      MFA fallback requires careful security consideration. Options depend on
+      risk tolerance and compliance requirements.
+    options:
+      - name: backup-codes
+        description: "Allow backup code authentication"
+        risk: low
+        implementation: |
+          Users can use pre-generated backup codes
+      - name: email-fallback
+        description: "Fall back to email OTP"
+        risk: medium
+        implementation: |
+          Send OTP to verified email address
+      - name: temporary-bypass
+        description: "Temporarily disable MFA for affected users"
+        risk: high
+        requiresApproval: security-team
+        auditTrail: required
+      - name: no-fallback
+        description: "Maintain security - users must wait"
+        risk: none
+        compliance: "Required for PCI-DSS, SOC2"
+
+  remediation:
+    automated: partial
+    steps:
+      - action: check-mfa-service
+        command: |
+          kubectl get pods -n auth -l app=mfa-service
+          kubectl logs -n auth -l app=mfa-service --tail=100
+      - action: check-external-provider
+        command: |
+          # Check Duo status
+          curl -sf https://status.duo.com/api/v2/status.json | jq '.status'
+      - action: restart-mfa-service
+        command: |
+          kubectl rollout restart deployment/mfa-service -n auth
+      - action: enable-email-fallback
+        requiresApproval: security-team
+        command: |
+          kubectl set env deployment/auth-service MFA_EMAIL_FALLBACK=true -n auth
+      - action: communicate-users
+        description: "Send notification about MFA issues"
+        manual: true
+
+  prevention:
+    - type: redundancy
+      description: "Multiple MFA providers"
+      config: |
+        mfa:
+          primary: duo
+          fallback:
+            - email-otp
+            - backup-codes
+          failoverThreshold: 3
+    - type: monitoring
+      description: "MFA service health monitoring"
+      rules:
+        - "Alert if MFA error rate > 5%"
+        - "Alert if MFA latency p99 > 5s"
+    - type: backup-codes
+      description: "Ensure all MFA users have backup codes"
+      implementation: |
+        Require backup code generation during MFA enrollment
+
+  compliance:
+    requirements:
+      - framework: "PCI-DSS"
+        control: "8.3.1"
+        description: "MFA required for admin access"
+        fallbackAllowed: false
+      - framework: "SOC2"
+        control: "CC6.1"
+        description: "Logical access controls"
+        fallbackAllowed: "With documented approval"
+      - framework: "HIPAA"
+        control: "164.312(d)"
+        description: "Person or entity authentication"
+        fallbackAllowed: "Risk-based decision"
+
+  verification:
+    - type: health-check
+      endpoint: https://mfa.example.com/health
+      expectedStatus: 200
+    - type: functional-test
+      description: "Complete MFA verification"
+      steps:
+        - "Request MFA challenge"
+        - "Submit TOTP code"
+        - "Verify session created"
+    - type: metric
+      query: rate(mfa_verification_attempts_total{status="success"}[1m])
+      condition: "> 0"
+
+  references:
+    - url: https://pages.nist.gov/800-63-3/sp800-63b.html
+      title: "NIST Digital Identity Guidelines - Authentication"
+    - url: https://cheatsheetseries.owasp.org/cheatsheets/Multifactor_Authentication_Cheat_Sheet.html
+      title: "OWASP MFA Cheat Sheet"

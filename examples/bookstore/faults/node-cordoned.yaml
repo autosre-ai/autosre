@@ -1,0 +1,91 @@
+# Scenario: Node Cordoned - Scheduling Disabled
+# Category: Node Issues
+# Severity: Medium
+# Description: Node marked as unschedulable, no new pods can be placed
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: node-cordoned
+  labels:
+    category: node-issues
+    severity: medium
+    component: scheduler
+spec:
+  description: |
+    Node is cordoned (marked unschedulable) preventing new pod scheduling.
+    Existing pods continue running. Often used for maintenance but can be
+    accidentally left in this state.
+    
+  symptoms:
+    - type: node-spec
+      field: spec.unschedulable
+      value: true
+    - type: kubectl-output
+      command: "kubectl get nodes"
+      contains: "SchedulingDisabled"
+    - type: pod-status
+      status: Pending
+      reason: Unschedulable
+      message: "0/5 nodes are available: 1 node was unschedulable"
+      
+  affectedResources:
+    - kind: Node
+      name: worker-node-6
+    - kind: Pod
+      selector:
+        status.phase: Pending
+        status.conditions.reason: Unschedulable
+        
+  metrics:
+    - name: kube_node_spec_unschedulable
+      labels:
+        node: worker-node-6
+      value: 1
+    - name: kube_pod_status_unschedulable
+      value: 3
+    - name: scheduler_pending_pods
+      value: 5
+      
+  logs:
+    - source: kube-scheduler
+      level: info
+      patterns:
+        - "node was unschedulable"
+        - "0 nodes available"
+        - "1 node(s) had taint .* that the pod didn't tolerate"
+    - source: kubectl
+      level: info
+      patterns:
+        - "node/worker-node-6 cordoned"
+        
+  rootCause:
+    component: node-scheduling
+    type: misconfiguration
+    details: |
+      Node intentionally or accidentally cordoned. Common causes:
+      - Maintenance window not completed
+      - Automated drain script left node cordoned
+      - Manual intervention during incident
+      - Node auto-repair cordoned before fix
+      - Cluster autoscaler marking for removal
+      
+  remediation:
+    steps:
+      - action: verify-cordon-state
+        command: "kubectl describe node worker-node-6 | grep -i unschedulable"
+        description: "Confirm node is cordoned"
+      - action: check-cordon-reason
+        command: "kubectl describe node worker-node-6 | grep -A5 'Annotations'"
+        description: "Check for annotations indicating why"
+      - action: uncordon-node
+        command: "kubectl uncordon worker-node-6"
+        description: "Re-enable scheduling on node"
+      - action: verify-pods-scheduling
+        command: "kubectl get pods -A -o wide | grep Pending"
+        description: "Verify pending pods can now schedule"
+    
+  detection:
+    promql: 'kube_node_spec_unschedulable == 1'
+    alertName: KubeNodeCordoned
+    severity: warning

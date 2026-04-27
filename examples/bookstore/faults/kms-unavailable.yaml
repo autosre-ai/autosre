@@ -1,0 +1,190 @@
+# Scenario: Cloud KMS Unavailable
+# Category: Secrets Management
+# Description: Cloud Key Management Service is unreachable
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: kms-unavailable
+  labels:
+    category: security
+    subcategory: secrets-management
+    severity: critical
+    service: kms
+spec:
+  description: |
+    The cloud KMS service (AWS KMS, GCP Cloud KMS, Azure Key Vault) is
+    unavailable, preventing encryption/decryption operations, Vault auto-unseal,
+    and secret envelope encryption.
+  
+  symptoms:
+    - type: error
+      source: aws-sdk
+      message: "KMSInternalException: AWS KMS service is temporarily unavailable"
+    - type: error
+      source: vault
+      message: "error during auto-unseal: error decrypting seal key: RequestLimitExceeded"
+    - type: log
+      source: bookstore-api
+      pattern: "Failed to decrypt data key: connection timeout to kms.us-east-1.amazonaws.com"
+    - type: metric
+      name: aws_sdk_requests_total
+      labels:
+        service: "kms"
+        status: "error"
+      condition: "rate > 5/min"
+    - type: alert
+      name: CloudKMSUnavailable
+      severity: critical
+
+  affectedServices:
+    - name: vault
+      namespace: vault
+      impact: "Cannot auto-unseal, may seal on restart"
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "Cannot encrypt/decrypt sensitive data"
+    - name: secrets-manager
+      namespace: aws
+      impact: "Cannot retrieve secrets (envelope encryption)"
+
+  rootCause:
+    type: cloud-service-outage
+    component: kms
+    possibleCauses:
+      - "Regional KMS service outage"
+      - "KMS throttling due to request limits"
+      - "Network connectivity to KMS endpoints"
+      - "IAM permissions changed/expired"
+      - "VPC endpoint misconfiguration"
+      - "KMS key in different region"
+
+  detection:
+    - method: health-check
+      command: |
+        # AWS KMS
+        aws kms list-keys --max-items 1
+        
+        # GCP Cloud KMS
+        gcloud kms keys list --keyring=my-keyring --location=us-central1
+    - method: prometheus
+      query: |
+        sum(rate(aws_sdk_requests_total{service="kms",status="error"}[5m])) > 0
+    - method: cloud-status
+      urls:
+        - https://status.aws.amazon.com
+        - https://status.cloud.google.com
+        - https://status.azure.com
+
+  immediateActions:
+    - action: check-cloud-status
+      description: "Verify if regional outage"
+      urls:
+        - "https://status.aws.amazon.com"
+    - action: preserve-sealed-state
+      description: "Prevent Vault from restarting if using KMS auto-unseal"
+      command: |
+        kubectl annotate statefulset vault -n vault \
+          "cluster-autoscaler.kubernetes.io/safe-to-evict=false"
+    - action: enable-caching
+      description: "Enable/extend encryption key caching"
+      note: "Reduces KMS calls during degraded state"
+
+  remediation:
+    automated: partial
+    steps:
+      - action: check-throttling
+        description: "Verify if hitting KMS request limits"
+        command: |
+          aws cloudwatch get-metric-statistics \
+            --namespace AWS/KMS \
+            --metric-name ThrottleCount \
+            --dimensions Name=KeyId,Value=${KEY_ID} \
+            --start-time $(date -d '1 hour ago' -u +%Y-%m-%dT%H:%M:%SZ) \
+            --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
+            --period 300 \
+            --statistics Sum
+      - action: check-vpc-endpoint
+        description: "Verify VPC endpoint health"
+        command: |
+          aws ec2 describe-vpc-endpoints \
+            --filters Name=service-name,Values=com.amazonaws.us-east-1.kms
+      - action: verify-iam-permissions
+        command: |
+          aws sts get-caller-identity
+          aws kms describe-key --key-id ${KEY_ID}
+      - action: implement-fallback
+        description: "If extended outage, consider fallback strategies"
+        options:
+          - "Fail open with logging (security risk)"
+          - "Use cached credentials"
+          - "Failover to secondary region KMS"
+      - action: request-limit-increase
+        description: "If throttling, request limit increase"
+        manual: true
+
+  fallbackStrategies:
+    - name: regional-failover
+      description: "Use KMS in alternate region"
+      requirements:
+        - "Multi-region key configured"
+        - "Replica key in secondary region"
+      config: |
+        kms:
+          primary: arn:aws:kms:us-east-1:123456789:key/xxx
+          fallback: arn:aws:kms:us-west-2:123456789:key/xxx
+    - name: local-key-cache
+      description: "Cache data encryption keys locally"
+      config: |
+        encryption:
+          keyCache:
+            enabled: true
+            ttl: 3600
+            maxEntries: 1000
+      risk: "Cached keys may be stale"
+    - name: manual-unseal
+      description: "Switch Vault to manual unseal temporarily"
+      steps:
+        - "Update Vault config to remove auto-unseal"
+        - "Generate Shamir keys"
+        - "Unseal manually"
+
+  prevention:
+    - type: multi-region
+      description: "Use multi-region KMS keys"
+      config: |
+        aws kms create-key --multi-region
+        aws kms replicate-key --key-id ${KEY_ID} --replica-region us-west-2
+    - type: request-limits
+      description: "Request higher KMS limits proactively"
+      limits:
+        default: "5,500 requests per second"
+        recommended: "Based on peak usage + 50% buffer"
+    - type: caching
+      description: "Implement data key caching"
+      implementation: |
+        Use AWS Encryption SDK with caching CMM
+    - type: monitoring
+      description: "Proactive KMS health monitoring"
+      rules:
+        - "Alert when ThrottleCount > 0"
+        - "Alert when KMS latency p99 > 200ms"
+
+  verification:
+    - type: kms-test
+      command: |
+        aws kms encrypt --key-id ${KEY_ID} --plaintext "test" | aws kms decrypt --ciphertext-blob fileb:///dev/stdin --output text --query Plaintext
+      expected: "test"
+    - type: vault-status
+      command: |
+        vault status | grep Sealed
+      expected: "Sealed          false"
+    - type: metric
+      query: rate(aws_sdk_requests_total{service="kms",status="success"}[5m])
+      condition: "> 0"
+
+  references:
+    - url: https://docs.aws.amazon.com/kms/latest/developerguide/limits.html
+      title: "AWS KMS Quotas"
+    - url: https://docs.aws.amazon.com/kms/latest/developerguide/multi-region-keys-overview.html
+      title: "AWS KMS Multi-Region Keys"

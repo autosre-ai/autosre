@@ -1,0 +1,191 @@
+# Scenario: Access Review Overdue
+# Category: Compliance
+# Description: User access review not completed within required timeframe
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: access-review-overdue
+  labels:
+    category: security
+    subcategory: compliance
+    severity: medium
+    service: iam
+spec:
+  description: |
+    Required access reviews have not been completed within the compliance
+    timeframe. User permissions may be stale, excessive, or inappropriate.
+  
+  symptoms:
+    - type: compliance-alert
+      source: access-review-system
+      message: "Quarterly access review overdue by 15 days"
+    - type: audit-finding
+      source: compliance-audit
+      message: "SOC2 CC6.2: Access review requirement not met"
+    - type: dashboard
+      description: "Access review completion: 45% (target: 100%)"
+
+  complianceContext:
+    requirements:
+      - framework: "SOC2"
+        control: "CC6.2"
+        requirement: "Review access rights at least quarterly"
+      - framework: "ISO 27001"
+        control: "A.9.2.5"
+        requirement: "Review of user access rights"
+      - framework: "PCI-DSS"
+        requirement: "7.1.2"
+        description: "Restrict access based on need to know"
+      - framework: "HIPAA"
+        rule: "164.308(a)(4)(ii)(C)"
+        description: "Access authorization review"
+
+  scope:
+    pendingReviews:
+      - department: "Engineering"
+        users: 45
+        systems: ["AWS", "Kubernetes", "GitHub"]
+        reviewer: "engineering-manager"
+        dueDate: "2024-01-15"
+        status: "Overdue"
+      - department: "Finance"
+        users: 12
+        systems: ["NetSuite", "Expensify"]
+        reviewer: "finance-director"
+        dueDate: "2024-01-15"
+        status: "Overdue"
+
+  stalePermissions:
+    findings:
+      - type: "Departed employees"
+        count: 3
+        risk: "Former employees still have access"
+      - type: "Role changes"
+        count: 8
+        risk: "Users have permissions from old roles"
+      - type: "Excessive privileges"
+        count: 15
+        risk: "Users have more access than needed"
+
+  detection:
+    - method: review-status
+      command: |
+        # Check access review system
+        curl -s https://access-review.internal/api/reviews/status | jq '.overdue'
+    - method: last-login-analysis
+      command: |
+        # Find users who haven't logged in
+        aws iam generate-credential-report
+        aws iam get-credential-report --query 'Content' --output text | base64 -d | \
+          awk -F, '$5 != "N/A" && $5 < "2023-10-01" {print $1}'
+    - method: permission-drift
+      command: |
+        # Compare current permissions to baseline
+        kubectl auth can-i --list --as=user@example.com | diff baseline.txt -
+
+  remediation:
+    automated: partial
+    steps:
+      - action: identify-scope
+        description: "List all pending reviews"
+        command: |
+          curl -s https://access-review.internal/api/reviews/pending | \
+            jq '.reviews[] | {department, dueDate, status}'
+      - action: notify-reviewers
+        description: "Send escalation to reviewers and managers"
+        template: |
+          Subject: URGENT: Access Review Overdue
+          
+          The quarterly access review for ${DEPARTMENT} is overdue.
+          
+          Users to review: ${USER_COUNT}
+          Systems: ${SYSTEMS}
+          Due date: ${DUE_DATE} (${DAYS_OVERDUE} days overdue)
+          
+          Please complete the review immediately at: ${REVIEW_URL}
+      - action: auto-identify-issues
+        description: "Pre-populate obvious issues"
+        checks:
+          - "Flag departed employees (HR sync)"
+          - "Flag inactive accounts (no login >90 days)"
+          - "Flag excessive permissions (admin access)"
+      - action: execute-review
+        description: "Complete the access review"
+        process:
+          - "Review each user's access"
+          - "Confirm or revoke permissions"
+          - "Document justification"
+          - "Sign off on review"
+      - action: remediate-findings
+        description: "Remove inappropriate access"
+        command: |
+          # Disable departed employee accounts
+          kubectl delete rolebinding -l user=departed@example.com --all-namespaces
+
+  accessReviewBestPractices:
+    frequency:
+      privilegedAccess: "Monthly"
+      standardAccess: "Quarterly"
+      serviceAccounts: "Quarterly"
+    scope:
+      - "All user accounts"
+      - "Service accounts"
+      - "API keys"
+      - "SSH keys"
+      - "Group memberships"
+    documentation:
+      - "Reviewer name and date"
+      - "Decision (approve/revoke)"
+      - "Justification for access"
+      - "Changes made"
+
+  prevention:
+    - type: automation
+      description: "Automate access review workflow"
+      tools:
+        - "SailPoint"
+        - "Okta Access Reviews"
+        - "AWS IAM Access Analyzer"
+    - type: continuous-review
+      description: "Move toward continuous access review"
+      triggers:
+        - "Role change"
+        - "Department change"
+        - "Prolonged inactivity"
+        - "Sensitive access grant"
+    - type: reminders
+      description: "Proactive review reminders"
+      schedule:
+        - "2 weeks before due: Initial reminder"
+        - "1 week before due: Second reminder"
+        - "Due date: Escalation to management"
+    - type: metrics
+      description: "Track access review compliance"
+      kpis:
+        - "Review completion rate"
+        - "Average review completion time"
+        - "Access changes per review"
+
+  verification:
+    - type: review-status
+      command: |
+        curl -s https://access-review.internal/api/reviews/status | \
+          jq '.overdue | length'
+      expected: "0"
+    - type: completion-rate
+      command: |
+        curl -s https://access-review.internal/api/reviews/stats | \
+          jq '.completionRate'
+      expected: "100"
+    - type: stale-accounts
+      command: |
+        aws iam get-credential-report --query 'Content' --output text | base64 -d | \
+          awk -F, '$5 != "N/A" && $5 < "2023-10-01" {count++} END {print count}'
+      expected: "0"
+
+  references:
+    - url: https://www.isaca.org/resources/isaca-journal/issues/2017/volume-5/access-certification
+      title: "ISACA Access Certification"
+    - url: https://docs.aws.amazon.com/IAM/latest/UserGuide/access-analyzer-getting-started.html
+      title: "AWS IAM Access Analyzer"

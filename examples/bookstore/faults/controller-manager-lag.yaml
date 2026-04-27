@@ -1,0 +1,105 @@
+# Scenario: Controller Manager Lag - Slow Reconciliation
+# Category: Cluster Issues
+# Severity: High
+# Description: Controller manager falling behind on reconciliation loops
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: controller-manager-lag
+  labels:
+    category: cluster-issues
+    severity: high
+    component: kube-controller-manager
+spec:
+  description: |
+    Kubernetes controller manager is taking too long to reconcile resources.
+    Deployments, ReplicaSets, and other managed resources are not being
+    updated promptly after changes.
+    
+  symptoms:
+    - type: reconciliation-delay
+      controller: deployment
+      delay: ">5 minutes"
+    - type: replica-mismatch
+      description: "Desired replicas != actual replicas for extended time"
+    - type: event-lag
+      description: "Events appearing much later than actions"
+    - type: controller-queue
+      depth: 1000
+      
+  affectedResources:
+    - kind: Deployment
+      conditions:
+        - type: Progressing
+          status: Unknown
+    - kind: ReplicaSet
+      status: Stale
+    - kind: StatefulSet
+      description: "Scale operations delayed"
+        
+  metrics:
+    - name: workqueue_depth
+      labels:
+        name: deployment
+      value: 500
+    - name: workqueue_queue_duration_seconds
+      labels:
+        name: deployment
+      percentile: p99
+      value: 120
+    - name: controller_runtime_reconcile_total
+      labels:
+        result: error
+      rate: 50
+    - name: workqueue_retries_total
+      rate: 200
+      
+  logs:
+    - source: kube-controller-manager
+      level: error
+      patterns:
+        - "Failed to reconcile"
+        - "requeuing due to error"
+        - "rate limiter max delay"
+        - "observed a panic"
+    - source: kube-controller-manager
+      level: warning
+      patterns:
+        - "workqueue depth exceeds threshold"
+        - "slow reconciliation"
+        
+  rootCause:
+    component: kube-controller-manager
+    type: performance-degradation
+    details: |
+      Controller manager lag. Common causes:
+      - API server latency affecting watches
+      - Too many objects to reconcile
+      - Controller bug causing crash loops
+      - Insufficient controller manager resources
+      - External dependencies slow (cloud APIs)
+      - Webhook timeouts during validation
+      
+  remediation:
+    steps:
+      - action: check-controller-logs
+        command: "kubectl logs -n kube-system -l component=kube-controller-manager --tail=200"
+        description: "Review controller manager logs"
+      - action: check-workqueue-metrics
+        command: "kubectl get --raw /metrics | grep workqueue_depth"
+        description: "Check work queue depths"
+      - action: check-api-latency
+        command: "kubectl get --raw /metrics | grep apiserver_request_duration"
+        description: "Verify API server responsiveness"
+      - action: restart-controller
+        command: "kubectl delete pod -n kube-system -l component=kube-controller-manager"
+        description: "Restart controller manager"
+      - action: increase-resources
+        command: "kubectl set resources deployment kube-controller-manager --limits=cpu=2,memory=2Gi"
+        description: "Increase controller manager resources"
+    
+  detection:
+    promql: 'workqueue_depth{name="deployment"} > 100'
+    alertName: KubeControllerManagerWorkqueueDepth
+    severity: warning

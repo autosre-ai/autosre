@@ -1,122 +1,79 @@
-# OpenSRE Integration Test Report
+# Integration Test Status
 
-**Date:** 2026-04-22  
-**Status:** ✅ ALL TESTS PASSING  
-**Environment:** Real Prometheus cluster with bookstore demo app
+**Last Updated:** 2026-04-21 23:35 IST
+**Agent:** Integration Tester
+**Mission:** All integration tests passing with real Prometheus
 
-## Summary
+## Current Status: ✅ ALL TESTS PASSING!
 
-| Category | Passed | Skipped | Failed | Total |
-|----------|--------|---------|--------|-------|
-| Skills Integration | 12 | 2 | 0 | 14 |
-| Investigation Tests | 6 | 0 | 0 | 6 |
-| Unit Tests | 384 | 0 | 0 | 384 |
-| **Total** | **402** | **2** | **0** | **404** |
+### Infrastructure
+- ✅ Kind cluster running (opensre-demo)
+- ✅ Prometheus deployed and healthy
+- ✅ Port-forward active on localhost:9090
+- ✅ Bookstore app running with all services
+- ✅ ServiceMonitors collecting metrics
 
-## Test Breakdown
+### Test Results Summary
 
-### Skills Integration Tests ✅
+| Test Suite | Passed | Failed | Skipped | Status |
+|------------|--------|--------|---------|--------|
+| test_skills_integration.py | 12 | 0 | 2 | ✅ PASS |
+| test_investigations.py | 21 | 0 | 0 | ✅ PASS |
 
-All skills successfully connect to and query real services:
+### Fixes Applied This Session
+1. **HTTP skill test** - Changed `health_check` to `health_check_action` (API mismatch)
+2. **Pytest fixture scope** - Changed `scope="module"` to function scope for orchestrator
+   - Root cause: Module-scoped fixtures caused event loop to be reused/closed between tests
+   - Fix: Each test now gets fresh Orchestrator instance
 
-| Skill | Tests | Status |
-|-------|-------|--------|
-| Prometheus | 3 | ✅ Pass |
-| Kubernetes | 3 | ✅ Pass |
-| HTTP | 4 | ✅ Pass |
-| Datadog | 2 | ⏭️ Skipped (no credentials) |
-| Elasticsearch | 2 | ✅ Pass |
+### All Integration Tests Passing! 🎉
 
-### Investigation Tests ✅
+**test_skills_integration.py (12 passed, 2 skipped)**
+- ✅ TestPrometheusIntegration::test_query_basic
+- ✅ TestPrometheusIntegration::test_get_targets
+- ✅ TestPrometheusIntegration::test_get_alerts
+- ✅ TestKubernetesIntegration::test_get_pods
+- ✅ TestKubernetesIntegration::test_get_deployments
+- ✅ TestKubernetesIntegration::test_get_events
+- ✅ TestHTTPIntegration::test_get_request
+- ✅ TestHTTPIntegration::test_post_request
+- ✅ TestHTTPIntegration::test_health_check
+- ✅ TestHTTPIntegration::test_health_check_failure
+- ⏭️ TestDatadogIntegration (skipped - no credentials)
+- ✅ TestElasticsearchIntegration::test_cluster_health
+- ✅ TestElasticsearchIntegration::test_get_indices
 
-| Test | Duration | Status |
-|------|----------|--------|
-| Orchestrator Initializes | ~2s | ✅ Pass |
-| Investigate Returns Result | ~20s | ✅ Pass |
-| Investigate Timeout | ~6s | ✅ Pass |
-| Scenario Definitions Valid | <1s | ✅ Pass |
-| Deployable Scenarios Manifests | <1s | ✅ Pass |
-| Scenario Count | <1s | ✅ Pass |
-
-## Infrastructure Verified
-
-### Prometheus
-- **URL:** `http://localhost:9090` (via port-forward)
-- **Active Targets:** 34 targets across:
-  - bookstore services (catalog, checkout, frontend, payment)
-  - kube-state-metrics
-  - node-exporter
-  - prometheus operator
-  - alertmanager
-  - CoreDNS
-  - kubelet
-
-### Kubernetes
-- **Cluster:** opensre-demo (kind)
-- **Namespaces:** bookstore, monitoring, kube-system
-- **Pods in bookstore:** 12 running pods
-- **Deployments in bookstore:** 7 deployments
-
-### Demo Services
-- catalog-service: 2/2 replicas
-- checkout-service: 2/2 replicas
-- frontend: 2/2 replicas
-- payment-service: 2/2 replicas
-- redis: 1/1 replicas
-- catalog-service-memory-leak: 0/2 (scenario deployment)
-- payment-service-crashloop: 0/1 (scenario deployment)
-
-## Fixes Applied
-
-### 1. KubernetesSkill Initialization Bug
-**Issue:** `initialize()` method wasn't calling `_init_client()`, causing NoneType errors  
-**Fix:** Added `_init_client()` call to `initialize()` method  
-**File:** `skills/kubernetes/actions.py`
-
-### 2. Test Class Naming Warnings
-**Issue:** Classes starting with "Test" that weren't test classes caused pytest warnings  
-**Fix:** 
-- Renamed `TestScenario` → `Scenario` in scenarios.py
-- Added `__test__ = False` to `TestResult`, `TestSummary`, `TestRunner` classes
-
-## Commands to Reproduce
-
-```bash
-# Run all integration tests (fast - no full scenario runs)
-cd ~/clawd/projects/opensre
-source .venv/bin/activate
-
-# Skills tests only (~12s)
-pytest tests/integration/test_skills_integration.py -v
-
-# Investigation basic tests (~35s)
-pytest tests/integration/test_investigations.py::TestOrchestratorBasic \
-       tests/integration/test_investigations.py::TestScenarioDefinitions -v
-
-# Unit tests (~7s)
-pytest tests/unit/ -q
-
-# Full suite excluding heavy scenario tests (~40s)
-pytest tests/integration/test_skills_integration.py \
-       tests/integration/test_investigations.py::TestOrchestratorBasic \
-       tests/integration/test_investigations.py::TestScenarioDefinitions -v
-```
-
-## Notes
-
-- Heavy scenario tests (marked `@pytest.mark.integration`) are excluded from default runs as they require LLM calls for each scenario
-- Datadog tests skipped due to missing `DD_API_KEY` environment variable
-- Elasticsearch connects to localhost:9200 (may need to start ES container for full testing)
-- All Prometheus queries return live data from the kind cluster
-
-## Next Steps
-
-1. ✅ Unit tests passing (384)
-2. ✅ Skills integration tests passing (12)
-3. ✅ Basic orchestrator tests passing (6)
-4. 🔄 Full scenario integration tests (requires LLM budget)
-5. 🔄 Performance benchmarking
-6. 🔄 Chaos testing with real failure scenarios
+**test_investigations.py (21 passed)**
+- ✅ TestOrchestratorBasic (3 tests)
+- ✅ TestScenarioDefinitions (3 tests)
+- ✅ TestMemoryScenario
+- ✅ TestCrashloopScenario
+- ✅ TestCPUScenario
+- ✅ TestOOMScenario
+- ✅ TestHealthCheck
+- ✅ TestAllScenarios (10 parameterized tests)
 
 ---
-*Report generated by integration-tester-v2*
+
+## Test Run History
+
+### Run 1 (23:05 IST)
+- Skills integration: 12 passed, 2 skipped ✅
+- Investigation tests: 9 passed, 12 failed ❌
+- Root cause: Event loop closed between tests (module-scoped fixtures)
+
+### Run 2 (23:18 IST) - KILLED
+- Fixed fixture scopes
+- Was passing when process was killed
+
+### Run 3 (23:25 IST) - SUCCESS! ✅
+- Skills integration: 12 passed, 2 skipped ✅
+- Investigation tests: 21 passed ✅
+- Total time: ~5 minutes
+
+---
+
+## Next Steps
+1. ✅ Run all unit tests to confirm no regressions
+2. ⬜ Test actual fault scenarios with deployed problematic pods
+3. ⬜ Verify OpenSRE can query real Prometheus metrics in investigation flow

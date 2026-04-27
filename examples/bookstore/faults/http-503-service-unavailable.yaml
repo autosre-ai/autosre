@@ -1,0 +1,118 @@
+# HTTP 503 Service Unavailable
+# Simulates service overload and shedding requests
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout-service-http-503
+  namespace: bookstore
+  labels:
+    app: checkout-service
+    tier: api
+    fault: http-503-service-unavailable
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: checkout-service
+  template:
+    metadata:
+      labels:
+        app: checkout-service
+        tier: api
+        fault: http-503-service-unavailable
+    spec:
+      containers:
+      - name: checkout
+        image: python:3.11-alpine
+        env:
+        - name: FAULT_MODE
+          value: "http-503-service-unavailable"
+        - name: OVERLOAD_RATE
+          value: "0.8"
+        - name: RETRY_AFTER_SECONDS
+          value: "30"
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+          import random
+          import os
+          
+          OVERLOAD_RATE = float(os.environ.get('OVERLOAD_RATE', 0.8))
+          RETRY_AFTER = int(os.environ.get('RETRY_AFTER_SECONDS', 30))
+          
+          request_count = 0
+          
+          class Handler(BaseHTTPRequestHandler):
+              global request_count
+              
+              def do_GET(self):
+                  global request_count
+                  request_count += 1
+                  
+                  if self.path in ['/health', '/ready']:
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                      return
+                  
+                  if random.random() < OVERLOAD_RATE:
+                      print(f"[http-503] Service overloaded - shedding request (queue_depth=847)")
+                      
+                      self.send_response(503)
+                      self.send_header('Content-Type', 'application/json')
+                      self.send_header('Retry-After', str(RETRY_AFTER))
+                      self.send_header('X-Load-Shed', 'true')
+                      self.end_headers()
+                      error = {
+                          "error": "ServiceUnavailable",
+                          "message": "Service temporarily unavailable due to high load",
+                          "details": {
+                              "reason": "load_shedding",
+                              "queue_depth": random.randint(500, 1000),
+                              "current_rps": random.randint(5000, 10000),
+                              "max_rps": 3000,
+                              "healthy_instances": 1,
+                              "desired_instances": 5
+                          },
+                          "retry_after": RETRY_AFTER,
+                          "suggestion": "Scale up replicas or enable autoscaling"
+                      }
+                      self.wfile.write(json.dumps(error).encode())
+                  else:
+                      self.send_response(200)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      self.wfile.write(json.dumps({"status": "ok"}).encode())
+                      
+              def do_POST(self):
+                  return self.do_GET()
+                  
+              def log_message(self, format, *args):
+                  print(f"[checkout-503] {args[0]}")
+          
+          print(f"Checkout service (HTTP 503) starting - overload_rate={OVERLOAD_RATE}")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15

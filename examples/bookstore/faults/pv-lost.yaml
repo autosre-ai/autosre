@@ -1,0 +1,104 @@
+# Scenario: PV Lost - Persistent Volume Gone
+# Category: Storage Issues
+# Severity: Critical
+# Description: Persistent Volume has been deleted or became unavailable
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: pv-lost
+  labels:
+    category: storage-issues
+    severity: critical
+    component: persistent-storage
+spec:
+  description: |
+    Persistent Volume has been lost - either deleted, or the underlying
+    storage has become unavailable. Pods using this PV cannot start or
+    will experience data loss.
+    
+  symptoms:
+    - type: pv-status
+      phase: Failed
+      reason: "VolumeBinding error"
+    - type: pvc-status
+      phase: Lost
+      message: "bound claim has lost its bound PV"
+    - type: pod-status
+      status: Pending
+      reason: "UnboundVolume"
+      message: "persistentvolumeclaim not bound"
+      
+  affectedResources:
+    - kind: PersistentVolume
+      name: pv-data-001
+      status: Failed
+    - kind: PersistentVolumeClaim
+      name: data-mysql-0
+      status: Lost
+    - kind: Pod
+      name: mysql-0
+      status: Pending
+        
+  metrics:
+    - name: kube_persistentvolume_status_phase
+      labels:
+        phase: Failed
+      value: 1
+    - name: kube_persistentvolumeclaim_status_phase
+      labels:
+        phase: Lost
+      value: 1
+    - name: kubelet_volume_stats_available_bytes
+      value: null  # No data
+      
+  logs:
+    - source: kube-controller-manager
+      level: error
+      patterns:
+        - "persistentvolume not found"
+        - "volume is already exclusively attached"
+        - "PV has been deleted"
+    - source: kubelet
+      level: error
+      patterns:
+        - "failed to attach volume"
+        - "volume not found"
+        
+  rootCause:
+    component: persistent-volume
+    type: data-loss
+    details: |
+      PV lost. Common causes:
+      - PV accidentally deleted with wrong reclaim policy
+      - Cloud disk deleted outside of Kubernetes
+      - Storage backend failure (disk corruption)
+      - Cross-AZ volume attachment after node failure
+      - Snapshot restore pointing to deleted disk
+      - Terraform/IaC drift deleting resources
+      
+  remediation:
+    steps:
+      - action: check-pv-status
+        command: "kubectl get pv pv-data-001 -o yaml"
+        description: "Check PV status and details"
+      - action: check-pvc-binding
+        command: "kubectl get pvc data-mysql-0 -o yaml"
+        description: "Verify PVC binding status"
+      - action: check-cloud-disk
+        command: "gcloud compute disks describe pv-data-001-disk"
+        description: "Verify underlying disk exists"
+      - action: restore-from-snapshot
+        command: "gcloud compute disks create pv-data-001-disk --source-snapshot=pv-data-001-snap"
+        description: "Restore disk from backup snapshot"
+      - action: recreate-pv
+        command: "kubectl apply -f pv-data-001.yaml"
+        description: "Recreate PV pointing to restored disk"
+      - action: rebind-pvc
+        command: "kubectl patch pvc data-mysql-0 -p '{\"spec\":{\"volumeName\":\"pv-data-001\"}}'"
+        description: "Rebind PVC to new PV"
+    
+  detection:
+    promql: 'kube_persistentvolumeclaim_status_phase{phase="Lost"} > 0'
+    alertName: PersistentVolumeLost
+    severity: critical

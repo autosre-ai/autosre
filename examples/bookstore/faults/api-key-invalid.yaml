@@ -1,0 +1,138 @@
+# Scenario: API Key Invalid
+# Category: Authentication/Authorization
+# Description: API key authentication failing due to invalid credentials
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: api-key-invalid
+  labels:
+    category: security
+    subcategory: authentication
+    severity: high
+    service: bookstore-api
+spec:
+  description: |
+    API key authentication is failing. The payment gateway integration is
+    returning 401 errors because the API key has been invalidated, rotated,
+    or is incorrectly configured.
+  
+  symptoms:
+    - type: error
+      source: payment-gateway
+      message: "Invalid API key provided"
+    - type: log
+      source: bookstore-api
+      pattern: "Payment API returned 401: {\"error\": \"invalid_api_key\", \"message\": \"The API key is not valid\"}"
+    - type: metric
+      name: external_api_errors_total
+      labels:
+        service: "payment-gateway"
+        status_code: "401"
+      condition: "increase > 10 in 5m"
+    - type: user-impact
+      description: "All payment processing failing"
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "Cannot process payments"
+    - name: checkout-service
+      namespace: bookstore
+      impact: "Checkout flow blocked"
+
+  rootCause:
+    type: credential-issue
+    component: api-key
+    possibleCauses:
+      - "API key was rotated by provider without updating secret"
+      - "Secret was overwritten with incorrect value"
+      - "API key revoked due to suspicious activity"
+      - "Billing issue caused key deactivation"
+      - "Environment mismatch (using dev key in prod)"
+
+  detection:
+    - method: logs
+      query: |
+        service:bookstore-api AND "401" AND "api_key" OR "invalid_api_key"
+    - method: prometheus
+      query: |
+        sum(rate(external_api_errors_total{status_code="401",service="payment-gateway"}[5m])) > 0
+    - method: synthetic-check
+      description: "API key validation endpoint"
+      command: |
+        curl -s -H "X-API-Key: ${API_KEY}" https://api.stripe.com/v1/balance
+
+  remediation:
+    automated: false
+    requiresApproval: true
+    steps:
+      - action: verify-secret
+        description: "Check if secret exists and has expected format"
+        command: |
+          kubectl get secret payment-gateway-credentials -n bookstore -o jsonpath='{.data.api-key}' | base64 -d | head -c 10
+      - action: check-provider-dashboard
+        description: "Log into payment provider dashboard and verify key status"
+        manual: true
+        checklist:
+          - "Key exists and is active"
+          - "Key has correct permissions"
+          - "No billing holds on account"
+          - "Key is for correct environment (prod vs test)"
+      - action: rotate-key
+        description: "Generate new API key from provider"
+        manual: true
+      - action: update-secret
+        command: |
+          kubectl create secret generic payment-gateway-credentials \
+            --from-literal=api-key="${NEW_API_KEY}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+      - action: restart-pods
+        command: |
+          kubectl rollout restart deployment/bookstore-api -n bookstore
+      - action: verify-integration
+        command: |
+          curl -X POST http://localhost:8080/api/payments/test \
+            -H "Content-Type: application/json" \
+            -d '{"amount": 100, "currency": "usd", "test": true}'
+
+  prevention:
+    - type: monitoring
+      description: "Alert on API authentication failures"
+      rule: |
+        rate(external_api_errors_total{status_code="401"}[5m]) > 0
+    - type: secret-rotation
+      description: "Implement automated key rotation with External Secrets"
+      config: |
+        apiVersion: external-secrets.io/v1beta1
+        kind: ExternalSecret
+        spec:
+          refreshInterval: 1h
+          target:
+            name: payment-gateway-credentials
+    - type: validation
+      description: "Startup validation of API credentials"
+      implementation: |
+        // On startup, validate API key
+        if (!await validateApiKey(config.paymentApiKey)) {
+          throw new Error("Invalid API key - refusing to start");
+        }
+
+  verification:
+    - type: api-call
+      endpoint: /api/payments/test
+      method: POST
+      body:
+        amount: 100
+        currency: "usd"
+        test: true
+      expectedStatus: 200
+    - type: metric
+      query: rate(external_api_errors_total{status_code="401",service="payment-gateway"}[5m])
+      condition: "== 0"
+
+  references:
+    - url: https://stripe.com/docs/api/authentication
+      title: "Stripe API Authentication"
+    - url: https://external-secrets.io/
+      title: "External Secrets Operator"

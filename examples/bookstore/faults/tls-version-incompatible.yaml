@@ -1,0 +1,95 @@
+# Scenario: TLS Version Incompatible - TLS 1.0 Rejected
+# Category: Networking Infrastructure
+# Severity: Medium
+# Description: TLS version mismatch causing connection failures
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: tls-version-incompatible
+  labels:
+    category: networking-infrastructure
+    severity: medium
+    component: tls
+spec:
+  description: |
+    TLS handshake failing due to version incompatibility. Client or server
+    only supports deprecated TLS versions that the other side rejects.
+    
+  symptoms:
+    - type: tls-error
+      error: "SSL: UNSUPPORTED_PROTOCOL"
+    - type: connection-failure
+      description: "TLS handshake fails immediately"
+    - type: api-errors
+      description: "External API calls failing with SSL errors"
+      
+  affectedResources:
+    - kind: Ingress
+      description: "TLS termination rejecting old clients"
+    - kind: Pod
+      description: "Application cannot connect to external service"
+    - kind: Secret
+      type: kubernetes.io/tls
+        
+  metrics:
+    - name: nginx_ingress_controller_ssl_handshake_errors
+      rate: 100
+    - name: nginx_ingress_controller_requests
+      labels:
+        status: "495"  # SSL Certificate Error
+      rate: 50
+    - name: external_api_ssl_errors_total
+      rate: 75
+      
+  logs:
+    - source: nginx
+      level: error
+      patterns:
+        - "SSL_do_handshake() failed"
+        - "unsupported protocol"
+        - "no shared cipher"
+    - source: application
+      level: error
+      patterns:
+        - "UNSUPPORTED_PROTOCOL"
+        - "SSL: SSLV3_ALERT_HANDSHAKE_FAILURE"
+        - "tlsv1 alert protocol version"
+        
+  rootCause:
+    component: tls
+    type: version-mismatch
+    details: |
+      TLS version incompatibility. Common causes:
+      - Server only accepts TLS 1.2+ but client uses TLS 1.0
+      - Legacy client cannot upgrade TLS version
+      - Compliance requirement disabled old TLS versions
+      - OpenSSL/library version differences
+      - Cipher suite mismatch
+      - Security policy update disabled protocols
+      
+  remediation:
+    steps:
+      - action: check-tls-config
+        command: "kubectl get configmap nginx-configuration -n ingress-nginx -o yaml | grep ssl"
+        description: "Check ingress TLS configuration"
+      - action: test-tls-versions
+        command: "openssl s_client -connect my-service:443 -tls1_2"
+        description: "Test TLS version support"
+      - action: check-supported-versions
+        command: "nmap --script ssl-enum-ciphers -p 443 my-service"
+        description: "Enumerate supported TLS versions"
+      - action: allow-older-tls
+        command: "kubectl patch configmap nginx-configuration -n ingress-nginx -p '{\"data\":{\"ssl-protocols\":\"TLSv1 TLSv1.1 TLSv1.2 TLSv1.3\"}}'"
+        description: "Enable older TLS versions (not recommended)"
+      - action: upgrade-client
+        command: "# Update client library or application"
+        description: "Upgrade client to support modern TLS"
+      - action: use-tls-termination
+        command: "kubectl create secret tls my-tls --cert=tls.crt --key=tls.key"
+        description: "Configure TLS termination with proper certificates"
+    
+  detection:
+    promql: 'rate(nginx_ingress_controller_ssl_handshake_errors[5m]) > 10'
+    alertName: TLSHandshakeFailures
+    severity: warning

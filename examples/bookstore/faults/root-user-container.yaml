@@ -1,0 +1,183 @@
+# Scenario: Container Running as Root
+# Category: Container Security
+# Description: Container running as root user
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: root-user-container
+  labels:
+    category: security
+    subcategory: container-security
+    severity: high
+    service: bookstore-api
+spec:
+  description: |
+    A container is running as the root user (UID 0). This increases the risk
+    of container escape and privilege escalation attacks.
+  
+  symptoms:
+    - type: security-alert
+      source: falco
+      message: "Container started with root user"
+    - type: compliance-alert
+      source: kube-bench
+      message: "5.2.6 Minimize the admission of root containers"
+    - type: policy-violation
+      source: opa-gatekeeper
+      message: "Container must not run as root"
+
+  securityRisk:
+    severity: high
+    description: |
+      Root containers can:
+      - Exploit kernel vulnerabilities more easily
+      - Access sensitive files in mounted volumes
+      - Modify container filesystem without restriction
+      - If combined with other misconfigs, escape container
+    complianceViolations:
+      - "CIS Kubernetes Benchmark 5.2.6"
+      - "PCI DSS Requirement 7"
+      - "NIST 800-190 Section 4.4"
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "Elevated risk of container escape"
+
+  detection:
+    - method: kubectl
+      command: |
+        kubectl get pods -A -o json | jq -r '
+          .items[] | 
+          select(.spec.containers[].securityContext.runAsNonRoot != true) |
+          select(.spec.securityContext.runAsNonRoot != true) |
+          "\(.metadata.namespace)/\(.metadata.name)"'
+    - method: runtime-check
+      command: |
+        kubectl exec -n bookstore deploy/bookstore-api -- id
+      expected: "Should show non-root UID"
+    - method: trivy
+      command: |
+        trivy image --severity HIGH,CRITICAL bookstore-api:latest | grep -i "running as root"
+
+  remediation:
+    automated: true
+    steps:
+      - action: check-image
+        description: "Verify image supports non-root"
+        command: |
+          # Check Dockerfile or image config for USER directive
+          docker inspect bookstore-api:latest | jq '.[0].Config.User'
+      - action: update-deployment
+        description: "Add runAsNonRoot security context"
+        command: |
+          kubectl patch deployment bookstore-api -n bookstore --type='json' -p='[
+            {
+              "op": "add",
+              "path": "/spec/template/spec/securityContext",
+              "value": {
+                "runAsNonRoot": true,
+                "runAsUser": 1000,
+                "runAsGroup": 1000,
+                "fsGroup": 1000
+              }
+            },
+            {
+              "op": "add",
+              "path": "/spec/template/spec/containers/0/securityContext",
+              "value": {
+                "allowPrivilegeEscalation": false,
+                "readOnlyRootFilesystem": true
+              }
+            }
+          ]'
+      - action: fix-dockerfile
+        description: "Update Dockerfile to use non-root user"
+        dockerfile: |
+          FROM node:20-alpine
+          
+          # Create non-root user
+          RUN addgroup -g 1000 appgroup && \
+              adduser -u 1000 -G appgroup -D appuser
+          
+          WORKDIR /app
+          COPY --chown=appuser:appgroup . .
+          
+          USER appuser
+          
+          CMD ["node", "server.js"]
+      - action: handle-volume-permissions
+        description: "Fix volume permissions for non-root"
+        initContainer: |
+          initContainers:
+          - name: fix-permissions
+            image: busybox
+            command: ['sh', '-c', 'chown -R 1000:1000 /data']
+            volumeMounts:
+            - name: data
+              mountPath: /data
+            securityContext:
+              runAsUser: 0
+
+  commonIssues:
+    - issue: "Application writes to container filesystem"
+      solution: |
+        Use emptyDir volumes for writable paths:
+        volumes:
+        - name: tmp
+          emptyDir: {}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+    - issue: "Application binds to port < 1024"
+      solution: |
+        Change to port > 1024 and update service targetPort
+    - issue: "Application needs to modify /etc/passwd"
+      solution: |
+        Use NSS_WRAPPER or copy passwd to writable location
+
+  prevention:
+    - type: pod-security-standards
+      description: "Enforce restricted PSS"
+      command: |
+        kubectl label namespace bookstore \
+          pod-security.kubernetes.io/enforce=restricted
+    - type: opa-policy
+      constraint: |
+        apiVersion: constraints.gatekeeper.sh/v1beta1
+        kind: K8sPSPAllowedUsers
+        metadata:
+          name: require-non-root
+        spec:
+          match:
+            kinds:
+            - apiGroups: [""]
+              kinds: ["Pod"]
+          parameters:
+            runAsUser:
+              rule: MustRunAsNonRoot
+    - type: image-scanning
+      description: "Scan images for root user"
+      command: |
+        trivy image --security-checks config ${IMAGE}
+
+  verification:
+    - type: runtime-uid
+      command: |
+        kubectl exec -n bookstore deploy/bookstore-api -- id -u
+      expected: "Non-zero UID"
+    - type: security-context
+      command: |
+        kubectl get pod -n bookstore -l app=bookstore-api -o jsonpath='{.items[0].spec.securityContext.runAsNonRoot}'
+      expected: "true"
+    - type: policy-test
+      command: |
+        kubectl apply --dry-run=server -f root-pod.yaml
+      expected: "Rejected by policy"
+
+  references:
+    - url: https://kubernetes.io/docs/concepts/security/pod-security-standards/
+      title: "Pod Security Standards"
+    - url: https://snyk.io/blog/10-docker-image-security-best-practices/
+      title: "Docker Security Best Practices"

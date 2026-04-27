@@ -1,0 +1,89 @@
+# Scenario: RBAC Permission Denied
+# Category: Authentication/Authorization
+# Description: Service account lacks required permissions to access a resource
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: rbac-permission-denied
+  labels:
+    category: security
+    subcategory: authentication
+    severity: high
+    service: bookstore-api
+spec:
+  description: |
+    The bookstore-api service account attempted to access the inventory-service
+    but lacks the required RBAC permissions. The ClusterRole binding is missing
+    or the Role doesn't include the necessary verbs.
+  
+  symptoms:
+    - type: error
+      source: kubernetes-api
+      message: "User \"system:serviceaccount:bookstore:api-service\" cannot get resource \"pods\" in API group \"\" in namespace \"inventory\""
+    - type: log
+      source: bookstore-api
+      pattern: "403 Forbidden: access denied"
+    - type: metric
+      name: http_requests_total
+      labels:
+        status_code: "403"
+        endpoint: "/api/inventory"
+      condition: "rate > 10/min"
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+    - name: inventory-service
+      namespace: inventory
+
+  rootCause:
+    type: misconfiguration
+    component: rbac
+    details: |
+      The RoleBinding for bookstore-api service account was not created in the
+      inventory namespace, preventing cross-namespace access.
+
+  detection:
+    - method: audit-log
+      query: |
+        verb:get AND objectRef.resource:pods AND 
+        user.username:"system:serviceaccount:bookstore:api-service" AND
+        responseStatus.code:403
+    - method: prometheus
+      query: |
+        sum(rate(apiserver_request_total{code="403",resource="pods"}[5m])) by (user) > 0
+
+  remediation:
+    automated: true
+    steps:
+      - action: create-rolebinding
+        manifest: |
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: RoleBinding
+          metadata:
+            name: bookstore-api-inventory-reader
+            namespace: inventory
+          subjects:
+          - kind: ServiceAccount
+            name: api-service
+            namespace: bookstore
+          roleRef:
+            kind: Role
+            name: inventory-reader
+            apiGroup: rbac.authorization.k8s.io
+      - action: verify
+        command: kubectl auth can-i get pods --as=system:serviceaccount:bookstore:api-service -n inventory
+        expected: "yes"
+
+  verification:
+    - type: api-call
+      endpoint: /api/inventory
+      expectedStatus: 200
+    - type: metric
+      query: rate(http_requests_total{status_code="403",endpoint="/api/inventory"}[1m])
+      condition: "== 0"
+
+  references:
+    - url: https://kubernetes.io/docs/reference/access-authn-authz/rbac/
+      title: "Kubernetes RBAC Documentation"

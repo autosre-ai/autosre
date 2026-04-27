@@ -1,0 +1,165 @@
+# Scenario: Network Policy Too Restrictive
+# Category: Network Security
+# Description: Network policy blocking legitimate traffic between services
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: network-policy-too-restrictive
+  labels:
+    category: security
+    subcategory: network-security
+    severity: high
+    service: bookstore-api
+spec:
+  description: |
+    A NetworkPolicy is blocking legitimate traffic between services. The
+    policy rules are too restrictive or missing required ingress/egress rules.
+  
+  symptoms:
+    - type: error
+      source: bookstore-api
+      message: "Connection refused to inventory-service:8080"
+    - type: log
+      source: calico
+      pattern: "DROP: src=bookstore-api dst=inventory-service proto=tcp dport=8080"
+    - type: metric
+      name: network_policy_dropped_packets_total
+      condition: "rate > 100/min"
+    - type: trace
+      pattern: "Connection timed out after 30s"
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "Cannot communicate with inventory service"
+    - name: inventory-service
+      namespace: inventory
+      impact: "Not receiving traffic from bookstore"
+
+  rootCause:
+    type: policy-misconfiguration
+    component: network-policy
+    possibleCauses:
+      - "New service added without updating policy"
+      - "Policy namespace selector too narrow"
+      - "Port number mismatch in policy"
+      - "Protocol mismatch (TCP vs UDP)"
+      - "Label changes broke selector match"
+      - "Deny-all policy without proper exceptions"
+
+  detection:
+    - method: connectivity-test
+      command: |
+        kubectl exec -n bookstore deploy/bookstore-api -- \
+          curl -v -m 5 http://inventory-service.inventory:8080/health
+    - method: network-policy-review
+      command: |
+        kubectl get networkpolicies -n inventory -o yaml
+    - method: cni-logs
+      command: |
+        # Calico
+        kubectl logs -n kube-system -l k8s-app=calico-node --tail=100 | grep DROP
+        
+        # Cilium
+        kubectl exec -n kube-system cilium-xxxx -- cilium monitor --type drop
+    - method: prometheus
+      query: |
+        sum(rate(network_policy_dropped_packets_total[5m])) by (src_namespace, dst_namespace) > 0
+
+  remediation:
+    automated: true
+    steps:
+      - action: identify-policy
+        description: "Find which policy is blocking"
+        command: |
+          kubectl get networkpolicies --all-namespaces -o wide
+      - action: test-pod-labels
+        description: "Verify pod labels match policy selectors"
+        command: |
+          # Check source pod labels
+          kubectl get pods -n bookstore -l app=bookstore-api --show-labels
+          
+          # Check policy selectors
+          kubectl get networkpolicy -n inventory -o jsonpath='{range .items[*]}{.metadata.name}: {.spec.ingress[*].from[*]}{"\n"}{end}'
+      - action: analyze-traffic-flow
+        description: "Trace the expected traffic path"
+        command: |
+          # Cilium
+          kubectl exec -n kube-system cilium-xxxx -- \
+            cilium policy trace --src-k8s-pod bookstore/bookstore-api-xxx --dst-k8s-pod inventory/inventory-service-xxx
+      - action: fix-policy
+        description: "Update network policy to allow traffic"
+        command: |
+          kubectl apply -f - <<EOF
+          apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          metadata:
+            name: allow-bookstore-to-inventory
+            namespace: inventory
+          spec:
+            podSelector:
+              matchLabels:
+                app: inventory-service
+            ingress:
+            - from:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: bookstore
+                podSelector:
+                  matchLabels:
+                    app: bookstore-api
+              ports:
+              - protocol: TCP
+                port: 8080
+          EOF
+      - action: verify-connectivity
+        command: |
+          kubectl exec -n bookstore deploy/bookstore-api -- \
+            curl -sf http://inventory-service.inventory:8080/health
+
+  prevention:
+    - type: policy-testing
+      description: "Test network policies in CI"
+      tools:
+        - "Network Policy Editor (cilium.io)"
+        - "kubectl-np-viewer"
+      implementation: |
+        # Use network policy simulator
+        kubectl np-viewer -n inventory
+    - type: default-allow-with-audit
+      description: "Start with allow + logging, then restrict"
+      process: |
+        1. Deploy with audit-only mode
+        2. Analyze traffic patterns
+        3. Create policies based on actual traffic
+        4. Enable enforcement
+    - type: documentation
+      description: "Document inter-service communication requirements"
+      format: |
+        Service A -> Service B: TCP/8080 (REST API)
+        Service A -> Service C: TCP/5432 (PostgreSQL)
+    - type: testing
+      description: "Include connectivity tests in deployment"
+      implementation: |
+        Add readiness probe that tests downstream connectivity
+
+  verification:
+    - type: connectivity
+      command: |
+        kubectl exec -n bookstore deploy/bookstore-api -- \
+          curl -sf -o /dev/null -w "%{http_code}" http://inventory-service.inventory:8080/health
+      expected: "200"
+    - type: cni-logs
+      command: |
+        kubectl logs -n kube-system -l k8s-app=calico-node --tail=50 | grep -c "DROP.*inventory-service"
+      expected: "0"
+    - type: api-test
+      endpoint: /api/inventory
+      expectedStatus: 200
+
+  references:
+    - url: https://kubernetes.io/docs/concepts/services-networking/network-policies/
+      title: "Kubernetes Network Policies"
+    - url: https://editor.cilium.io/
+      title: "Cilium Network Policy Editor"

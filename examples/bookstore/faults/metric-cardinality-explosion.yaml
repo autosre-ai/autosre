@@ -1,0 +1,102 @@
+# Scenario: Metric Cardinality Explosion - Too Many Series
+# Category: Observability Infrastructure
+# Severity: High
+# Description: Metric cardinality explosion causing Prometheus performance issues
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: metric-cardinality-explosion
+  labels:
+    category: observability-infrastructure
+    severity: high
+    component: prometheus
+spec:
+  description: |
+    Prometheus has too many time series due to high cardinality labels.
+    This causes memory exhaustion, slow queries, and potential crashes.
+    
+  symptoms:
+    - type: prometheus-performance
+      description: "Queries timing out"
+    - type: memory-usage
+      description: "Prometheus memory spiking"
+    - type: series-count
+      description: "Millions of active series"
+      
+  affectedResources:
+    - kind: StatefulSet
+      name: prometheus
+      namespace: monitoring
+      status: "High memory usage"
+    - kind: ServiceMonitor
+      description: "Source of high cardinality metrics"
+        
+  metrics:
+    - name: prometheus_tsdb_head_series
+      value: 5000000  # 5 million series
+    - name: prometheus_tsdb_head_series_created_total
+      rate: 10000  # 10k new series per second
+    - name: process_resident_memory_bytes
+      labels:
+        job: prometheus
+      value: 16000000000  # 16GB
+    - name: prometheus_engine_query_duration_seconds
+      percentile: p99
+      value: 30  # 30 second queries
+      
+  logs:
+    - source: prometheus
+      level: warning
+      patterns:
+        - "High cardinality metric"
+        - "sample limit exceeded"
+        - "storage: slow compaction"
+    - source: prometheus
+      level: error
+      patterns:
+        - "out of memory"
+        - "query took too long"
+        
+  rootCause:
+    component: prometheus
+    type: cardinality-explosion
+    details: |
+      High cardinality. Common causes:
+      - User IDs in metric labels
+      - Request IDs/UUIDs in labels
+      - Unbounded label values
+      - Label with high entropy
+      - Istio request_id label
+      - Temporary pod names in labels
+      
+  remediation:
+    steps:
+      - action: find-high-cardinality
+        command: "curl -s http://prometheus:9090/api/v1/status/tsdb | jq '.data.seriesCountByMetricName | to_entries | sort_by(-.value)[:20]'"
+        description: "Find metrics with most series"
+      - action: analyze-labels
+        command: "curl -s 'http://prometheus:9090/api/v1/label/__name__/values' | jq '.data | length'"
+        description: "Count total metric names"
+      - action: check-label-values
+        command: "curl -s 'http://prometheus:9090/api/v1/series?match[]=high_cardinality_metric' | jq '.data | length'"
+        description: "Count series for specific metric"
+      - action: add-relabel-drop
+        command: |
+          # Add to prometheus scrape config:
+          # metric_relabel_configs:
+          # - source_labels: [__name__]
+          #   regex: 'problematic_metric.*'
+          #   action: drop
+        description: "Drop high cardinality metrics"
+      - action: remove-label
+        command: |
+          # metric_relabel_configs:
+          # - regex: 'request_id'
+          #   action: labeldrop
+        description: "Drop problematic labels"
+    
+  detection:
+    promql: 'prometheus_tsdb_head_series > 1000000'
+    alertName: PrometheusHighCardinality
+    severity: warning

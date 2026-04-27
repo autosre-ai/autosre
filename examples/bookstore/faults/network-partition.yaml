@@ -1,0 +1,104 @@
+# Scenario: Network Partition - Split Brain
+# Category: Networking Infrastructure
+# Severity: Critical
+# Description: Network partition causing cluster split brain situation
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: network-partition
+  labels:
+    category: networking-infrastructure
+    severity: critical
+    component: network
+spec:
+  description: |
+    Network partition has caused a split brain situation where parts of
+    the cluster cannot communicate. This can lead to data inconsistency
+    and service disruption.
+    
+  symptoms:
+    - type: node-connectivity
+      description: "Some nodes cannot reach others"
+    - type: pod-communication
+      description: "Pods fail to reach pods on certain nodes"
+    - type: etcd-status
+      description: "etcd showing member connectivity issues"
+      
+  affectedResources:
+    - kind: Node
+      selector:
+        zone: us-east1-a
+      status: "Cannot reach us-east1-b"
+    - kind: Pod
+      description: "Cross-zone communication failing"
+    - kind: StatefulSet
+      name: etcd
+      status: "Quorum at risk"
+        
+  metrics:
+    - name: etcd_network_peer_round_trip_time_seconds
+      labels:
+        To: etcd-1
+      value: null  # Timeout
+    - name: coredns_dns_request_count_total
+      labels:
+        rcode: SERVFAIL
+      rate: 500
+    - name: kube_pod_status_phase
+      labels:
+        phase: Unknown
+      value: 15
+      
+  logs:
+    - source: kubelet
+      level: error
+      patterns:
+        - "network is unreachable"
+        - "no route to host"
+        - "connection timed out"
+    - source: etcd
+      level: error
+      patterns:
+        - "peer is unavailable"
+        - "lost connection to peer"
+        - "failed to reach member"
+        
+  rootCause:
+    component: network
+    type: partition
+    details: |
+      Network partition. Common causes:
+      - Cloud provider network issue
+      - VPC peering misconfigured
+      - Security group/firewall rule change
+      - BGP routing issue
+      - Switch/router failure
+      - Network ACL blocking traffic
+      - CNI plugin failure
+      
+  remediation:
+    steps:
+      - action: identify-partition
+        command: "for node in $(kubectl get nodes -o name); do kubectl exec -it test-pod -- ping -c 1 $node; done"
+        description: "Test connectivity between nodes"
+      - action: check-cloud-network
+        command: "gcloud compute networks describe my-vpc"
+        description: "Check VPC configuration"
+      - action: check-firewall-rules
+        command: "gcloud compute firewall-rules list"
+        description: "Review firewall rules for changes"
+      - action: check-cni
+        command: "kubectl get pods -n kube-system -l k8s-app=calico-node -o wide"
+        description: "Verify CNI pods on all nodes"
+      - action: restart-cni
+        command: "kubectl rollout restart daemonset -n kube-system calico-node"
+        description: "Restart CNI on all nodes"
+      - action: contact-cloud-support
+        command: "# Open support ticket with cloud provider"
+        description: "Escalate if cloud network issue"
+    
+  detection:
+    promql: 'etcd_network_peer_round_trip_time_seconds > 1 or absent(etcd_network_peer_round_trip_time_seconds)'
+    alertName: NetworkPartitionDetected
+    severity: critical

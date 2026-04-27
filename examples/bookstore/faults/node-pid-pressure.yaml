@@ -1,0 +1,102 @@
+# Scenario: Node PID Pressure - Too Many Processes
+# Category: Node Issues
+# Severity: High
+# Description: Node running low on available process IDs
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: node-pid-pressure
+  labels:
+    category: node-issues
+    severity: high
+    component: kubelet
+spec:
+  description: |
+    Node enters PIDPressure condition when the number of running processes
+    approaches the system limit. New pods and processes cannot be created.
+    
+  symptoms:
+    - type: node-condition
+      condition: PIDPressure
+      status: "True"
+      reason: "KubeletHasPIDPressure"
+      message: "kubelet has PID pressure"
+    - type: event
+      reason: FailedCreatePodSandBox
+      message: "failed to create pod sandbox: resource temporarily unavailable"
+    - type: pod-status
+      status: Pending
+      reason: ContainerCreating
+      message: "cannot fork: Resource temporarily unavailable"
+      
+  affectedResources:
+    - kind: Node
+      name: worker-node-5
+    - kind: Pod
+      selector:
+        status.phase: Pending
+        spec.nodeName: worker-node-5
+        
+  metrics:
+    - name: kube_node_status_condition
+      labels:
+        condition: PIDPressure
+        status: "true"
+      value: 1
+    - name: node_processes_running
+      value: 28500  # Very high
+    - name: node_processes_max_processes
+      value: 32768
+    - name: container_processes
+      labels:
+        namespace: default
+        pod: runaway-app
+      value: 15000
+      
+  logs:
+    - source: kubelet
+      level: warning
+      patterns:
+        - "PID pressure condition detected"
+        - "eviction manager: attempting to reclaim PIDs"
+        - "PID usage exceeds threshold"
+    - source: kernel
+      level: error
+      patterns:
+        - "fork: Cannot allocate memory"
+        - "cgroup: fork rejected by pids controller"
+        
+  rootCause:
+    component: node-resources
+    type: resource-exhaustion
+    details: |
+      PID exhaustion on node. Common causes:
+      - Container spawning excessive processes (fork bomb)
+      - Thread leak in application
+      - Too many pods scheduled on node
+      - Low PID limit configuration
+      - Zombie processes accumulating
+      
+  remediation:
+    steps:
+      - action: check-pid-usage
+        command: "cat /proc/sys/kernel/pid_max && ps aux | wc -l"
+        description: "Check PID limit and current usage"
+      - action: find-pid-hogs
+        command: "ps -eo pid,ppid,cmd --sort=-%cpu | head -50"
+        description: "Find processes consuming PIDs"
+      - action: check-container-pids
+        command: "kubectl exec -it <pod> -- pgrep -c ."
+        description: "Count processes per container"
+      - action: increase-pid-limit
+        command: "sysctl -w kernel.pid_max=65536"
+        description: "Temporarily increase PID limit"
+      - action: kill-runaway-container
+        command: "kubectl delete pod runaway-app --force --grace-period=0"
+        description: "Force delete problematic pod"
+    
+  detection:
+    promql: 'kube_node_status_condition{condition="PIDPressure",status="true"} == 1'
+    alertName: KubeNodePIDPressure
+    severity: warning

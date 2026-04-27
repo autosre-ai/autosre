@@ -1,0 +1,81 @@
+# Scenario: Init Container Failure
+# Expected: OpenSRE detects pod stuck in Init:CrashLoopBackOff
+# Remediation: Check init container logs, verify dependencies
+# Root Cause: Init container exits with non-zero code
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-service-init-fail
+  namespace: bookstore
+  labels:
+    app: inventory-service
+    tier: api
+    fault: init-container-failure
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inventory-service
+      fault: init-container-failure
+  template:
+    metadata:
+      labels:
+        app: inventory-service
+        tier: api
+        fault: init-container-failure
+    spec:
+      initContainers:
+      - name: wait-for-database
+        image: busybox:1.36
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "Waiting for database at nonexistent-db:5432..."
+          for i in $(seq 1 5); do
+            echo "Attempt $i: Checking database connection..."
+            nc -z nonexistent-db 5432 && exit 0
+            sleep 2
+          done
+          echo "[FATAL] Database connection failed after 5 attempts!"
+          exit 1
+      - name: run-migrations
+        image: busybox:1.36
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "Running database migrations..."
+          echo "[ERROR] Migration script not found: /migrations/001_init.sql"
+          exit 1
+      containers:
+      - name: inventory
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+          
+          inventory = [
+            {"book_id": 1, "stock": 100},
+            {"book_id": 2, "stock": 50},
+          ]
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  self.send_response(200)
+                  self.send_header('Content-Type', 'application/json')
+                  self.end_headers()
+                  self.wfile.write(json.dumps(inventory).encode())
+          
+          print("Inventory service starting on port 8080...")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"

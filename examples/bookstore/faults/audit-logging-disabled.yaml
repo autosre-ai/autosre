@@ -1,0 +1,112 @@
+# Scenario: Audit Logging Disabled - Compliance Violation
+# Category: Observability Infrastructure
+# Severity: High
+# Description: Kubernetes audit logging disabled, compliance requirements not met
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: audit-logging-disabled
+  labels:
+    category: observability-infrastructure
+    severity: high
+    component: audit-logging
+spec:
+  description: |
+    Kubernetes API audit logging is disabled or not functioning.
+    This is a compliance violation for most security frameworks
+    (SOC2, PCI-DSS, HIPAA) and removes forensic capability.
+    
+  symptoms:
+    - type: audit-log
+      status: "No entries"
+      description: "Audit log file empty or missing"
+    - type: compliance
+      framework: "SOC2"
+      control: "CC7.2"
+      status: "Failed"
+    - type: security-incident
+      description: "Unable to investigate API activity"
+      
+  affectedResources:
+    - kind: APIServer
+      component: kube-apiserver
+      audit: Disabled
+    - kind: ConfigMap
+      name: audit-policy
+      namespace: kube-system
+      status: "Missing or misconfigured"
+        
+  metrics:
+    - name: apiserver_audit_event_total
+      value: 0  # No audit events
+    - name: apiserver_audit_requests_rejected_total
+      value: 0
+    - name: apiserver_audit_level_total
+      labels:
+        level: Metadata
+      value: 0
+      
+  logs:
+    - source: kube-apiserver
+      level: info
+      patterns:
+        - "audit logging disabled"
+        - "no audit policy loaded"
+    - source: audit
+      level: none
+      description: "No audit log entries"
+        
+  rootCause:
+    component: audit-logging
+    type: misconfiguration
+    details: |
+      Audit logging disabled. Common causes:
+      - Audit policy not configured
+      - Audit backend not specified
+      - Audit log path not writable
+      - API server flags missing
+      - Policy syntax error
+      - Log sink unreachable (webhook)
+      
+  remediation:
+    steps:
+      - action: check-apiserver-flags
+        command: "kubectl get pods -n kube-system kube-apiserver-* -o yaml | grep audit"
+        description: "Check API server audit flags"
+      - action: check-audit-policy
+        command: "kubectl get configmap -n kube-system audit-policy -o yaml"
+        description: "Review audit policy"
+      - action: create-audit-policy
+        command: |
+          cat <<EOF | kubectl apply -f -
+          apiVersion: audit.k8s.io/v1
+          kind: Policy
+          rules:
+          - level: Metadata
+            resources:
+            - group: ""
+              resources: ["secrets", "configmaps"]
+          - level: RequestResponse
+            resources:
+            - group: ""
+              resources: ["pods"]
+          EOF
+        description: "Create basic audit policy"
+      - action: configure-apiserver
+        command: |
+          # Add to kube-apiserver:
+          # --audit-policy-file=/etc/kubernetes/audit-policy.yaml
+          # --audit-log-path=/var/log/kubernetes/audit.log
+          # --audit-log-maxage=30
+          # --audit-log-maxbackup=10
+          # --audit-log-maxsize=100
+        description: "Configure API server for audit logging"
+      - action: verify-audit
+        command: "tail -f /var/log/kubernetes/audit.log"
+        description: "Verify audit logs are being written"
+    
+  detection:
+    promql: 'apiserver_audit_event_total == 0 or absent(apiserver_audit_event_total)'
+    alertName: AuditLoggingDisabled
+    severity: critical

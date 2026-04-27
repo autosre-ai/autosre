@@ -1,0 +1,102 @@
+# Scenario: External Service Rate Limiting
+# Expected: OpenSRE detects 429 Too Many Requests from external services
+# Remediation: Implement backoff, add caching, increase rate limits
+# Root Cause: Application hitting external API rate limits
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-client-rate-limited
+  namespace: bookstore
+  labels:
+    app: api-client
+    tier: integration
+    fault: external-rate-limit
+spec:
+  replicas: 3  # Multiple replicas hitting same API = rate limit
+  selector:
+    matchLabels:
+      app: api-client
+      fault: external-rate-limit
+  template:
+    metadata:
+      labels:
+        app: api-client
+        tier: integration
+        fault: external-rate-limit
+    spec:
+      containers:
+      - name: client
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import urllib.request
+          import json
+          import time
+          import random
+          
+          request_count = 0
+          rate_limit_count = 0
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  global request_count, rate_limit_count
+                  
+                  if self.path == '/health':
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                  elif self.path.startswith('/fetch-external'):
+                      request_count += 1
+                      # Simulate external API that rate limits after 10 requests
+                      if request_count > 10:
+                          rate_limit_count += 1
+                          print(f"[RATE-LIMITED] Request {request_count} - 429 Too Many Requests")
+                          self.send_response(429)
+                          self.send_header('Content-Type', 'application/json')
+                          self.send_header('Retry-After', '60')
+                          self.end_headers()
+                          error = {
+                              "error": "RATE_LIMITED",
+                              "message": "External API rate limit exceeded",
+                              "retry_after": 60,
+                              "rate_limit_count": rate_limit_count
+                          }
+                          self.wfile.write(json.dumps(error).encode())
+                      else:
+                          self.send_response(200)
+                          self.send_header('Content-Type', 'application/json')
+                          self.end_headers()
+                          self.wfile.write(json.dumps({"data": "success"}).encode())
+                  elif self.path == '/metrics':
+                      self.send_response(200)
+                      self.send_header('Content-Type', 'text/plain')
+                      self.end_headers()
+                      metrics = f"""
+          # HELP api_requests_total Total API requests
+          # TYPE api_requests_total counter
+          api_requests_total {request_count}
+          # HELP api_rate_limits_total Total rate limited requests
+          # TYPE api_rate_limits_total counter
+          api_rate_limits_total {rate_limit_count}
+          """
+                      self.wfile.write(metrics.encode())
+                  else:
+                      self.send_response(404)
+                      self.end_headers()
+              def log_message(self, format, *args):
+                  pass
+          
+          print("API client starting on port 8080...")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"

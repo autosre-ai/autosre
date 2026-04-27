@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils';
 
 const badgeVariants = {
   default: 'bg-gray-700 text-gray-100 border-gray-600',
+  secondary: 'bg-gray-800 text-gray-300 border-gray-700',
   success: 'bg-green-500/20 text-green-400 border-green-500/50',
   warning: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50',
   danger: 'bg-red-500/20 text-red-400 border-red-500/50',

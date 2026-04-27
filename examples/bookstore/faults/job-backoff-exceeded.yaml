@@ -1,0 +1,97 @@
+# Scenario: Job Failure - BackoffLimit Exceeded
+# Expected: OpenSRE detects job failed, no more retries
+# Remediation: Fix job logic, increase backoffLimit, check logs
+# Root Cause: Job keeps failing and exhausts retry limit
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: data-migration-job-failed
+  namespace: bookstore
+  labels:
+    app: data-migration
+    tier: batch
+    fault: job-backoff-exceeded
+spec:
+  backoffLimit: 3  # Only retry 3 times
+  activeDeadlineSeconds: 120
+  template:
+    metadata:
+      labels:
+        app: data-migration
+        fault: job-backoff-exceeded
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: migrate
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          import sys
+          import time
+          import random
+          
+          print("Data migration job starting...")
+          print("Connecting to database...")
+          time.sleep(2)
+          
+          # Simulate migration failure
+          print("[ERROR] Migration step 3 of 5 failed!")
+          print("[ERROR] Foreign key constraint violation")
+          print("[ERROR] Table 'orders' references non-existent 'customers' row")
+          sys.exit(1)
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: daily-cleanup-failing
+  namespace: bookstore
+  labels:
+    app: cleanup
+    tier: batch
+    fault: cronjob-failure
+spec:
+  schedule: "*/5 * * * *"  # Every 5 minutes for demo
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: cleanup
+            image: busybox:1.36
+            command: ['sh', '-c']
+            args:
+            - |
+              echo "Starting daily cleanup..."
+              echo "Connecting to storage backend..."
+              sleep 2
+              echo "[ERROR] Storage backend unavailable"
+              exit 1
+            resources:
+              requests:
+                memory: "32Mi"
+                cpu: "25m"
+              limits:
+                memory: "64Mi"
+                cpu: "50m"
+---
+# Expected job status:
+# NAME                      COMPLETIONS   DURATION   AGE
+# data-migration-job        0/1           2m         2m
+#
+# Conditions:
+# - Type: Failed
+#   Reason: BackoffLimitExceeded
+#   Message: Job has reached the specified backoff limit

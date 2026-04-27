@@ -1,0 +1,105 @@
+# Scenario: Security Context Violation (runAsNonRoot)
+# Expected: OpenSRE detects container failing to start due to security violation
+# Remediation: Use non-root user in image, fix securityContext, modify policy
+# Root Cause: Container image runs as root but runAsNonRoot is enforced
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: legacy-app-security-violation
+  namespace: bookstore
+  labels:
+    app: legacy-app
+    tier: api
+    fault: security-context-violation
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: legacy-app
+      fault: security-context-violation
+  template:
+    metadata:
+      labels:
+        app: legacy-app
+        tier: api
+        fault: security-context-violation
+    spec:
+      securityContext:
+        runAsNonRoot: true  # Enforces non-root
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: legacy
+        # Most base images run as root by default
+        image: nginx:1.25-alpine
+        ports:
+        - containerPort: 80
+          name: http
+        # Nginx alpine runs as root by default - this will fail
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+---
+# Expected error:
+# Error: container has runAsNonRoot and image will run as root
+# (or if using PSP/PSA: violates PodSecurity "restricted:latest")
+#
+# Alternative scenario with different violation:
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: privileged-app-security-violation
+  namespace: bookstore
+  labels:
+    app: privileged-app
+    tier: system
+    fault: security-context-violation
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: privileged-app
+      fault: security-context-violation
+  template:
+    metadata:
+      labels:
+        app: privileged-app
+        tier: system
+        fault: security-context-violation
+    spec:
+      containers:
+      - name: privileged
+        image: busybox:1.36
+        command: ['sh', '-c', 'sleep 3600']
+        securityContext:
+          # These settings violate restricted PSA
+          privileged: true
+          runAsUser: 0
+          capabilities:
+            add:
+            - SYS_ADMIN
+            - NET_ADMIN
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "64Mi"
+            cpu: "50m"
+---
+# Expected with Pod Security Admission:
+# Error creating: pods "privileged-app-xxx" is forbidden: 
+# violates PodSecurity "restricted:latest": privileged, 
+# allowPrivilegeEscalation != false, runAsNonRoot != true, 
+# seccompProfile

@@ -1,0 +1,100 @@
+# Scenario: CPU Throttling
+# Expected: OpenSRE detects high throttling in metrics, slow response times
+# Remediation: Increase CPU limits, optimize code, scale horizontally
+# Root Cause: CPU limits too low for workload causing throttling
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: recommendation-service-cpu-throttle
+  namespace: bookstore
+  labels:
+    app: recommendation-service
+    tier: api
+    fault: cpu-throttling
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: recommendation-service
+      fault: cpu-throttling
+  template:
+    metadata:
+      labels:
+        app: recommendation-service
+        tier: api
+        fault: cpu-throttling
+    spec:
+      containers:
+      - name: recommendation
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+          import time
+          import math
+          
+          # CPU-intensive recommendation algorithm
+          def calculate_recommendations(user_id):
+              """Simulates CPU-heavy ML inference"""
+              result = 0
+              # Intentionally inefficient calculation
+              for i in range(100000):
+                  result += math.sin(i) * math.cos(i) * math.tan(i % 89 + 1)
+              return [
+                  {"book_id": 1, "score": 0.95},
+                  {"book_id": 3, "score": 0.87},
+                  {"book_id": 7, "score": 0.82},
+              ]
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path == '/health':
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                  elif self.path == '/ready':
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'READY')
+                  elif self.path.startswith('/recommendations'):
+                      start = time.time()
+                      recommendations = calculate_recommendations("user123")
+                      duration = time.time() - start
+                      print(f"[CPU-THROTTLE] Recommendation took {duration:.2f}s (throttled)")
+                      self.send_response(200)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      self.wfile.write(json.dumps(recommendations).encode())
+                  else:
+                      self.send_response(404)
+                      self.end_headers()
+              def log_message(self, format, *args):
+                  pass
+          
+          print("Recommendation service (CPU-THROTTLED) starting on port 8080...")
+          print("[WARN] CPU limit is very low - expect heavy throttling")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "10m"  # Very low CPU request
+          limits:
+            memory: "128Mi"
+            cpu: "20m"  # Very low CPU limit causing throttling
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15

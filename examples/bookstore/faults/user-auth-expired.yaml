@@ -1,0 +1,118 @@
+# User Auth Expired
+# Simulates JWT tokens being expired or invalid
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service-expired
+  namespace: bookstore
+  labels:
+    app: auth-service
+    tier: api
+    fault: user-auth-expired
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+        tier: api
+        fault: user-auth-expired
+    spec:
+      containers:
+      - name: auth
+        image: python:3.11-alpine
+        env:
+        - name: FAULT_MODE
+          value: "user-auth-expired"
+        - name: AUTH_FAILURE_RATE
+          value: "0.8"
+        command: ["python", "-c"]
+        args:
+        - |
+          from http.server import HTTPServer, BaseHTTPRequestHandler
+          import json
+          import random
+          import os
+          
+          AUTH_FAILURE_RATE = float(os.environ.get('AUTH_FAILURE_RATE', 0.8))
+          
+          AUTH_ERRORS = [
+              {"code": "token_expired", "message": "JWT token has expired", "http_code": 401},
+              {"code": "token_invalid", "message": "JWT signature verification failed", "http_code": 401},
+              {"code": "token_revoked", "message": "Token has been revoked", "http_code": 401},
+              {"code": "session_expired", "message": "User session has expired", "http_code": 401},
+              {"code": "refresh_token_expired", "message": "Refresh token has expired, re-login required", "http_code": 401},
+          ]
+          
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  if self.path in ['/health', '/ready']:
+                      self.send_response(200)
+                      self.end_headers()
+                      self.wfile.write(b'OK')
+                      return
+                  
+                  auth_header = self.headers.get('Authorization', '')
+                  
+                  if not auth_header or random.random() < AUTH_FAILURE_RATE:
+                      error_info = random.choice(AUTH_ERRORS)
+                      print(f"[auth] FAILED: {error_info['code']} - {error_info['message']}")
+                      
+                      self.send_response(error_info['http_code'])
+                      self.send_header('Content-Type', 'application/json')
+                      self.send_header('WWW-Authenticate', 'Bearer realm="bookstore"')
+                      self.end_headers()
+                      error = {
+                          "error": "AuthenticationError",
+                          "code": error_info['code'],
+                          "message": error_info['message'],
+                          "details": {
+                              "token_issued_at": "2024-01-14T10:00:00Z",
+                              "token_expired_at": "2024-01-15T10:00:00Z",
+                              "current_time": "2024-01-15T12:30:00Z"
+                          },
+                          "suggestion": "Refresh token or re-authenticate"
+                      }
+                      self.wfile.write(json.dumps(error).encode())
+                  else:
+                      self.send_response(200)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      self.wfile.write(json.dumps({
+                          "user_id": 12345,
+                          "authenticated": True
+                      }).encode())
+                      
+              def do_POST(self):
+                  return self.do_GET()
+                  
+              def log_message(self, format, *args):
+                  print(f"[auth-expired] {args[0]}")
+          
+          print(f"Auth service (EXPIRED) starting - failure_rate={AUTH_FAILURE_RATE}")
+          HTTPServer(('0.0.0.0', 8080), Handler).serve_forever()
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 15

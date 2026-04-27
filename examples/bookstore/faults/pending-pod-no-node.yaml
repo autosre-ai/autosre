@@ -1,0 +1,57 @@
+# Scenario: Pending Pod - Node Selector Mismatch
+# Expected: OpenSRE detects pods stuck in Pending with node selector events
+# Remediation: Fix nodeSelector, add labels to nodes, or remove constraint
+# Root Cause: nodeSelector specifies non-existent node label
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpu-service-pending-node
+  namespace: bookstore
+  labels:
+    app: gpu-service
+    tier: ml
+    fault: pending-no-node
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gpu-service
+      fault: pending-no-node
+  template:
+    metadata:
+      labels:
+        app: gpu-service
+        tier: ml
+        fault: pending-no-node
+    spec:
+      # Node selector for non-existent node type
+      nodeSelector:
+        accelerator: nvidia-tesla-v100
+        node-type: high-memory-gpu
+      tolerations:
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: ml-inference
+        image: python:3.11-alpine
+        command: ["python", "-c"]
+        args:
+        - |
+          print("ML inference service starting...")
+          import time
+          time.sleep(3600)
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+---
+# Expected events:
+# Warning  FailedScheduling  pod/gpu-service-pending-xxx  
+# 0/3 nodes are available: 3 node(s) didn't match Pod's node affinity/selector

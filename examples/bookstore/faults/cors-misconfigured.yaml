@@ -1,0 +1,183 @@
+# Scenario: CORS Misconfigured
+# Category: Network Security
+# Description: Cross-Origin Resource Sharing allowing unauthorized origins
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: cors-misconfigured
+  labels:
+    category: security
+    subcategory: network-security
+    severity: high
+    service: bookstore-api
+spec:
+  description: |
+    CORS (Cross-Origin Resource Sharing) is misconfigured, potentially allowing
+    unauthorized websites to make requests to the API and access sensitive data.
+  
+  symptoms:
+    - type: security-scan
+      source: burp-suite
+      message: "Overly permissive CORS: Access-Control-Allow-Origin: *"
+    - type: log
+      source: security-audit
+      pattern: "CORS request from unauthorized origin: https://attacker.com"
+    - type: compliance-alert
+      message: "API accessible from any origin"
+
+  securityRisk:
+    description: |
+      Misconfigured CORS can enable:
+      - Cross-site data theft
+      - CSRF attacks bypassing token checks
+      - Session hijacking via malicious sites
+      - API abuse from unauthorized frontends
+    vulnerablePatterns:
+      - pattern: "Access-Control-Allow-Origin: *"
+        risk: "Any website can access API"
+      - pattern: "Origin reflection without validation"
+        risk: "Attacker can set any origin"
+      - pattern: "Access-Control-Allow-Credentials: true with wildcard"
+        risk: "Critical - cookies sent to any origin"
+
+  affectedServices:
+    - name: bookstore-api
+      namespace: bookstore
+      impact: "API vulnerable to cross-origin attacks"
+
+  detection:
+    - method: curl
+      command: |
+        # Test with arbitrary origin
+        curl -sI https://api.example.com/api/user \
+          -H "Origin: https://evil.com" | grep -i access-control
+    - method: credentials-test
+      command: |
+        # Critical: Check if credentials work with wildcard
+        curl -sI https://api.example.com/api/user \
+          -H "Origin: https://evil.com" \
+          -H "Cookie: session=xxx" | grep -i access-control
+    - method: security-scanner
+      description: "Use Burp Suite or ZAP to test CORS"
+
+  misconfigurationExamples:
+    critical:
+      - config: |
+          Access-Control-Allow-Origin: *
+          Access-Control-Allow-Credentials: true
+        description: "INVALID - browsers block this, but indicates bad config"
+      - config: |
+          # Server reflects any Origin header
+          Access-Control-Allow-Origin: <reflected>
+          Access-Control-Allow-Credentials: true
+        description: "Allows any origin with credentials"
+    high:
+      - config: |
+          Access-Control-Allow-Origin: *
+        description: "Any site can read responses (no credentials)"
+      - config: |
+          Access-Control-Allow-Origin: https://example.com https://other.com
+        description: "Invalid syntax, may cause unexpected behavior"
+    medium:
+      - config: |
+          Access-Control-Allow-Origin: null
+        description: "Allows sandboxed iframes, data: URLs"
+
+  remediation:
+    automated: true
+    steps:
+      - action: review-current-config
+        command: |
+          kubectl get ingress bookstore-api -n bookstore -o yaml | grep -A10 cors
+      - action: implement-strict-cors
+        description: "Configure explicit allowed origins"
+        nginx: |
+          # nginx.conf or ingress annotation
+          set $cors_origin "";
+          if ($http_origin ~* "^https://(www\.)?example\.com$") {
+            set $cors_origin $http_origin;
+          }
+          add_header Access-Control-Allow-Origin $cors_origin always;
+          add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+          add_header Access-Control-Allow-Headers "Authorization, Content-Type" always;
+          add_header Access-Control-Max-Age 86400 always;
+        ingress: |
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: bookstore-api
+            annotations:
+              nginx.ingress.kubernetes.io/enable-cors: "true"
+              nginx.ingress.kubernetes.io/cors-allow-origin: "https://www.example.com,https://app.example.com"
+              nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+              nginx.ingress.kubernetes.io/cors-allow-headers: "Authorization, Content-Type"
+              nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+              nginx.ingress.kubernetes.io/cors-max-age: "86400"
+      - action: apply-config
+        command: |
+          kubectl apply -f cors-fixed-ingress.yaml
+      - action: verify
+        command: |
+          # Should NOT reflect evil.com
+          curl -sI https://api.example.com/api/user \
+            -H "Origin: https://evil.com" | grep -i access-control
+
+  secureConfiguration:
+    principles:
+      - "Explicitly list allowed origins, never use *"
+      - "Don't reflect arbitrary Origin headers"
+      - "Only allow credentials from trusted origins"
+      - "Minimize allowed methods and headers"
+      - "Use Access-Control-Max-Age to reduce preflight requests"
+    example: |
+      const corsOptions = {
+        origin: [
+          'https://www.example.com',
+          'https://app.example.com'
+        ],
+        methods: ['GET', 'POST', 'PUT', 'DELETE'],
+        allowedHeaders: ['Authorization', 'Content-Type'],
+        credentials: true,
+        maxAge: 86400
+      };
+
+  prevention:
+    - type: code-review
+      description: "Review CORS config in all PRs"
+    - type: security-testing
+      description: "Include CORS tests in security scans"
+      test: |
+        it('should reject unauthorized origins', async () => {
+          const response = await fetch('/api/user', {
+            headers: { 'Origin': 'https://evil.com' }
+          });
+          expect(response.headers.get('Access-Control-Allow-Origin'))
+            .not.toBe('https://evil.com');
+        });
+    - type: centralized-config
+      description: "Manage CORS centrally at API gateway level"
+
+  verification:
+    - type: allowed-origin
+      command: |
+        curl -sI https://api.example.com/api/user \
+          -H "Origin: https://www.example.com" | \
+          grep "Access-Control-Allow-Origin: https://www.example.com"
+      expected: "Origin is allowed"
+    - type: blocked-origin
+      command: |
+        curl -sI https://api.example.com/api/user \
+          -H "Origin: https://evil.com" | \
+          grep -c "Access-Control-Allow-Origin"
+      expected: "0 or empty"
+    - type: security-headers
+      url: "https://securityheaders.com/?q=api.example.com"
+
+  references:
+    - url: https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
+      title: "MDN - CORS"
+    - url: https://owasp.org/www-community/attacks/CORS_OriginHeaderScrutiny
+      title: "OWASP CORS Security"
+    - url: https://portswigger.net/web-security/cors
+      title: "PortSwigger - CORS Vulnerabilities"

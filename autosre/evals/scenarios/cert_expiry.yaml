@@ -1,0 +1,55 @@
+name: cert_expiry
+description: "TLS certificate about to expire"
+difficulty: easy
+
+setup_steps:
+  - "Create certificate expiring in 1 hour"
+  - "Monitor cert-manager alerts"
+
+alert:
+  name: "CertificateExpiringSoon"
+  severity: critical
+  service_name: ingress-controller
+  namespace: ingress-nginx
+  summary: "Certificate for *.example.com expires in 1 hour"
+  description: "TLS certificate will expire soon, causing HTTPS failures"
+  labels:
+    alertname: CertificateExpiringSoon
+    namespace: ingress-nginx
+    certificate: wildcard-example-com
+    secretName: wildcard-example-com-tls
+    dnsNames: "*.example.com"
+  annotations:
+    expires_at: "2024-01-15T12:00:00Z"
+    issuer: letsencrypt-prod
+
+services:
+  - name: ingress-controller
+    namespace: ingress-nginx
+    status: healthy
+    replicas: 2
+    ready_replicas: 2
+    labels:
+      app: nginx-ingress
+      
+  - name: cert-manager
+    namespace: cert-manager
+    status: healthy
+    replicas: 1
+    ready_replicas: 1
+
+changes:
+  - id: change-004
+    change_type: infrastructure
+    service_name: cert-manager
+    description: "Updated cert-manager to v1.13.0"
+    author: platform@example.com
+    timestamp: "2024-01-14T14:00:00Z"
+    successful: true
+
+expected_root_cause: "Certificate renewal failed after cert-manager upgrade"
+expected_service: cert-manager
+expected_runbook: certificate-renewal
+expected_action: "Manually trigger certificate renewal or recreate certificate resource"
+
+max_time_seconds: 60

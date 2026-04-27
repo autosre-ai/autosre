@@ -1,0 +1,100 @@
+# Scenario: Node Network Unavailable - CNI Issues
+# Category: Node Issues
+# Severity: Critical
+# Description: Node network is misconfigured or CNI plugin is not functioning
+
+apiVersion: opensre.io/v1alpha1
+kind: FaultScenario
+metadata:
+  name: node-network-unavailable
+  labels:
+    category: node-issues
+    severity: critical
+    component: cni
+spec:
+  description: |
+    Node has NetworkUnavailable condition when the CNI plugin fails to
+    configure networking. Pods cannot communicate across the cluster.
+    
+  symptoms:
+    - type: node-condition
+      condition: NetworkUnavailable
+      status: "True"
+      reason: "CniPluginNotReady"
+      message: "Network plugin not ready: cni config uninitialized"
+    - type: event
+      reason: NetworkNotReady
+      message: "network is not ready: container runtime network not ready"
+    - type: pod-status
+      status: Pending
+      reason: ContainerCreating
+      message: "network is not ready"
+      
+  affectedResources:
+    - kind: Node
+      name: worker-node-4
+    - kind: DaemonSet
+      name: calico-node
+      namespace: kube-system
+    - kind: Pod
+      selector:
+        spec.nodeName: worker-node-4
+        
+  metrics:
+    - name: kube_node_status_condition
+      labels:
+        condition: NetworkUnavailable
+        status: "true"
+      value: 1
+    - name: kube_daemonset_status_number_unavailable
+      labels:
+        daemonset: calico-node
+      value: 1
+      
+  logs:
+    - source: kubelet
+      level: error
+      patterns:
+        - "network is not ready"
+        - "CNI failed to configure pod"
+        - "cni config load failed"
+    - source: cni-plugin
+      level: error
+      patterns:
+        - "failed to set up sandbox container"
+        - "error getting ClusterInformation"
+        - "calico-node is not ready"
+        
+  rootCause:
+    component: cni-plugin
+    type: misconfiguration
+    details: |
+      CNI plugin failure. Common causes:
+      - CNI plugin pod (calico-node, cilium, etc.) crashed
+      - CNI configuration files missing/corrupt
+      - Network policies blocking CNI traffic
+      - IPAM exhausted (no IP addresses available)
+      - etcd connectivity issues (for Calico)
+      
+  remediation:
+    steps:
+      - action: check-cni-pods
+        command: "kubectl get pods -n kube-system -l k8s-app=calico-node"
+        description: "Check CNI plugin pod status"
+      - action: check-cni-logs
+        command: "kubectl logs -n kube-system -l k8s-app=calico-node --tail=100"
+        description: "Review CNI plugin logs"
+      - action: verify-cni-config
+        command: "ls -la /etc/cni/net.d/"
+        description: "Check CNI configuration files"
+      - action: restart-cni-pod
+        command: "kubectl delete pod -n kube-system -l k8s-app=calico-node --field-selector spec.nodeName=worker-node-4"
+        description: "Restart CNI pod on affected node"
+      - action: verify-ipam
+        command: "calicoctl ipam show --show-blocks"
+        description: "Check IP address allocation"
+    
+  detection:
+    promql: 'kube_node_status_condition{condition="NetworkUnavailable",status="true"} == 1'
+    alertName: KubeNodeNetworkUnavailable
+    severity: critical
