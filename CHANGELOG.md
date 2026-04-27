@@ -8,23 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Testing & Coverage Sprint (Iterations 1-10)**
-  - Tests for ownership management module (18 tests)
-  - Tests for change tracking module (17 tests) 
-  - Tests for runbook indexing module (26 tests)
-  - Tests for learning patterns and incident store (27 tests)
-  - Tests for skills base class and registry (28 tests)
-  - Tests for real-time streaming module (28 tests)
-  - Tests for Prometheus metrics exporter (23 tests)
-  - Tests for structured logging module (24 tests)
-  - Total: **556 tests, 34% coverage** (up from 281/21%)
+- **Testing & Coverage Sprint (50 Iterations)**
+  - Total: **668 tests, 37% coverage** (up from 281 tests / 21%)
+  - Ownership management tests (18)
+  - Change tracking tests (17) 
+  - Runbook indexing tests (26)
+  - Learning patterns/incident store tests (27)
+  - Skills base class and registry tests (28)
+  - Real-time streaming tests (28)
+  - Prometheus metrics exporter tests (23)
+  - Structured logging tests (24)
+  - GitHub connector tests (17)
+  - PagerDuty connector tests (5)
+  - Sandbox chaos injection tests (11)
+  - CLI integration tests (10)
+  - Added prometheus-client dependency
 
-- **Evals Expansion**
-  - Expanded evaluation scenarios to 33 total:
-    - Kafka consumer lag
-    - Load balancer unhealthy hosts
-    - S3 bucket permissions
-    - Kubernetes OOM limits
+- **Evals Expansion (33 scenarios)**
+  - Kafka consumer lag
+  - Load balancer unhealthy hosts
+  - S3 bucket permissions
+  - Kubernetes OOM limits
 
 - **Evals & Polish Sprint**
   - Expanded evaluation scenarios from 10 to 33:
