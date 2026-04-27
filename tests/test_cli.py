@@ -33,6 +33,29 @@ class TestCLIBasics:
         assert "0.1.0" in result.output
 
 
+class TestCLIInit:
+    """Test init command."""
+    
+    def test_init_help(self, runner):
+        """Test init --help."""
+        result = runner.invoke(cli, ["init", "--help"])
+        assert result.exit_code == 0
+        assert "Initialize AutoSRE" in result.output
+    
+    def test_init_creates_directories(self, runner):
+        """Test init creates required directories."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = runner.invoke(cli, ["init", "--dir", tmpdir])
+            assert result.exit_code == 0
+            assert "initialized" in result.output.lower()
+            
+            from pathlib import Path
+            assert (Path(tmpdir) / ".autosre").exists()
+            assert (Path(tmpdir) / "runbooks").exists()
+            assert (Path(tmpdir) / ".env.example").exists()
+
+
 class TestContextCommands:
     """Test context subcommands."""
     

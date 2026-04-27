@@ -2,6 +2,7 @@
 AutoSRE CLI - Command-line interface for the AI SRE agent.
 
 Usage:
+    autosre init
     autosre context show
     autosre context sync
     autosre eval run --scenario <name>
@@ -13,6 +14,7 @@ Usage:
 import click
 from rich.console import Console
 from rich.table import Table
+from pathlib import Path
 
 console = Console()
 
@@ -25,6 +27,109 @@ def cli():
     Built foundation-first for reliable incident response.
     """
     pass
+
+
+@cli.command()
+@click.option("--dir", "-d", "directory", default=".", help="Directory to initialize")
+def init(directory: str):
+    """Initialize AutoSRE in the current directory.
+    
+    Creates:
+    - .autosre/ directory with databases
+    - runbooks/ directory for runbook files
+    - .env.example with configuration template
+    """
+    base_dir = Path(directory)
+    autosre_dir = base_dir / ".autosre"
+    runbooks_dir = base_dir / "runbooks"
+    
+    # Create directories
+    console.print("[cyan]Initializing AutoSRE...[/]")
+    
+    autosre_dir.mkdir(parents=True, exist_ok=True)
+    console.print(f"  [green]✓[/] Created {autosre_dir}")
+    
+    runbooks_dir.mkdir(parents=True, exist_ok=True)
+    console.print(f"  [green]✓[/] Created {runbooks_dir}")
+    
+    # Create .env.example
+    env_example = base_dir / ".env.example"
+    if not env_example.exists():
+        env_content = '''# AutoSRE Configuration
+# Copy this to .env and fill in your values
+
+# LLM Provider (ollama, openai, anthropic)
+OPENSRE_LLM_PROVIDER=ollama
+
+# Ollama (default, local)
+OPENSRE_OLLAMA_HOST=http://localhost:11434
+OPENSRE_OLLAMA_MODEL=llama3.1:8b
+
+# OpenAI (optional)
+# OPENSRE_OPENAI_API_KEY=sk-...
+# OPENSRE_OPENAI_MODEL=gpt-4o-mini
+
+# Anthropic (optional)
+# OPENSRE_ANTHROPIC_API_KEY=sk-ant-...
+# OPENSRE_ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
+
+# Prometheus
+OPENSRE_PROMETHEUS_URL=http://localhost:9090
+
+# Kubernetes
+# OPENSRE_KUBECONFIG=~/.kube/config
+OPENSRE_K8S_NAMESPACES=default
+
+# Agent Behavior
+OPENSRE_REQUIRE_APPROVAL=true
+OPENSRE_AUTO_APPROVE_LOW_RISK=false
+OPENSRE_CONFIDENCE_THRESHOLD=0.7
+
+# Logging
+OPENSRE_LOG_LEVEL=INFO
+OPENSRE_LOG_FORMAT=text
+'''
+        env_example.write_text(env_content)
+        console.print(f"  [green]✓[/] Created {env_example}")
+    
+    # Create sample runbook
+    sample_runbook = runbooks_dir / "high-cpu.yaml"
+    if not sample_runbook.exists():
+        runbook_content = '''# Sample runbook for high CPU troubleshooting
+id: high-cpu
+title: High CPU Troubleshooting
+description: Steps to investigate and resolve high CPU usage
+
+alerts:
+  - HighCPUUsage
+  - ContainerCPUHigh
+
+steps:
+  - name: Check current CPU usage
+    command: kubectl top pods -n {{ namespace }}
+    
+  - name: Check recent deployments
+    command: kubectl rollout history deployment/{{ service }} -n {{ namespace }}
+    
+  - name: Check for memory pressure
+    command: kubectl describe pod {{ pod }} -n {{ namespace }} | grep -A 5 "Resources:"
+    
+  - name: Check logs for errors
+    command: kubectl logs {{ pod }} -n {{ namespace }} --tail=100
+    
+automated: false
+tags:
+  - cpu
+  - performance
+'''
+        sample_runbook.write_text(runbook_content)
+        console.print(f"  [green]✓[/] Created sample runbook at {sample_runbook}")
+    
+    console.print("\n[green]✓ AutoSRE initialized![/]")
+    console.print("\nNext steps:")
+    console.print("  1. Copy .env.example to .env and configure")
+    console.print("  2. Run 'autosre context sync' to populate context")
+    console.print("  3. Run 'autosre eval list' to see available scenarios")
 
 
 @cli.group()
