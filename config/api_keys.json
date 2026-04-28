@@ -335,6 +335,146 @@
         "sre"
       ],
       "created_at": "2026-04-27T15:03:30.154301"
+    },
+    "514e855ef414787ab81f3f6c9aa6b4e4835d9ff50012bb72a8da6845e816fa4c": {
+      "user": "testuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-27T15:08:39.958220"
+    },
+    "5b29ecf9ffabfcb4d2c81fe4b0c0d4f8a5058b685e780b2793ab879b505f7393": {
+      "user": "testuser",
+      "roles": [
+        "viewer"
+      ],
+      "created_at": "2026-04-27T15:08:39.959467"
+    },
+    "32259829bf39a76c13f12bc9af781ceaf1f2ebcf278345cfdd7ada52efda21c4": {
+      "user": "adminuser",
+      "roles": [
+        "admin"
+      ],
+      "created_at": "2026-04-27T15:08:39.960275"
+    },
+    "567e699ebd26d799e85b3f9be662ef0f2e21aebe135a1d0cbfc86502c6eecd0f": {
+      "user": "asyncuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-27T15:08:39.961354"
+    },
+    "d1a39be46949a051a78d0f6d59789915b56b05f9919d197e70cb8c34af9b0d2f": {
+      "user": "testuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-27T19:38:52.135982"
+    },
+    "d1d3e515db3b5c6f7d833e1bbc436f34a2b1af2bd5c42ae2d38afecd3fa6e781": {
+      "user": "testuser",
+      "roles": [
+        "viewer"
+      ],
+      "created_at": "2026-04-27T19:38:52.138025"
+    },
+    "ba9a11609a6f481fcb0b29c96114e728b8a5170d68ecd2cd27029dc01e1c9630": {
+      "user": "adminuser",
+      "roles": [
+        "admin"
+      ],
+      "created_at": "2026-04-27T19:38:52.138945"
+    },
+    "f50aa0a25f2e0d312a87bde0c1617e512f370cb9af84288f50fc205fc2fc3f34": {
+      "user": "asyncuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-27T19:38:52.140520"
+    },
+    "bfdba61df5ffc25c0317cf961bffe2f982ee6285f8dd7ed2bfd88b3b167b6542": {
+      "user": "testuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:02:11.746119"
+    },
+    "ccfaadd69e90c754813bba9db5367bb139bb6015c397a41974e843506a04f56c": {
+      "user": "testuser",
+      "roles": [
+        "viewer"
+      ],
+      "created_at": "2026-04-29T00:02:11.748470"
+    },
+    "a4e6bdb1be0c427abcec04b9c2607f27e78427963ed011beb6957ae8f7137ae3": {
+      "user": "adminuser",
+      "roles": [
+        "admin"
+      ],
+      "created_at": "2026-04-29T00:02:11.749672"
+    },
+    "0e99286b18aeb2901deab6aa0d3be001edfddaeb8030420167763f83650a8238": {
+      "user": "asyncuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:02:11.751325"
+    },
+    "21c46afbcd453d471d6667e5ad213acccd9a498f26472b79debdf941d2cf4c2d": {
+      "user": "testuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:04:09.237773"
+    },
+    "00c918dc2d0efc3e31ce97c4b8c3446e107f44e6a0e13e317db94ac6dbed0152": {
+      "user": "testuser",
+      "roles": [
+        "viewer"
+      ],
+      "created_at": "2026-04-29T00:04:09.240009"
+    },
+    "7849f0086656a9bddad466693bb44eafedd0c19d0847009f49c30adf0107024c": {
+      "user": "adminuser",
+      "roles": [
+        "admin"
+      ],
+      "created_at": "2026-04-29T00:04:09.241585"
+    },
+    "fdf026c5baa308644451239d86d11a9a4806c9774e53403b380d16ce516d55a8": {
+      "user": "asyncuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:04:09.243156"
+    },
+    "00fa807a3be195e80f85d556566ce7340e9b1cb6f77538131f68c1cec4ad9d13": {
+      "user": "testuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:04:15.602547"
+    },
+    "11d3200703b569b4a3987e241db0295e8bdc95fb62865f15e7b4abc0f9b7c88f": {
+      "user": "testuser",
+      "roles": [
+        "viewer"
+      ],
+      "created_at": "2026-04-29T00:04:15.604098"
+    },
+    "47c61f146d40a823b21298205364b44874785aca976859ece936bf0ea620ddf6": {
+      "user": "adminuser",
+      "roles": [
+        "admin"
+      ],
+      "created_at": "2026-04-29T00:04:15.605039"
+    },
+    "2d5a6c5de5280fb7998c385735b48ffe5d741edd59dc8adb448e39b27ceeabb7": {
+      "user": "asyncuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:04:15.606255"
     }
   }
 }

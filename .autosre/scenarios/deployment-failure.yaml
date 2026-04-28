@@ -1,0 +1,53 @@
+# Sample evaluation scenario
+name: deployment-failure
+description: Diagnose a failed deployment causing service degradation
+difficulty: medium
+
+# Alert that triggers the investigation
+alert:
+  name: DeploymentFailed
+  severity: high
+  source: prometheus
+  summary: "Deployment frontend-v2 in namespace production failed to roll out"
+  labels:
+    deployment: frontend-v2
+    namespace: production
+    reason: ImagePullBackOff
+
+# Services in the scenario
+services:
+  - name: frontend
+    namespace: production
+    status: degraded
+    replicas: 3
+    ready_replicas: 2
+    labels:
+      app: frontend
+      version: v2
+    dependencies:
+      - api
+      - redis
+
+  - name: api
+    namespace: production
+    status: healthy
+    replicas: 3
+    ready_replicas: 3
+
+# Recent changes
+changes:
+  - type: deployment
+    service_name: frontend
+    description: "Update frontend to v2.1.0"
+    author: deploy-bot
+    timestamp: "2024-01-15T10:30:00Z"
+    previous_version: v2.0.0
+    new_version: v2.1.0
+
+# Expected outcomes (for evaluation)
+expected_root_cause: "Deployment failed due to ImagePullBackOff - image tag v2.1.0 does not exist"
+expected_service: frontend
+expected_runbook: deployment-rollback
+expected_action: "Rollback deployment to previous version or fix image tag"
+
+max_time_seconds: 180

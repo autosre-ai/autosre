@@ -267,18 +267,21 @@ def list_scenarios() -> list[dict]:
     return scenarios
 
 
-async def run_scenario(name: str, verbose: bool = False) -> dict:
+async def run_scenario(name: str, verbose: bool = False, use_llm: bool = True) -> dict:
     """
     Run a scenario and evaluate the agent's response.
     
     Args:
         name: Scenario name
         verbose: Print detailed output
+        use_llm: Whether to use LLM (falls back to offline analyzer if False or no LLM configured)
         
     Returns:
         Dict with results and metrics
     """
+    import os
     import time
+    from autosre.evals.offline_analyzer import OfflineAnalyzer
     
     logger.info("Running scenario", scenario=name, verbose=verbose)
     
@@ -294,23 +297,24 @@ async def run_scenario(name: str, verbose: bool = False) -> dict:
     start_time = time.time()
     logger.debug("Scenario loaded", difficulty=scenario.difficulty)
     
-    # TODO: Actually run the agent against the scenario
-    # For now, return a stub result
-    
-    result = ScenarioResult(
-        scenario=name,
-        success=False,  # Will be True when agent is implemented
-        time_to_root_cause=time.time() - start_time,
-        root_cause_correct=False,
-        service_correct=False,
-        runbook_correct=False,
-        action_correct=False,
-        agent_root_cause="Agent not yet implemented",
-        agent_confidence=0.0,
-        agent_reasoning="This is a placeholder - agent implementation coming soon",
+    # Check if LLM is configured
+    has_llm = (
+        os.environ.get("OPENAI_API_KEY") or
+        os.environ.get("ANTHROPIC_API_KEY") or
+        os.environ.get("OLLAMA_HOST")
     )
     
-    result.accuracy = result.compute_accuracy()
+    if use_llm and has_llm:
+        # Use LLM-based agent (to be implemented)
+        # For now, fall back to offline analyzer
+        logger.debug("LLM configured but agent not yet implemented, using offline analyzer")
+        analyzer = OfflineAnalyzer()
+        result = analyzer.analyze(scenario)
+    else:
+        # Use offline analyzer (heuristic-based)
+        logger.debug("Using offline analyzer (no LLM configured)")
+        analyzer = OfflineAnalyzer()
+        result = analyzer.analyze(scenario)
     
     # Save result
     get_eval_store().save_result(result)
@@ -383,33 +387,33 @@ def get_scenario(scenario_id: str) -> Optional[Scenario]:
 class EvalRunner:
     """Runner for evaluation scenarios."""
     
-    def __init__(self):
+    def __init__(self, use_llm: bool = True):
         self.store = get_eval_store()
+        self.use_llm = use_llm
     
     def run_scenario(self, scenario: Scenario) -> ScenarioResult:
         """Run a single scenario and return results."""
-        import time
+        import os
+        from autosre.evals.offline_analyzer import OfflineAnalyzer
         
-        start_time = time.time()
-        
-        # TODO: Actually run the agent against the scenario
-        # For now, return a stub result
-        result = ScenarioResult(
-            scenario=scenario.name,
-            success=False,
-            time_to_root_cause=time.time() - start_time,
-            root_cause_correct=False,
-            service_correct=False,
-            runbook_correct=False,
-            action_correct=False,
-            agent_root_cause="Agent not yet implemented",
-            agent_confidence=0.0,
-            agent_reasoning="Placeholder - agent implementation coming soon",
+        # Check if LLM is configured
+        has_llm = (
+            os.environ.get("OPENAI_API_KEY") or
+            os.environ.get("ANTHROPIC_API_KEY") or
+            os.environ.get("OLLAMA_HOST")
         )
         
-        result.accuracy = result.compute_accuracy()
-        self.store.save_result(result)
+        if self.use_llm and has_llm:
+            # Use LLM-based agent (to be implemented)
+            # For now, fall back to offline analyzer
+            analyzer = OfflineAnalyzer()
+            result = analyzer.analyze(scenario)
+        else:
+            # Use offline analyzer (heuristic-based)
+            analyzer = OfflineAnalyzer()
+            result = analyzer.analyze(scenario)
         
+        self.store.save_result(result)
         return result
     
     def run_all(self) -> list[ScenarioResult]:

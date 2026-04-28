@@ -1,0 +1,45 @@
+# Sample runbook for high CPU troubleshooting
+id: high-cpu
+title: High CPU Troubleshooting
+description: Steps to investigate and resolve high CPU usage
+
+alerts:
+  - HighCPUUsage
+  - ContainerCPUHigh
+  - NodeCPUHigh
+
+services: []
+
+keywords:
+  - cpu
+  - performance
+  - throttling
+
+steps:
+  - name: Check current CPU usage
+    command: kubectl top pods -n {{ namespace }}
+    description: View current CPU usage for all pods
+    
+  - name: Check for CPU throttling
+    command: kubectl get pods -n {{ namespace }} -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[*].restartCount}{"\n"}{end}'
+    description: Check if pods are being throttled
+    
+  - name: Check recent deployments
+    command: kubectl rollout history deployment/{{ service }} -n {{ namespace }}
+    description: See if a recent deployment caused the issue
+    
+  - name: Check resource requests/limits
+    command: kubectl describe pod {{ pod }} -n {{ namespace }} | grep -A 10 "Limits:"
+    description: Verify resource configuration
+    
+  - name: Check logs for errors
+    command: kubectl logs {{ pod }} -n {{ namespace }} --tail=100
+    description: Look for application errors or warnings
+
+automated: false
+requires_approval: true
+
+tags:
+  - cpu
+  - performance
+  - troubleshooting
