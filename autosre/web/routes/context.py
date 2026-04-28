@@ -46,17 +46,15 @@ async def context_page(request: Request, tab: str = "services"):
     }
     
     return templates.TemplateResponse(
-        "context.html",
-        {
-            "request": request,
-            "tab": tab,
+            request=request,
+            name="context.html",
+            context={"tab": tab,
             "services": services,
             "changes": changes,
             "alerts": alerts,
             "runbooks": runbooks,
-            "summary": summary,
-        }
-    )
+            "summary": summary}
+        )
 
 
 @router.get("/services", response_class=HTMLResponse)
@@ -72,9 +70,10 @@ async def services_table(
     services = store.list_services(namespace=namespace, cluster=cluster)
     
     return templates.TemplateResponse(
-        "partials/services_table.html",
-        {"request": request, "services": services}
-    )
+            request=request,
+            name="partials/services_table.html",
+            context={"services": services}
+        )
 
 
 @router.get("/services/{service_name}", response_class=HTMLResponse)
@@ -86,8 +85,9 @@ async def service_detail(request: Request, service_name: str):
     service = store.get_service(service_name)
     if not service:
         return templates.TemplateResponse(
-            "partials/not_found.html",
-            {"request": request, "entity": "Service", "name": service_name}
+            request=request,
+            name="partials/not_found.html",
+            context={"entity": "Service", "name": service_name}
         )
     
     ownership = store.get_ownership(service_name)
@@ -95,15 +95,13 @@ async def service_detail(request: Request, service_name: str):
     runbooks = store.find_runbook(service_name=service_name)
     
     return templates.TemplateResponse(
-        "partials/service_detail.html",
-        {
-            "request": request,
-            "service": service,
+            request=request,
+            name="partials/service_detail.html",
+            context={"service": service,
             "ownership": ownership,
             "changes": changes,
-            "runbooks": runbooks,
-        }
-    )
+            "runbooks": runbooks}
+        )
 
 
 @router.get("/changes", response_class=HTMLResponse)
@@ -124,9 +122,10 @@ async def changes_table(
     )
     
     return templates.TemplateResponse(
-        "partials/changes_table.html",
-        {"request": request, "changes": changes}
-    )
+            request=request,
+            name="partials/changes_table.html",
+            context={"changes": changes}
+        )
 
 
 @router.get("/alerts", response_class=HTMLResponse)
@@ -142,9 +141,10 @@ async def alerts_table(request: Request, service: Optional[str] = None):
         alerts = [a for a in alerts if a.service_name == service]
     
     return templates.TemplateResponse(
-        "partials/alerts_table.html",
-        {"request": request, "alerts": alerts}
-    )
+            request=request,
+            name="partials/alerts_table.html",
+            context={"alerts": alerts}
+        )
 
 
 @router.get("/runbooks", response_class=HTMLResponse)
@@ -156,9 +156,10 @@ async def runbooks_table(request: Request, service: Optional[str] = None):
     runbooks = store.find_runbook(service_name=service)
     
     return templates.TemplateResponse(
-        "partials/runbooks_table.html",
-        {"request": request, "runbooks": runbooks}
-    )
+            request=request,
+            name="partials/runbooks_table.html",
+            context={"runbooks": runbooks}
+        )
 
 
 @router.get("/runbooks/{runbook_id}", response_class=HTMLResponse)
@@ -172,14 +173,16 @@ async def runbook_detail(request: Request, runbook_id: str):
     
     if not runbook:
         return templates.TemplateResponse(
-            "partials/not_found.html",
-            {"request": request, "entity": "Runbook", "name": runbook_id}
+            request=request,
+            name="partials/not_found.html",
+            context={"entity": "Runbook", "name": runbook_id}
         )
     
     return templates.TemplateResponse(
-        "partials/runbook_detail.html",
-        {"request": request, "runbook": runbook}
-    )
+            request=request,
+            name="partials/runbook_detail.html",
+            context={"runbook": runbook}
+        )
 
 
 # API endpoints

@@ -69,15 +69,13 @@ async def agent_page(request: Request):
     incidents = store.get_open_incidents()
     
     return templates.TemplateResponse(
-        "agent.html",
-        {
-            "request": request,
-            "config": config,
+            request=request,
+            name="agent.html",
+            context={"config": config,
             "agent_state": _agent_state,
             "incidents": incidents[:10],
-            "logs": _agent_state["logs"][-50:],
-        }
-    )
+            "logs": _agent_state["logs"][-50:]}
+        )
 
 
 @router.get("/config", response_class=HTMLResponse)
@@ -107,9 +105,10 @@ async def config_panel(request: Request):
     }
     
     return templates.TemplateResponse(
-        "partials/agent_config.html",
-        {"request": request, "config": config}
-    )
+            request=request,
+            name="partials/agent_config.html",
+            context={"config": config}
+        )
 
 
 @router.get("/history", response_class=HTMLResponse)
@@ -121,9 +120,10 @@ async def history_panel(request: Request, limit: int = 20):
     incidents = store.get_open_incidents()
     
     return templates.TemplateResponse(
-        "partials/agent_history.html",
-        {"request": request, "incidents": incidents[:limit]}
-    )
+            request=request,
+            name="partials/agent_history.html",
+            context={"incidents": incidents[:limit]}
+        )
 
 
 @router.get("/logs", response_class=HTMLResponse)
@@ -134,13 +134,11 @@ async def logs_panel(request: Request, limit: int = 50):
     logs = _agent_state["logs"][-limit:]
     
     return templates.TemplateResponse(
-        "partials/agent_logs.html",
-        {
-            "request": request,
-            "logs": logs,
-            "agent_state": _agent_state,
-        }
-    )
+            request=request,
+            name="partials/agent_logs.html",
+            context={"logs": logs,
+            "agent_state": _agent_state}
+        )
 
 
 @router.get("/status", response_class=HTMLResponse)
@@ -149,9 +147,10 @@ async def status_panel(request: Request):
     templates = get_templates(request)
     
     return templates.TemplateResponse(
-        "partials/agent_status.html",
-        {"request": request, "agent_state": _agent_state}
-    )
+            request=request,
+            name="partials/agent_status.html",
+            context={"agent_state": _agent_state}
+        )
 
 
 @router.post("/start")
@@ -201,8 +200,9 @@ async def analyze(
     
     if not alert_name and not service_name:
         return templates.TemplateResponse(
-            "partials/analyze_error.html",
-            {"request": request, "error": "Please provide alert name or service name"}
+            request=request,
+            name="partials/analyze_error.html",
+            context={"error": "Please provide alert name or service name"}
         )
     
     # Build context for analysis
@@ -240,13 +240,11 @@ async def analyze(
     _add_log(f"Manual analysis triggered: {alert_name or service_name}")
     
     return templates.TemplateResponse(
-        "partials/analyze_result.html",
-        {
-            "request": request,
-            "context": context,
-            "analysis": analysis,
-        }
-    )
+            request=request,
+            name="partials/analyze_result.html",
+            context={"context": context,
+            "analysis": analysis}
+        )
 
 
 def _get_active_model() -> str:

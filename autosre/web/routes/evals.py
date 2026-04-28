@@ -59,14 +59,12 @@ async def evals_page(request: Request):
     }
     
     return templates.TemplateResponse(
-        "evals.html",
-        {
-            "request": request,
-            "scenarios": scenarios,
+            request=request,
+            name="evals.html",
+            context={"scenarios": scenarios,
             "results": results[:10],
-            "summary": summary,
-        }
-    )
+            "summary": summary}
+        )
 
 
 @router.get("/list", response_class=HTMLResponse)
@@ -76,9 +74,10 @@ async def scenario_list(request: Request):
     scenarios = list_scenarios()
     
     return templates.TemplateResponse(
-        "partials/scenario_list.html",
-        {"request": request, "scenarios": scenarios}
-    )
+            request=request,
+            name="partials/scenario_list.html",
+            context={"scenarios": scenarios}
+        )
 
 
 @router.get("/results", response_class=HTMLResponse)
@@ -88,9 +87,10 @@ async def results_list(request: Request, scenario: Optional[str] = None, limit: 
     results = get_results(scenario=scenario, limit=limit)
     
     return templates.TemplateResponse(
-        "partials/results_list.html",
-        {"request": request, "results": results}
-    )
+            request=request,
+            name="partials/results_list.html",
+            context={"results": results}
+        )
 
 
 @router.post("/run/{scenario_name}", response_class=HTMLResponse)
@@ -137,13 +137,11 @@ async def run_scenario_endpoint(
     background_tasks.add_task(asyncio.create_task, run_and_store())
     
     return templates.TemplateResponse(
-        "partials/scenario_running.html",
-        {
-            "request": request,
-            "run_id": run_id,
-            "scenario_name": scenario_name,
-        }
-    )
+            request=request,
+            name="partials/scenario_running.html",
+            context={"run_id": run_id,
+            "scenario_name": scenario_name}
+        )
 
 
 @router.get("/run/{run_id}/status", response_class=HTMLResponse)
@@ -154,35 +152,30 @@ async def run_status(request: Request, run_id: str):
     run_info = _running_scenarios.get(run_id)
     if not run_info:
         return templates.TemplateResponse(
-            "partials/scenario_error.html",
-            {"request": request, "error": "Run not found"}
+            request=request,
+            name="partials/scenario_error.html",
+            context={"error": "Run not found"}
         )
     
     if run_info["status"] == "running":
         return templates.TemplateResponse(
-            "partials/scenario_running.html",
-            {
-                "request": request,
-                "run_id": run_id,
-                "scenario_name": run_info["scenario"],
-            }
+            request=request,
+            name="partials/scenario_running.html",
+            context={"run_id": run_id,
+                "scenario_name": run_info["scenario"]}
         )
     elif run_info["status"] == "complete":
         return templates.TemplateResponse(
-            "partials/scenario_result.html",
-            {
-                "request": request,
-                "result": run_info["result"],
-                "scenario_name": run_info["scenario"],
-            }
+            request=request,
+            name="partials/scenario_result.html",
+            context={"result": run_info["result"],
+                "scenario_name": run_info["scenario"]}
         )
     else:
         return templates.TemplateResponse(
-            "partials/scenario_error.html",
-            {
-                "request": request,
-                "error": run_info.get("error", "Unknown error"),
-            }
+            request=request,
+            name="partials/scenario_error.html",
+            context={"error": run_info.get("error", "Unknown error")}
         )
 
 
@@ -202,13 +195,11 @@ async def scenario_detail(request: Request, scenario_name: str):
     results = get_results(scenario=scenario_name, limit=10)
     
     return templates.TemplateResponse(
-        "partials/scenario_detail.html",
-        {
-            "request": request,
-            "scenario": scenario,
-            "results": results,
-        }
-    )
+            request=request,
+            name="partials/scenario_detail.html",
+            context={"scenario": scenario,
+            "results": results}
+        )
 
 
 class ScenarioCreate(BaseModel):

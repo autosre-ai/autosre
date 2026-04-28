@@ -130,6 +130,14 @@ class ChangeEvent(BaseModel):
     rolled_back: bool = Field(default=False)
 
 
+class RunbookStep(BaseModel):
+    """A step in a runbook."""
+    name: str = Field(..., description="Step name")
+    command: Optional[str] = Field(None, description="Command to execute")
+    description: Optional[str] = Field(None, description="What this step does")
+    automated: bool = Field(default=False, description="Can be automated")
+
+
 class Runbook(BaseModel):
     """
     A runbook for handling specific types of incidents.
@@ -146,7 +154,7 @@ class Runbook(BaseModel):
     
     # Content
     description: str = Field(..., description="Brief description")
-    steps: list[str] = Field(default_factory=list, description="Step-by-step remediation")
+    steps: list[RunbookStep | str] = Field(default_factory=list, description="Step-by-step remediation")
     
     # Automation
     automated: bool = Field(default=False, description="Can this runbook be automated?")

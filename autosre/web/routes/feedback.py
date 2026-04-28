@@ -40,13 +40,11 @@ async def feedback_page(request: Request):
         stats = {"total": 0, "positive": 0, "negative": 0}
     
     return templates.TemplateResponse(
-        "feedback.html",
-        {
-            "request": request,
-            "recent_feedback": recent_feedback,
-            "stats": stats,
-        }
-    )
+            request=request,
+            name="feedback.html",
+            context={"recent_feedback": recent_feedback,
+            "stats": stats}
+        )
 
 
 @router.post("/submit", response_class=HTMLResponse)
@@ -78,11 +76,9 @@ async def submit_feedback(
         store.add(feedback)
         
         return templates.TemplateResponse(
-            "partials/feedback_success.html",
-            {
-                "request": request,
-                "message": "Feedback submitted successfully",
-            }
+            request=request,
+            name="partials/feedback_success.html",
+            context={"message": "Feedback submitted successfully"}
         )
     except Exception as e:
         return templates.TemplateResponse(
@@ -100,12 +96,10 @@ async def feedback_form(request: Request, incident_id: str):
     templates = get_templates(request)
     
     return templates.TemplateResponse(
-        "partials/feedback_form.html",
-        {
-            "request": request,
-            "incident_id": incident_id,
-        }
-    )
+            request=request,
+            name="partials/feedback_form.html",
+            context={"incident_id": incident_id}
+        )
 
 
 @router.get("/history", response_class=HTMLResponse)
@@ -127,9 +121,10 @@ async def feedback_history(
         feedback_list = []
     
     return templates.TemplateResponse(
-        "partials/feedback_history.html",
-        {"request": request, "feedback_list": feedback_list}
-    )
+            request=request,
+            name="partials/feedback_history.html",
+            context={"feedback_list": feedback_list}
+        )
 
 
 @router.get("/export")

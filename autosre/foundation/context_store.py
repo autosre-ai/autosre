@@ -372,6 +372,15 @@ class ContextStore:
     def add_runbook(self, runbook: Runbook) -> None:
         """Add or update a runbook."""
         with sqlite3.connect(self.db_path) as conn:
+            # Serialize steps properly (can be list of strings or RunbookStep objects)
+            steps_serialized = []
+            for step in runbook.steps:
+                if isinstance(step, str):
+                    steps_serialized.append(step)
+                else:
+                    # RunbookStep model - convert to dict
+                    steps_serialized.append(step.model_dump())
+            
             conn.execute("""
                 INSERT OR REPLACE INTO runbooks
                 (id, title, alert_names, services, keywords, description,
@@ -385,7 +394,7 @@ class ContextStore:
                 json.dumps(runbook.services),
                 json.dumps(runbook.keywords),
                 runbook.description,
-                json.dumps(runbook.steps),
+                json.dumps(steps_serialized),
                 1 if runbook.automated else 0,
                 runbook.automation_script,
                 1 if runbook.requires_approval else 0,

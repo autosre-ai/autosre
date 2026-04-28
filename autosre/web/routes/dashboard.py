@@ -65,9 +65,9 @@ async def dashboard(request: Request):
     firing_alerts = store.get_firing_alerts()[:5]
     
     return templates.TemplateResponse(
-        "dashboard.html",
-        {
-            "request": request,
+        request=request,
+        name="dashboard.html",
+        context={
             "status": status,
             "recent_incidents": recent_incidents,
             "recent_changes": recent_changes,
