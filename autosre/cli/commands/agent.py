@@ -221,17 +221,72 @@ def agent_analyze(alert_file: str, alert_name: str, service: str, verbose: bool,
                 )
                 context["runbooks"] = [r.model_dump() for r in runbooks]
             
-            progress.update(task, description="Analyzing with LLM...")
+            progress.update(task, description="Analyzing...")
             
-            # TODO: Actually call the LLM reasoner
-            # For now, return a mock analysis
+            # Use offline analysis (heuristics) when no LLM is configured
+            import os
+            has_llm = (
+                os.environ.get("OPENAI_API_KEY") or
+                os.environ.get("ANTHROPIC_API_KEY") or
+                os.environ.get("OLLAMA_HOST")
+            )
+            
+            if has_llm:
+                # TODO: Actually call the LLM reasoner
+                analysis_method = "LLM"
+                root_cause = "Analysis requires LLM integration (coming soon)"
+                confidence = 0.0
+                reasoning = "LLM integration pending"
+            else:
+                # Use heuristic-based analysis
+                analysis_method = "Offline (heuristic)"
+                
+                # Simple heuristics based on alert data
+                alert_name_lower = alert_data.get("name", "").lower()
+                alert_summary_lower = alert_data.get("summary", "").lower()
+                full_text = f"{alert_name_lower} {alert_summary_lower}"
+                
+                # Identify issue type
+                if "cpu" in full_text:
+                    root_cause = "High CPU utilization - check for CPU-intensive operations"
+                    suggested_actions = ["Check for CPU-heavy processes", "Review recent deployments", "Consider scaling up"]
+                elif "memory" in full_text or "oom" in full_text:
+                    root_cause = "Memory pressure or leak - application using excessive memory"
+                    suggested_actions = ["Check memory usage trends", "Look for memory leaks", "Review heap dumps"]
+                elif "disk" in full_text or "storage" in full_text:
+                    root_cause = "Disk space or I/O issue"
+                    suggested_actions = ["Check disk usage", "Clean up old logs/data", "Consider expanding volume"]
+                elif "connection" in full_text or "timeout" in full_text:
+                    root_cause = "Connection or timeout issue - check network and dependencies"
+                    suggested_actions = ["Check network connectivity", "Review connection pool settings", "Check downstream services"]
+                elif "error" in full_text or "5xx" in full_text or "exception" in full_text:
+                    root_cause = "Application errors - review logs for exception details"
+                    suggested_actions = ["Check application logs", "Review recent deployments", "Check error rates"]
+                elif "latency" in full_text or "slow" in full_text:
+                    root_cause = "Latency degradation - check performance bottlenecks"
+                    suggested_actions = ["Review request traces", "Check database query times", "Profile application"]
+                else:
+                    root_cause = "Issue detected - review alert details and recent changes"
+                    suggested_actions = ["Review alert details", "Check recent changes", "Examine service logs"]
+                
+                # Look at changes for more context
+                if context["changes"]:
+                    recent_change = context["changes"][0].get("description", "")
+                    root_cause += f" (Recent change: {recent_change})"
+                    confidence = 0.5
+                else:
+                    confidence = 0.3
+                
+                reasoning = f"Heuristic analysis based on alert name and summary"
+            
             analysis = {
-                "root_cause": "Analysis requires LLM integration (coming soon)",
-                "confidence": 0.0,
+                "root_cause": root_cause,
+                "confidence": confidence,
+                "analysis_method": analysis_method,
                 "affected_services": [service_name] if service_name else [],
                 "related_changes": [c.get("description") for c in context["changes"][:3]],
                 "recommended_runbooks": [r.get("id") for r in context["runbooks"][:2]],
-                "suggested_actions": [
+                "suggested_actions": suggested_actions if 'suggested_actions' in dir() else [
                     "Check recent deployments",
                     "Review resource utilization",
                     "Examine application logs",

@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Feedback{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold">Feedback</h1>
+            <p class="text-gray-400 mt-1">Submit feedback to improve agent accuracy</p>
+        </div>
+        <a href="/feedback/export" class="btn-secondary">
+            <span class="mr-2">📥</span> Export for Fine-tuning
+        </a>
+    </div>
+    
+    <!-- Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="stat-card">
+            <div class="text-2xl font-bold">{{ stats.total }}</div>
+            <div class="text-sm text-gray-400">Total Feedback</div>
+        </div>
+        <div class="stat-card">
+            <div class="text-2xl font-bold text-sre-accent">{{ stats.positive }}</div>
+            <div class="text-sm text-gray-400">Positive</div>
+        </div>
+        <div class="stat-card">
+            <div class="text-2xl font-bold text-sre-error">{{ stats.negative }}</div>
+            <div class="text-sm text-gray-400">Negative</div>
+        </div>
+        <div class="stat-card">
+            <div class="text-2xl font-bold">
+                {% if stats.total > 0 %}
+                {{ "%.0f"|format(stats.positive / stats.total * 100) }}%
+                {% else %}
+                —
+                {% endif %}
+            </div>
+            <div class="text-sm text-gray-400">Satisfaction Rate</div>
+        </div>
+    </div>
+    
+    <!-- Two Column Layout -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Submit Feedback -->
+        <div class="bg-sre-card rounded-lg border border-sre-border p-6">
+            <h2 class="text-lg font-semibold mb-4">💬 Submit Feedback</h2>
+            <form hx-post="/feedback/submit"
+                  hx-target="#submit-result"
+                  hx-swap="innerHTML"
+                  class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Incident ID</label>
+                    <input type="text" name="incident_id" required
+                           class="input-field"
+                           placeholder="e.g., inc-12345">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Rating</label>
+                    <div class="flex space-x-4">
+                        <label class="flex items-center space-x-2 cursor-pointer">
+                            <input type="radio" name="rating" value="positive" 
+                                   class="text-sre-accent focus:ring-sre-accent">
+                            <span class="text-sre-accent">👍 Helpful</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer">
+                            <input type="radio" name="rating" value="neutral"
+                                   class="text-gray-400 focus:ring-gray-400">
+                            <span class="text-gray-400">😐 Neutral</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer">
+                            <input type="radio" name="rating" value="negative"
+                                   class="text-sre-error focus:ring-sre-error">
+                            <span class="text-sre-error">👎 Not Helpful</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Category</label>
+                    <select name="category" class="input-field">
+                        <option value="general">General</option>
+                        <option value="root_cause">Root Cause Analysis</option>
+                        <option value="remediation">Remediation Suggestion</option>
+                        <option value="speed">Response Speed</option>
+                        <option value="runbook">Runbook Selection</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Comment (optional)</label>
+                    <textarea name="comment"
+                              class="input-field"
+                              rows="3"
+                              placeholder="What could be improved?"></textarea>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Correct Root Cause (if different)</label>
+                    <input type="text" name="correct_root_cause"
+                           class="input-field"
+                           placeholder="What was the actual root cause?">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Correct Action (if different)</label>
+                    <input type="text" name="correct_action"
+                           class="input-field"
+                           placeholder="What action resolved the issue?">
+                </div>
+                
+                <div id="submit-result"></div>
+                
+                <button type="submit" class="btn-primary w-full">
+                    Submit Feedback
+                </button>
+            </form>
+        </div>
+        
+        <!-- Recent Feedback -->
+        <div class="bg-sre-card rounded-lg border border-sre-border">
+            <div class="p-4 border-b border-sre-border flex items-center justify-between">
+                <h2 class="text-lg font-semibold">📋 Recent Feedback</h2>
+                <div class="flex space-x-2">
+                    <button hx-get="/feedback/history?rating=positive"
+                            hx-target="#feedback-list"
+                            class="text-xs badge-success cursor-pointer hover:opacity-80">
+                        Positive
+                    </button>
+                    <button hx-get="/feedback/history?rating=negative"
+                            hx-target="#feedback-list"
+                            class="text-xs badge-error cursor-pointer hover:opacity-80">
+                        Negative
+                    </button>
+                    <button hx-get="/feedback/history"
+                            hx-target="#feedback-list"
+                            class="text-xs badge-muted cursor-pointer hover:opacity-80">
+                        All
+                    </button>
+                </div>
+            </div>
+            <div id="feedback-list"
+                 hx-get="/feedback/history"
+                 hx-trigger="load"
+                 class="divide-y divide-sre-border max-h-[600px] overflow-y-auto">
+                {% include "partials/feedback_history.html" %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
