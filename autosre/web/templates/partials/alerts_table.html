@@ -1,0 +1,54 @@
+<!-- Alerts Table -->
+<div class="bg-sre-card rounded-lg border border-sre-border overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="w-full">
+            <thead class="bg-sre-bg">
+                <tr>
+                    <th class="table-header">Name</th>
+                    <th class="table-header">Severity</th>
+                    <th class="table-header">Service</th>
+                    <th class="table-header">Summary</th>
+                    <th class="table-header">Fired At</th>
+                    <th class="table-header">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-sre-border">
+                {% if alerts %}
+                {% for alert in alerts %}
+                <tr class="hover:bg-sre-bg transition-colors">
+                    <td class="table-cell font-medium">{{ alert.name }}</td>
+                    <td class="table-cell">
+                        <span class="badge-{{ 'error' if alert.severity.value == 'critical' else 'warning' if alert.severity.value == 'high' else 'info' }}">
+                            {{ alert.severity.value }}
+                        </span>
+                    </td>
+                    <td class="table-cell">{{ alert.service_name or '—' }}</td>
+                    <td class="table-cell text-sm max-w-xs truncate text-gray-400">
+                        {{ alert.summary }}
+                    </td>
+                    <td class="table-cell text-sm text-gray-500">
+                        {{ alert.fired_at.strftime('%m/%d %H:%M') if alert.fired_at else '—' }}
+                    </td>
+                    <td class="table-cell">
+                        <button hx-post="/agent/analyze"
+                                hx-vals='{"alert_name": "{{ alert.name }}"}'
+                                hx-target="#analyze-result-{{ loop.index }}"
+                                class="text-sre-accent hover:underline text-sm">
+                            Analyze
+                        </button>
+                        <div id="analyze-result-{{ loop.index }}" class="mt-1"></div>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% else %}
+                <tr>
+                    <td colspan="6" class="table-cell text-center text-gray-500 py-8">
+                        <span class="text-4xl">✅</span>
+                        <p class="mt-2">No firing alerts</p>
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>

@@ -1,0 +1,20 @@
+<!-- Agent Logs -->
+<div class="p-4 font-mono text-sm">
+    {% if logs %}
+    <div class="space-y-1">
+        {% for log in logs %}
+        <div class="flex">
+            <span class="text-gray-500 w-20 flex-shrink-0">{{ log.time }}</span>
+            <span class="text-gray-300">{{ log.message }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center text-gray-500 py-4">
+        <p>No logs yet</p>
+        {% if agent_state.status != 'running' %}
+        <p class="text-sm mt-1">Start the agent to see logs</p>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>

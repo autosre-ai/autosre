@@ -1,0 +1,103 @@
+<!-- Agent Config Panel -->
+<div class="bg-sre-card rounded-lg border border-sre-border p-6 space-y-6">
+    <h2 class="text-lg font-semibold">⚙️ Configuration</h2>
+    
+    <!-- LLM -->
+    <div>
+        <h3 class="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">LLM Provider</h3>
+        <div class="space-y-2">
+            <div class="flex items-center justify-between">
+                <span>Provider</span>
+                <span class="font-medium capitalize">{{ config.llm.provider }}</span>
+            </div>
+            <div class="flex items-center justify-between">
+                <span>Model</span>
+                <span class="font-medium text-sre-accent">{{ config.llm.model }}</span>
+            </div>
+            <div class="flex items-center justify-between">
+                <span>Status</span>
+                {% if config.llm.configured %}
+                <span class="badge-success">Configured</span>
+                {% else %}
+                <span class="badge-warning">Not Configured</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Behavior -->
+    <div>
+        <h3 class="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">Behavior</h3>
+        <div class="space-y-2 text-sm">
+            <div class="flex items-center justify-between">
+                <span>Require Approval</span>
+                {% if config.behavior.require_approval %}
+                <span class="text-sre-accent">Yes</span>
+                {% else %}
+                <span class="text-gray-500">No</span>
+                {% endif %}
+            </div>
+            <div class="flex items-center justify-between">
+                <span>Auto-approve Low Risk</span>
+                {% if config.behavior.auto_approve_low_risk %}
+                <span class="text-sre-accent">Yes</span>
+                {% else %}
+                <span class="text-gray-500">No</span>
+                {% endif %}
+            </div>
+            <div class="flex items-center justify-between">
+                <span>Confidence Threshold</span>
+                <span>{{ "%.0f"|format(config.behavior.confidence_threshold * 100) }}%</span>
+            </div>
+            <div class="flex items-center justify-between">
+                <span>Max Iterations</span>
+                <span>{{ config.behavior.max_iterations }}</span>
+            </div>
+            <div class="flex items-center justify-between">
+                <span>Timeout</span>
+                <span>{{ config.behavior.timeout_seconds }}s</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Integrations -->
+    <div>
+        <h3 class="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">Integrations</h3>
+        <div class="space-y-2 text-sm">
+            <div class="flex items-center justify-between">
+                <span>Prometheus</span>
+                <span class="text-xs text-gray-500 truncate max-w-[150px]">{{ config.integrations.prometheus_url }}</span>
+            </div>
+            <div class="flex items-center justify-between">
+                <span>Slack</span>
+                {% if config.integrations.slack_enabled %}
+                <span class="badge-success text-xs">Enabled</span>
+                {% else %}
+                <span class="badge-muted text-xs">Disabled</span>
+                {% endif %}
+            </div>
+            <div class="flex items-center justify-between">
+                <span>PagerDuty</span>
+                {% if config.integrations.pagerduty_enabled %}
+                <span class="badge-success text-xs">Enabled</span>
+                {% else %}
+                <span class="badge-muted text-xs">Disabled</span>
+                {% endif %}
+            </div>
+            <div class="flex items-center justify-between">
+                <span>MCP</span>
+                {% if config.integrations.mcp_enabled %}
+                <span class="badge-success text-xs">Enabled</span>
+                {% else %}
+                <span class="badge-muted text-xs">Disabled</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="pt-2">
+        <p class="text-xs text-gray-500">
+            Edit <code>.env</code> file to change configuration
+        </p>
+    </div>
+</div>

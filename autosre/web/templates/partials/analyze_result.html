@@ -1,0 +1,49 @@
+<!-- Analyze Result -->
+<div class="bg-sre-bg rounded-lg p-4 border border-sre-border">
+    <h3 class="font-semibold mb-3">Analysis Result</h3>
+    
+    <div class="space-y-4">
+        <!-- Root Cause -->
+        <div>
+            <div class="text-sm text-gray-400 mb-1">Root Cause</div>
+            <div class="bg-sre-card rounded p-3">
+                {{ analysis.root_cause }}
+            </div>
+        </div>
+        
+        <!-- Confidence -->
+        <div class="flex items-center space-x-4">
+            <div>
+                <span class="text-sm text-gray-400">Confidence:</span>
+                <span class="font-medium {{ 'text-sre-accent' if analysis.confidence >= 0.7 else 'text-sre-warn' if analysis.confidence >= 0.4 else 'text-sre-error' }}">
+                    {{ "%.0f"|format(analysis.confidence * 100) }}%
+                </span>
+            </div>
+            <div>
+                <span class="text-sm text-gray-400">Related Changes:</span>
+                <span class="font-medium">{{ analysis.related_changes }}</span>
+            </div>
+            <div>
+                <span class="text-sm text-gray-400">Runbooks:</span>
+                <span class="font-medium">{{ analysis.matching_runbooks }}</span>
+            </div>
+        </div>
+        
+        <!-- Suggested Actions -->
+        {% if analysis.suggested_actions %}
+        <div>
+            <div class="text-sm text-gray-400 mb-2">Suggested Actions</div>
+            <ol class="list-decimal list-inside space-y-1 text-sm">
+                {% for action in analysis.suggested_actions %}
+                <li>{{ action }}</li>
+                {% endfor %}
+            </ol>
+        </div>
+        {% endif %}
+        
+        <!-- Context Summary -->
+        <div class="text-xs text-gray-500 pt-2 border-t border-sre-border">
+            Context: {{ context.services|length }} services, {{ context.changes|length }} changes, {{ context.runbooks|length }} runbooks
+        </div>
+    </div>
+</div>

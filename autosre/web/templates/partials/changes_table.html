@@ -1,0 +1,56 @@
+<!-- Changes Table -->
+<div class="bg-sre-card rounded-lg border border-sre-border overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="w-full">
+            <thead class="bg-sre-bg">
+                <tr>
+                    <th class="table-header">Service</th>
+                    <th class="table-header">Type</th>
+                    <th class="table-header">Description</th>
+                    <th class="table-header">Author</th>
+                    <th class="table-header">Time</th>
+                    <th class="table-header">Status</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-sre-border">
+                {% if changes %}
+                {% for change in changes %}
+                <tr class="hover:bg-sre-bg transition-colors">
+                    <td class="table-cell font-medium">{{ change.service_name }}</td>
+                    <td class="table-cell">
+                        <span class="badge-info">{{ change.change_type.value }}</span>
+                    </td>
+                    <td class="table-cell text-sm max-w-xs truncate">
+                        {{ change.description }}
+                        {% if change.pr_url %}
+                        <a href="{{ change.pr_url }}" target="_blank" class="text-sre-accent ml-1">
+                            #{{ change.pr_number }}
+                        </a>
+                        {% endif %}
+                    </td>
+                    <td class="table-cell text-gray-400">{{ change.author }}</td>
+                    <td class="table-cell text-sm text-gray-500">
+                        {{ change.timestamp.strftime('%m/%d %H:%M') }}
+                    </td>
+                    <td class="table-cell">
+                        {% if change.rolled_back %}
+                        <span class="badge-warning">Rolled back</span>
+                        {% elif change.successful %}
+                        <span class="badge-success">Success</span>
+                        {% else %}
+                        <span class="badge-error">Failed</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                {% else %}
+                <tr>
+                    <td colspan="6" class="table-cell text-center text-gray-500 py-8">
+                        No recent changes found.
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>

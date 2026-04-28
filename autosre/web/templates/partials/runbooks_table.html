@@ -1,0 +1,80 @@
+<!-- Runbooks Table -->
+<div class="bg-sre-card rounded-lg border border-sre-border overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="w-full">
+            <thead class="bg-sre-bg">
+                <tr>
+                    <th class="table-header">Title</th>
+                    <th class="table-header">Services</th>
+                    <th class="table-header">Alerts</th>
+                    <th class="table-header">Automated</th>
+                    <th class="table-header">Success Rate</th>
+                    <th class="table-header">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-sre-border">
+                {% if runbooks %}
+                {% for runbook in runbooks %}
+                <tr class="hover:bg-sre-bg transition-colors">
+                    <td class="table-cell">
+                        <div class="font-medium">{{ runbook.title }}</div>
+                        <div class="text-sm text-gray-400 max-w-xs truncate">{{ runbook.description }}</div>
+                    </td>
+                    <td class="table-cell text-sm">
+                        {% if runbook.services %}
+                        <div class="flex flex-wrap gap-1">
+                            {% for svc in runbook.services[:3] %}
+                            <span class="badge-muted text-xs">{{ svc }}</span>
+                            {% endfor %}
+                            {% if runbook.services|length > 3 %}
+                            <span class="text-gray-500">+{{ runbook.services|length - 3 }}</span>
+                            {% endif %}
+                        </div>
+                        {% else %}
+                        <span class="text-gray-500">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="table-cell text-sm">
+                        {% if runbook.alert_names %}
+                        {{ runbook.alert_names|length }} alerts
+                        {% else %}
+                        <span class="text-gray-500">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="table-cell">
+                        {% if runbook.automated %}
+                        <span class="badge-success">Automated</span>
+                        {% else %}
+                        <span class="badge-muted">Manual</span>
+                        {% endif %}
+                    </td>
+                    <td class="table-cell">
+                        {% if runbook.success_rate %}
+                        <span class="{{ 'text-sre-accent' if runbook.success_rate >= 0.8 else 'text-sre-warn' }}">
+                            {{ "%.0f"|format(runbook.success_rate * 100) }}%
+                        </span>
+                        {% else %}
+                        <span class="text-gray-500">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="table-cell">
+                        <button hx-get="/context/runbooks/{{ runbook.id }}"
+                                hx-target="#detail-content"
+                                onclick="document.getElementById('detail-modal').classList.remove('hidden'); document.getElementById('detail-title').textContent = '{{ runbook.title }}'"
+                                class="text-sre-accent hover:underline text-sm">
+                            View
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% else %}
+                <tr>
+                    <td colspan="6" class="table-cell text-center text-gray-500 py-8">
+                        No runbooks found. Add runbooks to <code>~/.autosre/runbooks/</code>
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>

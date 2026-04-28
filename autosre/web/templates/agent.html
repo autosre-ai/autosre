@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Agent{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold">Agent</h1>
+            <p class="text-gray-400 mt-1">Monitor and manage the AI SRE agent</p>
+        </div>
+        <div id="agent-status-badge"
+             hx-get="/agent/status"
+             hx-trigger="every 5s"
+             hx-swap="innerHTML">
+            {% include "partials/agent_status.html" %}
+        </div>
+    </div>
+    
+    <!-- Agent Controls -->
+    <div class="bg-sre-card rounded-lg border border-sre-border p-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h2 class="text-lg font-semibold">Agent Controls</h2>
+                <p class="text-sm text-gray-400 mt-1">
+                    {% if agent_state.status == 'running' %}
+                    Running since {{ agent_state.started_at[:16] if agent_state.started_at else 'N/A' }}
+                    • {{ agent_state.iterations }} iterations
+                    {% else %}
+                    Agent is not running
+                    {% endif %}
+                </p>
+            </div>
+            <div class="flex space-x-3">
+                {% if agent_state.status != 'running' %}
+                <button hx-post="/agent/start"
+                        hx-swap="none"
+                        class="btn-primary">
+                    <span class="mr-2">▶</span> Start Agent
+                </button>
+                {% else %}
+                <button hx-post="/agent/stop"
+                        hx-swap="none"
+                        class="btn-secondary">
+                    <span class="mr-2">⏹</span> Stop Agent
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Two Column Layout -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Config Panel -->
+        <div class="lg:col-span-1">
+            <div id="config-panel"
+                 hx-get="/agent/config"
+                 hx-trigger="load">
+                {% include "partials/agent_config.html" %}
+            </div>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="lg:col-span-2 space-y-6">
+            <!-- Manual Analysis -->
+            <div class="bg-sre-card rounded-lg border border-sre-border p-6">
+                <h2 class="text-lg font-semibold mb-4">🔍 Manual Analysis</h2>
+                <form hx-post="/agent/analyze"
+                      hx-target="#analyze-result"
+                      hx-swap="innerHTML"
+                      class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-1">Alert Name</label>
+                            <input type="text" name="alert_name" 
+                                   class="input-field"
+                                   placeholder="e.g., HighCPUUsage">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-1">Service Name</label>
+                            <input type="text" name="service_name" 
+                                   class="input-field"
+                                   placeholder="e.g., payment-service">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn-primary">
+                        Analyze
+                    </button>
+                </form>
+                <div id="analyze-result" class="mt-4"></div>
+            </div>
+            
+            <!-- History -->
+            <div class="bg-sre-card rounded-lg border border-sre-border">
+                <div class="p-4 border-b border-sre-border">
+                    <h2 class="text-lg font-semibold">📜 Analysis History</h2>
+                </div>
+                <div id="history-panel"
+                     hx-get="/agent/history"
+                     hx-trigger="load, every 30s">
+                    {% include "partials/agent_history.html" %}
+                </div>
+            </div>
+            
+            <!-- Logs -->
+            <div class="bg-sre-card rounded-lg border border-sre-border">
+                <div class="p-4 border-b border-sre-border flex items-center justify-between">
+                    <h2 class="text-lg font-semibold">📋 Agent Logs</h2>
+                    <span class="text-sm text-gray-500">Auto-refreshing</span>
+                </div>
+                <div id="logs-panel"
+                     hx-get="/agent/logs"
+                     hx-trigger="every 3s"
+                     class="max-h-64 overflow-y-auto">
+                    {% include "partials/agent_logs.html" %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

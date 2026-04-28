@@ -531,6 +531,34 @@
         "sre"
       ],
       "created_at": "2026-04-29T00:08:00.771845"
+    },
+    "05223edc94f962c35cc89d87ff9ee369bc0c0575b7aa3a37f02a28ca4cf1eb06": {
+      "user": "testuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:09:13.912860"
+    },
+    "b881e22e308efd8f3146ec09d0adcebcf9a3ccc7a4356b0937656ed755290160": {
+      "user": "testuser",
+      "roles": [
+        "viewer"
+      ],
+      "created_at": "2026-04-29T00:09:13.914585"
+    },
+    "a872f250ec2a25c0cbfdb0fa07bb83fe5658638f049221f11403ec4b99501a62": {
+      "user": "adminuser",
+      "roles": [
+        "admin"
+      ],
+      "created_at": "2026-04-29T00:09:13.915581"
+    },
+    "c516f772c6d9878372f91d427f9a527e771fb39cdcebaa24eaca04359487a47b": {
+      "user": "asyncuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:09:13.917291"
     }
   }
 }
