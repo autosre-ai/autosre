@@ -1,0 +1,100 @@
+<!-- Runbook Detail -->
+<div class="space-y-6">
+    <!-- Header -->
+    <div>
+        <p class="text-gray-400">{{ runbook.description }}</p>
+        <div class="flex items-center space-x-2 mt-2">
+            {% if runbook.automated %}
+            <span class="badge-success">Automated</span>
+            {% else %}
+            <span class="badge-muted">Manual</span>
+            {% endif %}
+            {% if runbook.requires_approval %}
+            <span class="badge-warning">Requires Approval</span>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Services -->
+    {% if runbook.services %}
+    <div>
+        <div class="text-sm text-gray-400 mb-2">Services</div>
+        <div class="flex flex-wrap gap-2">
+            {% for svc in runbook.services %}
+            <span class="badge-info">{{ svc }}</span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Alert Names -->
+    {% if runbook.alert_names %}
+    <div>
+        <div class="text-sm text-gray-400 mb-2">Triggered by Alerts</div>
+        <div class="flex flex-wrap gap-2">
+            {% for alert in runbook.alert_names %}
+            <span class="badge-warning">{{ alert }}</span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Steps -->
+    {% if runbook.steps %}
+    <div>
+        <div class="text-sm text-gray-400 mb-2">Steps</div>
+        <ol class="space-y-3">
+            {% for step in runbook.steps %}
+            <li class="bg-sre-bg rounded p-4">
+                <div class="flex items-start space-x-3">
+                    <span class="flex-shrink-0 w-6 h-6 rounded-full bg-sre-accent/20 text-sre-accent text-sm flex items-center justify-center">
+                        {{ loop.index }}
+                    </span>
+                    <div class="flex-1">
+                        {% if step is mapping %}
+                        <div class="font-medium">{{ step.name or step.title or 'Step ' ~ loop.index }}</div>
+                        <div class="text-sm text-gray-400 mt-1">{{ step.description or step.action or '' }}</div>
+                        {% if step.command %}
+                        <code class="block mt-2 p-2 bg-gray-900 rounded text-sm">{{ step.command }}</code>
+                        {% endif %}
+                        {% else %}
+                        <div class="text-gray-300">{{ step }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </li>
+            {% endfor %}
+        </ol>
+    </div>
+    {% endif %}
+    
+    <!-- Automation Script -->
+    {% if runbook.automation_script %}
+    <div>
+        <div class="text-sm text-gray-400 mb-2">Automation Script</div>
+        <pre class="bg-sre-bg rounded p-4 text-sm overflow-x-auto"><code>{{ runbook.automation_script }}</code></pre>
+    </div>
+    {% endif %}
+    
+    <!-- Success Rate -->
+    {% if runbook.success_rate %}
+    <div class="bg-sre-bg rounded-lg p-4">
+        <div class="text-sm text-gray-400 mb-2">Success Rate</div>
+        <div class="flex items-baseline space-x-2">
+            <span class="text-3xl font-bold {{ 'text-sre-accent' if runbook.success_rate >= 0.8 else 'text-sre-warn' }}">
+                {{ "%.0f"|format(runbook.success_rate * 100) }}%
+            </span>
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Metadata -->
+    <div class="text-xs text-gray-500 border-t border-sre-border pt-4">
+        {% if runbook.author %}
+        <span>Author: {{ runbook.author }}</span>
+        {% endif %}
+        {% if runbook.last_updated %}
+        <span class="ml-4">Last updated: {{ runbook.last_updated.strftime('%Y-%m-%d') if runbook.last_updated else '—' }}</span>
+        {% endif %}
+    </div>
+</div>

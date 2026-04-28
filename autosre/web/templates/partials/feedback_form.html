@@ -1,0 +1,31 @@
+<!-- Feedback Form (for inline use) -->
+<form hx-post="/feedback/submit"
+      hx-target="this"
+      hx-swap="outerHTML"
+      class="bg-sre-bg rounded-lg p-4 border border-sre-border space-y-3">
+    <input type="hidden" name="incident_id" value="{{ incident_id }}">
+    
+    <div class="text-sm font-medium">How was this analysis?</div>
+    
+    <div class="flex space-x-4">
+        <label class="flex items-center space-x-2 cursor-pointer">
+            <input type="radio" name="rating" value="positive" required>
+            <span class="text-sre-accent">👍 Helpful</span>
+        </label>
+        <label class="flex items-center space-x-2 cursor-pointer">
+            <input type="radio" name="rating" value="negative">
+            <span class="text-sre-error">👎 Not Helpful</span>
+        </label>
+    </div>
+    
+    <div>
+        <textarea name="comment"
+                  class="input-field text-sm"
+                  rows="2"
+                  placeholder="Any comments? (optional)"></textarea>
+    </div>
+    
+    <button type="submit" class="btn-primary-sm">
+        Submit
+    </button>
+</form>

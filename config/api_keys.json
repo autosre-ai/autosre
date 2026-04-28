@@ -587,6 +587,90 @@
         "sre"
       ],
       "created_at": "2026-04-29T00:10:03.972169"
+    },
+    "371ab788ebed798249d2a83fc39bec7bb0decfa7a082195ee672a26904cd9f3c": {
+      "user": "testuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:11:42.947303"
+    },
+    "468cdc0b4ddc9dd8e86acbafbf6c6e8521c767298197e838a99f632dfa07b535": {
+      "user": "testuser",
+      "roles": [
+        "viewer"
+      ],
+      "created_at": "2026-04-29T00:11:42.949668"
+    },
+    "cde4424f258f3f1b63063b718feb4785aa390e5a720dc8c58d270b7c4fa26f8e": {
+      "user": "adminuser",
+      "roles": [
+        "admin"
+      ],
+      "created_at": "2026-04-29T00:11:42.950816"
+    },
+    "42fa913b58d32a98964535927ae12ec55eb450312214a5cdcd3815b1f064cfc4": {
+      "user": "asyncuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:11:42.952028"
+    },
+    "baad7a9cbeeb899183e8a1757ba07c6e9bf90740cabd53fe8f87c3a39e288ee8": {
+      "user": "testuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:12:12.173397"
+    },
+    "cc01b4325d3490063fc897b54406abae574b94cb0eaac0dd5d4e95bbb53cb93d": {
+      "user": "testuser",
+      "roles": [
+        "viewer"
+      ],
+      "created_at": "2026-04-29T00:12:12.175464"
+    },
+    "44cb77d8ac65a3a6a1a13adf3c043ca7dbeb79f3ee3c44559e2fd456bec5fe17": {
+      "user": "adminuser",
+      "roles": [
+        "admin"
+      ],
+      "created_at": "2026-04-29T00:12:12.176458"
+    },
+    "5b030a03b09169f156cda54a0fa395a0abd08b50382e52755b0b50e2b724d153": {
+      "user": "asyncuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:12:12.177696"
+    },
+    "3ac0234fe7b919833a20fb46edc62c85f0786b43a565a813059d99fd68e6755c": {
+      "user": "testuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:12:33.117979"
+    },
+    "97c7c599a34a9e98c380ed96bfc641b98383b922d035ef8768bc945e2fe47bad": {
+      "user": "testuser",
+      "roles": [
+        "viewer"
+      ],
+      "created_at": "2026-04-29T00:12:33.120160"
+    },
+    "54f3a6cdc1e8382452e9ebb803ecd09e001147b0ef222d7eb15e7590445a58bc": {
+      "user": "adminuser",
+      "roles": [
+        "admin"
+      ],
+      "created_at": "2026-04-29T00:12:33.121341"
+    },
+    "cfcaefa7c94b95b9973226e975813c32cfc0061e9fd65272be2e6c293448ba84": {
+      "user": "asyncuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:12:33.122811"
     }
   }
 }

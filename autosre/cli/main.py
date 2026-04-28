@@ -7,7 +7,7 @@ A rich, user-friendly CLI for managing all aspects of AutoSRE.
 import click
 from rich.console import Console
 
-from autosre.cli.commands import context, eval, sandbox, agent, feedback
+from autosre.cli.commands import context, eval, sandbox, agent, feedback, web
 
 console = Console()
 
@@ -90,6 +90,7 @@ cli.add_command(eval.eval)
 cli.add_command(sandbox.sandbox)
 cli.add_command(agent.agent)
 cli.add_command(feedback.feedback)
+cli.add_command(web.web)
 
 
 if __name__ == "__main__":

@@ -324,6 +324,102 @@ spec:
         
         return True
     
+    def inject(
+        self,
+        chaos_type: str,
+        target: Optional[str] = None,
+        namespace: str = "default",
+        duration: str = "60s",
+    ) -> dict:
+        """
+        Inject chaos by type.
+        
+        Args:
+            chaos_type: Type of chaos to inject
+            target: Target service/pod/deployment
+            namespace: Kubernetes namespace
+            duration: Duration of chaos
+            
+        Returns:
+            Dict with success status and details
+        """
+        # Parse duration to seconds
+        duration_s = self._parse_duration(duration)
+        
+        try:
+            if chaos_type == "cpu-hog":
+                if target:
+                    success = self.inject_cpu_stress(target, namespace)
+                else:
+                    return {"success": False, "error": "Target deployment required for cpu-hog"}
+                return {"success": success, "target": target, "type": chaos_type}
+                
+            elif chaos_type == "memory-hog":
+                if target:
+                    success = self.inject_memory_pressure(target, namespace)
+                else:
+                    return {"success": False, "error": "Target deployment required for memory-hog"}
+                return {"success": success, "target": target, "type": chaos_type}
+                
+            elif chaos_type == "io-stress":
+                if target:
+                    success = self.fill_disk(target, namespace, size_mb=100)
+                else:
+                    return {"success": False, "error": "Target pod required for io-stress"}
+                return {"success": success, "target": target, "type": chaos_type}
+                
+            elif chaos_type == "network-latency":
+                if target:
+                    success = self.inject_network_latency(target, namespace, duration_s=duration_s)
+                else:
+                    return {"success": False, "error": "Target pod required for network-latency"}
+                return {"success": success, "target": target, "type": chaos_type}
+                
+            elif chaos_type == "pod-kill":
+                if target:
+                    success = self.kill_pod(name=target, namespace=namespace)
+                else:
+                    # Kill random pod in namespace
+                    success = self.kill_pod(labels="app", namespace=namespace)
+                return {"success": success, "target": target, "type": chaos_type}
+                
+            elif chaos_type == "pod-failure":
+                # Pod failure is similar to scale down
+                if target:
+                    success = self.scale_deployment(target, replicas=0, namespace=namespace)
+                else:
+                    return {"success": False, "error": "Target deployment required for pod-failure"}
+                return {"success": success, "target": target, "type": chaos_type}
+                
+            elif chaos_type == "disk-fill":
+                if target:
+                    success = self.fill_disk(target, namespace)
+                else:
+                    return {"success": False, "error": "Target pod required for disk-fill"}
+                return {"success": success, "target": target, "type": chaos_type}
+                
+            else:
+                return {"success": False, "error": f"Unknown chaos type: {chaos_type}"}
+                
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def _parse_duration(self, duration: str) -> int:
+        """Parse duration string to seconds."""
+        duration = duration.lower().strip()
+        
+        if duration.endswith("s"):
+            return int(duration[:-1])
+        elif duration.endswith("m"):
+            return int(duration[:-1]) * 60
+        elif duration.endswith("h"):
+            return int(duration[:-1]) * 3600
+        else:
+            try:
+                return int(duration)
+            except ValueError:
+                return 60  # Default
+
     def get_available_chaos_types(self) -> list[dict]:
         """List available chaos injection types."""
         return [

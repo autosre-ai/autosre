@@ -1,0 +1,126 @@
+<!-- Service Detail -->
+<div class="space-y-6">
+    <!-- Status -->
+    <div class="flex items-center justify-between">
+        <div>
+            <span class="badge-{{ 'success' if service.status.value == 'healthy' else 'error' if service.status.value in ['unhealthy', 'degraded'] else 'muted' }}">
+                {{ service.status.value }}
+            </span>
+        </div>
+        <div class="text-sm text-gray-400">
+            {{ service.namespace }} / {{ service.cluster }}
+        </div>
+    </div>
+    
+    <!-- Replicas -->
+    <div class="bg-sre-bg rounded-lg p-4">
+        <div class="text-sm text-gray-400 mb-2">Replicas</div>
+        <div class="flex items-baseline space-x-2">
+            <span class="text-3xl font-bold {{ 'text-sre-accent' if service.ready_replicas == service.replicas else 'text-sre-warn' }}">
+                {{ service.ready_replicas }}
+            </span>
+            <span class="text-gray-500">/ {{ service.replicas }} ready</span>
+        </div>
+    </div>
+    
+    <!-- Ownership -->
+    {% if ownership %}
+    <div>
+        <div class="text-sm text-gray-400 mb-2">Ownership</div>
+        <div class="bg-sre-bg rounded-lg p-4 space-y-2 text-sm">
+            <div class="flex justify-between">
+                <span class="text-gray-400">Team</span>
+                <span>{{ ownership.team }}</span>
+            </div>
+            {% if ownership.slack_channel %}
+            <div class="flex justify-between">
+                <span class="text-gray-400">Slack</span>
+                <span class="text-sre-accent">{{ ownership.slack_channel }}</span>
+            </div>
+            {% endif %}
+            {% if ownership.oncall_email %}
+            <div class="flex justify-between">
+                <span class="text-gray-400">On-call</span>
+                <span>{{ ownership.oncall_email }}</span>
+            </div>
+            {% endif %}
+            <div class="flex justify-between">
+                <span class="text-gray-400">Tier</span>
+                <span>{{ ownership.tier }}</span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Dependencies -->
+    {% if service.dependencies %}
+    <div>
+        <div class="text-sm text-gray-400 mb-2">Dependencies ({{ service.dependencies|length }})</div>
+        <div class="flex flex-wrap gap-2">
+            {% for dep in service.dependencies %}
+            <span class="badge-info">{{ dep }}</span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Dependents -->
+    {% if service.dependents %}
+    <div>
+        <div class="text-sm text-gray-400 mb-2">Dependents ({{ service.dependents|length }})</div>
+        <div class="flex flex-wrap gap-2">
+            {% for dep in service.dependents %}
+            <span class="badge-muted">{{ dep }}</span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Recent Changes -->
+    {% if changes %}
+    <div>
+        <div class="text-sm text-gray-400 mb-2">Recent Changes</div>
+        <div class="space-y-2">
+            {% for change in changes[:5] %}
+            <div class="bg-sre-bg rounded p-3 text-sm">
+                <div class="flex items-center justify-between">
+                    <span class="badge-info text-xs">{{ change.change_type.value }}</span>
+                    <span class="text-gray-500">{{ change.timestamp.strftime('%m/%d %H:%M') }}</span>
+                </div>
+                <div class="mt-1 text-gray-300">{{ change.description[:60] }}{% if change.description|length > 60 %}...{% endif %}</div>
+                <div class="text-gray-500 text-xs mt-1">by {{ change.author }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Runbooks -->
+    {% if runbooks %}
+    <div>
+        <div class="text-sm text-gray-400 mb-2">Related Runbooks</div>
+        <div class="space-y-2">
+            {% for rb in runbooks %}
+            <div class="bg-sre-bg rounded p-3 text-sm">
+                <div class="font-medium">{{ rb.title }}</div>
+                <div class="text-gray-400 text-xs mt-1">{{ rb.description[:80] }}{% if rb.description|length > 80 %}...{% endif %}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Labels -->
+    {% if service.labels %}
+    <div>
+        <div class="text-sm text-gray-400 mb-2">Labels</div>
+        <div class="flex flex-wrap gap-2">
+            {% for key, value in service.labels.items() %}
+            <span class="text-xs bg-sre-bg rounded px-2 py-1">
+                <span class="text-gray-500">{{ key }}:</span> {{ value }}
+            </span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>

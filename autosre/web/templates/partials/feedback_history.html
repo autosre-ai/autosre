@@ -1,0 +1,39 @@
+<!-- Feedback History -->
+{% if feedback_list %}
+{% for fb in feedback_list %}
+<div class="p-4 hover:bg-sre-bg transition-colors">
+    <div class="flex items-start justify-between">
+        <div class="flex-1 min-w-0">
+            <div class="flex items-center space-x-2">
+                {% if fb.rating == 'positive' %}
+                <span class="text-sre-accent">👍</span>
+                {% elif fb.rating == 'negative' %}
+                <span class="text-sre-error">👎</span>
+                {% else %}
+                <span class="text-gray-400">😐</span>
+                {% endif %}
+                <span class="font-medium">{{ fb.incident_id }}</span>
+                <span class="badge-muted text-xs">{{ fb.category }}</span>
+            </div>
+            {% if fb.comment %}
+            <div class="text-sm text-gray-400 mt-1">{{ fb.comment[:100] }}{% if fb.comment|length > 100 %}...{% endif %}</div>
+            {% endif %}
+            {% if fb.correct_root_cause %}
+            <div class="text-sm text-sre-accent mt-1">
+                <span class="text-gray-500">Correct RC:</span> {{ fb.correct_root_cause[:50] }}{% if fb.correct_root_cause|length > 50 %}...{% endif %}
+            </div>
+            {% endif %}
+        </div>
+        <div class="text-xs text-gray-500">
+            {{ fb.submitted_at.strftime('%m/%d %H:%M') if fb.submitted_at else '—' }}
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="p-8 text-center text-gray-500">
+    <span class="text-4xl">💬</span>
+    <p class="mt-2">No feedback yet</p>
+    <p class="text-sm mt-1">Submit feedback to help improve the agent</p>
+</div>
+{% endif %}

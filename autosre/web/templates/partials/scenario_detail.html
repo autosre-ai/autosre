@@ -1,0 +1,71 @@
+<!-- Scenario Detail -->
+<div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center"
+     onclick="if(event.target === this) this.remove()">
+    <div class="bg-sre-card rounded-lg border border-sre-border p-6 w-full max-w-2xl mx-4 max-h-[80vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold">{{ scenario.name }}</h3>
+            <button onclick="this.closest('.fixed').remove()"
+                    class="text-gray-400 hover:text-white">
+                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        
+        <div class="space-y-4">
+            <div>
+                <span class="badge-{{ 'success' if scenario.difficulty == 'easy' else 'warning' if scenario.difficulty == 'medium' else 'error' }}">
+                    {{ scenario.difficulty }}
+                </span>
+            </div>
+            
+            <div>
+                <div class="text-sm text-gray-400 mb-1">Description</div>
+                <p>{{ scenario.description }}</p>
+            </div>
+            
+            <div>
+                <div class="text-sm text-gray-400 mb-1">Expected Root Cause</div>
+                <p class="bg-sre-bg rounded p-3">{{ scenario.expected_root_cause }}</p>
+            </div>
+            
+            {% if scenario.expected_service %}
+            <div>
+                <div class="text-sm text-gray-400 mb-1">Expected Service</div>
+                <span class="badge-info">{{ scenario.expected_service }}</span>
+            </div>
+            {% endif %}
+            
+            {% if results %}
+            <div>
+                <div class="text-sm text-gray-400 mb-2">Recent Results</div>
+                <div class="space-y-2">
+                    {% for r in results[:5] %}
+                    <div class="flex items-center justify-between bg-sre-bg rounded p-2 text-sm">
+                        <div class="flex items-center space-x-2">
+                            {% if r.success %}
+                            <span class="text-sre-accent">✓</span>
+                            {% else %}
+                            <span class="text-sre-error">✗</span>
+                            {% endif %}
+                            <span>{{ "%.0f"|format(r.accuracy * 100) }}% accuracy</span>
+                        </div>
+                        <span class="text-gray-500">{{ r.run_at[:16] if r.run_at else '—' }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            
+            <div class="pt-4">
+                <button hx-post="/evals/run/{{ scenario.name }}"
+                        hx-target="#run-result"
+                        hx-swap="innerHTML"
+                        class="btn-primary w-full">
+                    ▶ Run Scenario
+                </button>
+                <div id="run-result" class="mt-4"></div>
+            </div>
+        </div>
+    </div>
+</div>
