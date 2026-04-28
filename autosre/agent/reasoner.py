@@ -15,6 +15,11 @@ from autosre.foundation.context_store import ContextStore
 from autosre.foundation.models import Alert, Incident, Severity
 
 
+def utcnow() -> datetime:
+    """Return timezone-aware UTC datetime."""
+    return datetime.now(timezone.utc)
+
+
 class ReasonerConfig(BaseModel):
     """Configuration for the reasoner."""
     model: str = Field(default="qwen3:14b", description="LLM model to use")
@@ -50,7 +55,7 @@ class AnalysisResult(BaseModel):
     affected_services: list[str] = Field(default_factory=list)
     
     # Metadata
-    analyzed_at: datetime = Field(default_factory=datetime.utcnow)
+    analyzed_at: datetime = Field(default_factory=utcnow)
     analysis_time_ms: Optional[float] = None
 
 
