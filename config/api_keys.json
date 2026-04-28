@@ -671,6 +671,34 @@
         "sre"
       ],
       "created_at": "2026-04-29T00:12:33.122811"
+    },
+    "08186aa661b83d39c9a21eb1d52a57ed6f5a7df10448afbae5e98a1aaf629e97": {
+      "user": "testuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:13:00.985137"
+    },
+    "10dcfdee1c0aa7268312fdc989137660f57e73da931a77a3c6348358ef699439": {
+      "user": "testuser",
+      "roles": [
+        "viewer"
+      ],
+      "created_at": "2026-04-29T00:13:00.987658"
+    },
+    "42903a0a4bd080dd716e9cc944dc335028806e54ae1ebc324c64951d277a4221": {
+      "user": "adminuser",
+      "roles": [
+        "admin"
+      ],
+      "created_at": "2026-04-29T00:13:00.989249"
+    },
+    "0a25b35695d7294a4528c3e1d2d470e8095ad6d2239610f46ef1d15a777823ab": {
+      "user": "asyncuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:13:00.992858"
     }
   }
 }
