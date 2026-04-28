@@ -475,6 +475,62 @@
         "sre"
       ],
       "created_at": "2026-04-29T00:04:15.606255"
+    },
+    "3426e9e2d7e2d5b08bf716ec902a442e3ae58b45db42348b8dfd78197895a2fc": {
+      "user": "testuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:07:36.379845"
+    },
+    "6f59cae1f68676a687d6cf80b5ce885f0a38ebf893130dfbe17e06b2c8389199": {
+      "user": "testuser",
+      "roles": [
+        "viewer"
+      ],
+      "created_at": "2026-04-29T00:07:36.382624"
+    },
+    "227fa56290a0b2778822ffe24ff517c2ad8c48b2e920c17251cb7d9b87c5c87c": {
+      "user": "adminuser",
+      "roles": [
+        "admin"
+      ],
+      "created_at": "2026-04-29T00:07:36.383679"
+    },
+    "e2de16768f4ebe2ad896b3681d9cffe2ec7d3c0911ed0d2f1578b97468538197": {
+      "user": "asyncuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:07:36.384892"
+    },
+    "0136286b75f05dc1e4eabdb6585d4dbdea6fde29e57e0012dd8deabd893485dc": {
+      "user": "testuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:08:00.767360"
+    },
+    "563ee9103ec9ad4ac9e59c8668f6d25dcbfd8ac59d0089bf66edc2b4390e208f": {
+      "user": "testuser",
+      "roles": [
+        "viewer"
+      ],
+      "created_at": "2026-04-29T00:08:00.769362"
+    },
+    "c3817583875d153178162f63532183a47f4ef843f1a3edfa778f26185fe3ab95": {
+      "user": "adminuser",
+      "roles": [
+        "admin"
+      ],
+      "created_at": "2026-04-29T00:08:00.770568"
+    },
+    "43ea92c16823fdd781792e10ed87372a3560f58cdf96a6957a70988369eb1e18": {
+      "user": "asyncuser",
+      "roles": [
+        "sre"
+      ],
+      "created_at": "2026-04-29T00:08:00.771845"
     }
   }
 }

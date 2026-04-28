@@ -7,7 +7,7 @@ Common issues and solutions for OpenSRE.
 Run the built-in diagnostic tool:
 
 ```bash
-opensre diagnose
+autosre diagnose
 ```
 
 This checks:
@@ -289,7 +289,7 @@ Investigation complete. No issues found.
 1. **No relevant metrics:**
    ```bash
    # Check metrics exist
-   opensre skill test prometheus
+   autosre skill test prometheus
    ```
 
 2. **Time range mismatch:**
@@ -298,7 +298,7 @@ Investigation complete. No issues found.
 
 3. **Wrong namespace/context:**
    ```bash
-   opensre investigate "error rate" --namespace production
+   autosre investigate "error rate" --namespace production
    ```
 
 ### Actions Not Executing
@@ -372,7 +372,7 @@ kubectl top pod -n opensre
 ```bash
 # Enable timing logs
 export OPENSRE_LOG_LEVEL=DEBUG
-opensre investigate "test"
+autosre investigate "test"
 ```
 
 **Solutions:**
@@ -413,7 +413,7 @@ AgentError: Failed to load agent 'incident-responder'
 **Diagnosis:**
 ```bash
 # Validate agent config
-opensre agent validate incident-responder/agent.yaml
+autosre agent validate incident-responder/agent.yaml
 ```
 
 **Solutions:**
@@ -426,14 +426,14 @@ opensre agent validate incident-responder/agent.yaml
 
 2. **Missing skill:**
    ```bash
-   opensre skill list --installed
-   opensre skill install prometheus kubernetes
+   autosre skill list --installed
+   autosre skill install prometheus kubernetes
    ```
 
 3. **Invalid action reference:**
    - Check action exists in skill
    ```bash
-   opensre skill info prometheus
+   autosre skill info prometheus
    ```
 
 ### Agent Crashes During Execution
@@ -446,11 +446,11 @@ AgentError: Step 'analyze-metrics' failed unexpectedly
 **Diagnosis:**
 ```bash
 # Get detailed logs
-opensre agent logs incident-responder --tail 100
+autosre agent logs incident-responder --tail 100
 
 # Enable debug mode
 export OPENSRE_DEBUG=true
-opensre agent run incident-responder
+autosre agent run incident-responder
 ```
 
 **Solutions:**
@@ -639,13 +639,13 @@ Enable verbose logging:
 
 ```bash
 export OPENSRE_LOG_LEVEL=DEBUG
-opensre start --foreground
+autosre start --foreground
 ```
 
 ### Collecting Diagnostics
 
 ```bash
-opensre diagnose --output diagnostics.tar.gz
+autosre diagnose --output diagnostics.tar.gz
 ```
 
 This collects:
@@ -663,7 +663,7 @@ This collects:
 ### Reporting Bugs
 
 Include:
-1. OpenSRE version (`opensre --version`)
+1. OpenSRE version (`autosre --version`)
 2. Python version (`python --version`)
 3. OS/container info
 4. Configuration (secrets redacted)

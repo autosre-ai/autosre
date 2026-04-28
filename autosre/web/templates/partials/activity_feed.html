@@ -1,0 +1,71 @@
+<!-- Activity Feed -->
+<!-- Firing Alerts -->
+<div class="bg-sre-card rounded-lg border border-sre-border p-6">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold">
+            <span class="mr-2">🚨</span> Firing Alerts
+        </h2>
+        <span class="text-sm text-gray-500">{{ firing_alerts|length }} active</span>
+    </div>
+    
+    {% if firing_alerts %}
+    <div class="space-y-3">
+        {% for alert in firing_alerts %}
+        <div class="bg-sre-bg rounded-lg p-3 border border-sre-border hover:border-sre-warn transition-colors">
+            <div class="flex items-start justify-between">
+                <div>
+                    <div class="font-medium">{{ alert.name }}</div>
+                    <div class="text-sm text-gray-400 mt-1">{{ alert.summary[:80] }}{% if alert.summary|length > 80 %}...{% endif %}</div>
+                </div>
+                <span class="badge-{{ 'error' if alert.severity.value == 'critical' else 'warning' if alert.severity.value == 'high' else 'info' }}">
+                    {{ alert.severity.value }}
+                </span>
+            </div>
+            <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
+                <span>{{ alert.service_name or 'unknown' }}</span>
+                <span>{{ alert.fired_at.strftime('%H:%M') if alert.fired_at else 'N/A' }}</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-8 text-gray-500">
+        <span class="text-4xl">✅</span>
+        <p class="mt-2">No firing alerts</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Recent Changes -->
+<div class="bg-sre-card rounded-lg border border-sre-border p-6">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold">
+            <span class="mr-2">📝</span> Recent Changes
+        </h2>
+        <a href="/context?tab=changes" class="text-sm text-sre-accent hover:underline">View all</a>
+    </div>
+    
+    {% if recent_changes %}
+    <div class="space-y-3">
+        {% for change in recent_changes %}
+        <div class="bg-sre-bg rounded-lg p-3 border border-sre-border">
+            <div class="flex items-start justify-between">
+                <div>
+                    <div class="font-medium">{{ change.service_name }}</div>
+                    <div class="text-sm text-gray-400 mt-1">{{ change.description[:60] }}{% if change.description|length > 60 %}...{% endif %}</div>
+                </div>
+                <span class="badge-info">{{ change.change_type.value }}</span>
+            </div>
+            <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
+                <span>{{ change.author }}</span>
+                <span>{{ change.timestamp.strftime('%m/%d %H:%M') }}</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-8 text-gray-500">
+        <p>No recent changes</p>
+    </div>
+    {% endif %}
+</div>

@@ -1,0 +1,10 @@
+<!-- Scenario Running -->
+<div class="bg-sre-bg rounded-lg p-4 border border-sre-info animate-pulse"
+     hx-get="/evals/run/{{ run_id }}/status"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML">
+    <div class="flex items-center space-x-3">
+        <div class="animate-spin rounded-full h-5 w-5 border-2 border-sre-info border-t-transparent"></div>
+        <span class="text-sre-info">Running {{ scenario_name }}...</span>
+    </div>
+</div>

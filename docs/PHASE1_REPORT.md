@@ -35,7 +35,7 @@ Phase 1 established the enterprise-grade foundation for OpenSRE with 17 parallel
 - RunbookManager with YAML frontmatter parsing
 - 8 production runbooks (memory, crashloop, latency, 5xx, CPU, network, disk, scheduling)
 - Semantic search and automatic context injection
-- CLI commands: `opensre runbooks list|show|search`
+- CLI commands: `autosre runbooks list|show|search`
 
 ### 6. Bookstore Microservices ✅
 - 5 services deployed to minikube (frontend, catalog, checkout, payment, redis)

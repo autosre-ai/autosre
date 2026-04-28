@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold">Dashboard</h1>
+            <p class="text-gray-400 mt-1">System overview and quick actions</p>
+        </div>
+        <div class="text-sm text-gray-500">
+            Last updated: <span id="last-updated">{{ now.strftime('%H:%M:%S') }}</span>
+        </div>
+    </div>
+    
+    <!-- Status Cards -->
+    <div id="status-cards" 
+         hx-get="/status" 
+         hx-trigger="every 30s"
+         class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {% include "partials/status_cards.html" %}
+    </div>
+    
+    <!-- Quick Actions -->
+    <div class="bg-sre-card rounded-lg border border-sre-border p-6">
+        <h2 class="text-lg font-semibold mb-4">Quick Actions</h2>
+        <div class="flex flex-wrap gap-3">
+            <a href="/agent" class="btn-primary">
+                <span class="mr-2">🤖</span> Start Agent
+            </a>
+            <a href="/evals" class="btn-secondary">
+                <span class="mr-2">🧪</span> Run Eval
+            </a>
+            <a href="/context" class="btn-secondary">
+                <span class="mr-2">📚</span> Browse Context
+            </a>
+            <button onclick="document.getElementById('analyze-modal').classList.remove('hidden')" 
+                    class="btn-secondary">
+                <span class="mr-2">🔍</span> Analyze Alert
+            </button>
+        </div>
+    </div>
+    
+    <!-- Activity Grid -->
+    <div id="activity-feed"
+         hx-get="/activity"
+         hx-trigger="every 30s"
+         class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {% include "partials/activity_feed.html" %}
+    </div>
+</div>
+
+<!-- Analyze Modal -->
+<div id="analyze-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-sre-card rounded-lg border border-sre-border p-6 w-full max-w-md mx-4">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold">🔍 Quick Analysis</h3>
+            <button onclick="document.getElementById('analyze-modal').classList.add('hidden')"
+                    class="text-gray-400 hover:text-white">
+                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <form hx-post="/agent/analyze" 
+              hx-target="#analyze-result"
+              hx-swap="innerHTML">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Alert Name</label>
+                    <input type="text" name="alert_name" 
+                           class="input-field"
+                           placeholder="e.g., HighCPUUsage">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Or Service Name</label>
+                    <input type="text" name="service_name" 
+                           class="input-field"
+                           placeholder="e.g., payment-service">
+                </div>
+                <div id="analyze-result"></div>
+                <button type="submit" class="btn-primary w-full">
+                    Analyze
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

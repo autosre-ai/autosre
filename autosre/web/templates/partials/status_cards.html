@@ -1,0 +1,85 @@
+<!-- Status Cards -->
+<!-- LLM Status -->
+<div class="status-card">
+    <div class="flex items-center justify-between">
+        <span class="text-gray-400">LLM Provider</span>
+        {% if status.config.status == 'configured' %}
+        <span class="badge-success">Configured</span>
+        {% else %}
+        <span class="badge-warning">Not Configured</span>
+        {% endif %}
+    </div>
+    <div class="mt-2">
+        <div class="text-2xl font-bold capitalize">{{ status.config.llm_provider }}</div>
+        <div class="text-sm text-gray-400">{{ status.config.llm_model }}</div>
+    </div>
+</div>
+
+<!-- Context Store -->
+<div class="status-card">
+    <div class="flex items-center justify-between">
+        <span class="text-gray-400">Context Store</span>
+        <span class="badge-success">Active</span>
+    </div>
+    <div class="mt-2 grid grid-cols-2 gap-2 text-sm">
+        <div>
+            <span class="text-2xl font-bold text-sre-accent">{{ status.context_store.services }}</span>
+            <span class="text-gray-400 ml-1">services</span>
+        </div>
+        <div>
+            <span class="text-2xl font-bold text-sre-warn">{{ status.context_store.alerts }}</span>
+            <span class="text-gray-400 ml-1">alerts</span>
+        </div>
+        <div>
+            <span class="text-2xl font-bold text-sre-info">{{ status.context_store.changes_24h }}</span>
+            <span class="text-gray-400 ml-1">changes (24h)</span>
+        </div>
+        <div>
+            <span class="text-2xl font-bold">{{ status.context_store.runbooks }}</span>
+            <span class="text-gray-400 ml-1">runbooks</span>
+        </div>
+    </div>
+</div>
+
+<!-- Connectors -->
+<div class="status-card">
+    <div class="flex items-center justify-between">
+        <span class="text-gray-400">Connectors</span>
+    </div>
+    <div class="mt-2 space-y-1 text-sm">
+        <div class="flex items-center justify-between">
+            <span>Prometheus</span>
+            <span class="badge-success">Connected</span>
+        </div>
+        <div class="flex items-center justify-between">
+            <span>Slack</span>
+            {% if status.connectors.slack.status == 'connected' %}
+            <span class="badge-success">Connected</span>
+            {% else %}
+            <span class="badge-muted">Disabled</span>
+            {% endif %}
+        </div>
+        <div class="flex items-center justify-between">
+            <span>PagerDuty</span>
+            {% if status.connectors.pagerduty.status == 'connected' %}
+            <span class="badge-success">Connected</span>
+            {% else %}
+            <span class="badge-muted">Disabled</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Agent Status -->
+<div class="status-card">
+    <div class="flex items-center justify-between">
+        <span class="text-gray-400">Agent</span>
+        <span class="badge-muted">Stopped</span>
+    </div>
+    <div class="mt-2">
+        <div class="text-sm text-gray-400">Not running</div>
+        <a href="/agent" class="text-sre-accent hover:underline text-sm mt-2 inline-block">
+            Start Agent →
+        </a>
+    </div>
+</div>

@@ -93,7 +93,7 @@ groups:
 curl -s http://prometheus:9090/api/v1/status/config | jq .status
 
 # Test from OpenSRE
-opensre status
+autosre status
 ```
 
 ---
@@ -495,7 +495,7 @@ output_webhooks:
 ### Health Check All Integrations
 
 ```bash
-opensre status
+autosre status
 ```
 
 Output:

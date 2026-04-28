@@ -52,16 +52,16 @@ Create `mcp-clients.json`:
 
 ```bash
 # List available presets
-opensre mcp-client list
+autosre mcp-client list
 
 # Connect to a server
-opensre mcp-client connect kubernetes
+autosre mcp-client connect kubernetes
 
 # List all available tools
-opensre mcp-client tools
+autosre mcp-client tools
 
 # Call a specific tool
-opensre mcp-client call kubernetes get_pods --args '{"namespace": "default"}'
+autosre mcp-client call kubernetes get_pods --args '{"namespace": "default"}'
 ```
 
 ## Available Presets
@@ -204,17 +204,17 @@ npx -y @anthropic/kubernetes-mcp
 which npx
 
 # Try manual connection
-opensre mcp-client connect kubernetes
+autosre mcp-client connect kubernetes
 ```
 
 ### Tool not found
 
 ```bash
 # List available tools
-opensre mcp-client tools
+autosre mcp-client tools
 
 # Check specific server
-opensre mcp-client call kubernetes list_tools --args '{}'
+autosre mcp-client call kubernetes list_tools --args '{}'
 ```
 
 ### Performance issues

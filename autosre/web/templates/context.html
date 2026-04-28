@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Context{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold">Context Store</h1>
+            <p class="text-gray-400 mt-1">Browse services, changes, alerts, and runbooks</p>
+        </div>
+    </div>
+    
+    <!-- Summary Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="stat-card cursor-pointer hover:border-sre-accent" 
+             onclick="switchTab('services')">
+            <div class="text-2xl font-bold text-sre-accent">{{ summary.services }}</div>
+            <div class="text-sm text-gray-400">Services</div>
+        </div>
+        <div class="stat-card cursor-pointer hover:border-sre-info"
+             onclick="switchTab('changes')">
+            <div class="text-2xl font-bold text-sre-info">{{ summary.changes }}</div>
+            <div class="text-sm text-gray-400">Recent Changes</div>
+        </div>
+        <div class="stat-card cursor-pointer hover:border-sre-warn"
+             onclick="switchTab('alerts')">
+            <div class="text-2xl font-bold text-sre-warn">{{ summary.alerts }}</div>
+            <div class="text-sm text-gray-400">Firing Alerts</div>
+        </div>
+        <div class="stat-card cursor-pointer hover:border-gray-400"
+             onclick="switchTab('runbooks')">
+            <div class="text-2xl font-bold">{{ summary.runbooks }}</div>
+            <div class="text-sm text-gray-400">Runbooks</div>
+        </div>
+    </div>
+    
+    <!-- Tab Navigation -->
+    <div class="border-b border-sre-border">
+        <nav class="-mb-px flex space-x-8">
+            <button id="tab-services" onclick="switchTab('services')"
+                    class="tab-button {% if tab == 'services' %}active{% endif %}">
+                Services
+            </button>
+            <button id="tab-changes" onclick="switchTab('changes')"
+                    class="tab-button {% if tab == 'changes' %}active{% endif %}">
+                Changes
+            </button>
+            <button id="tab-alerts" onclick="switchTab('alerts')"
+                    class="tab-button {% if tab == 'alerts' %}active{% endif %}">
+                Alerts
+            </button>
+            <button id="tab-runbooks" onclick="switchTab('runbooks')"
+                    class="tab-button {% if tab == 'runbooks' %}active{% endif %}">
+                Runbooks
+            </button>
+        </nav>
+    </div>
+    
+    <!-- Tab Content -->
+    <div id="tab-content">
+        <!-- Services Tab -->
+        <div id="content-services" class="tab-content {% if tab != 'services' %}hidden{% endif %}">
+            {% include "partials/services_table.html" %}
+        </div>
+        
+        <!-- Changes Tab -->
+        <div id="content-changes" class="tab-content {% if tab != 'changes' %}hidden{% endif %}">
+            {% include "partials/changes_table.html" %}
+        </div>
+        
+        <!-- Alerts Tab -->
+        <div id="content-alerts" class="tab-content {% if tab != 'alerts' %}hidden{% endif %}">
+            {% include "partials/alerts_table.html" %}
+        </div>
+        
+        <!-- Runbooks Tab -->
+        <div id="content-runbooks" class="tab-content {% if tab != 'runbooks' %}hidden{% endif %}">
+            {% include "partials/runbooks_table.html" %}
+        </div>
+    </div>
+</div>
+
+<!-- Detail Modal -->
+<div id="detail-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-sre-card rounded-lg border border-sre-border p-6 w-full max-w-2xl mx-4 max-h-[80vh] overflow-y-auto">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold" id="detail-title">Details</h3>
+            <button onclick="document.getElementById('detail-modal').classList.add('hidden')"
+                    class="text-gray-400 hover:text-white">
+                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <div id="detail-content"></div>
+    </div>
+</div>
+
+<script>
+function switchTab(tabName) {
+    // Hide all tabs
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
+    
+    // Show selected tab
+    document.getElementById('content-' + tabName).classList.remove('hidden');
+    document.getElementById('tab-' + tabName).classList.add('active');
+    
+    // Update URL without reload
+    history.replaceState(null, '', '/context?tab=' + tabName);
+}
+
+function showDetail(type, id) {
+    document.getElementById('detail-modal').classList.remove('hidden');
+    htmx.ajax('GET', '/context/' + type + '/' + id, '#detail-content');
+}
+</script>
+{% endblock %}

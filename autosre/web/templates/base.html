@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AutoSRE{% endblock %} - AI SRE Dashboard</title>
+    
+    <!-- Tailwind CSS (CDN for simplicity) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        sre: {
+                            bg: '#0f1419',
+                            card: '#1a2332',
+                            border: '#2d3748',
+                            accent: '#10b981',
+                            warn: '#f59e0b',
+                            error: '#ef4444',
+                            info: '#3b82f6',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    
+    <!-- Custom styles -->
+    <link rel="stylesheet" href="/static/style.css">
+    
+    {% block head %}{% endblock %}
+</head>
+<body class="bg-sre-bg text-gray-100 min-h-screen">
+    <!-- Navigation -->
+    <nav class="bg-sre-card border-b border-sre-border sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <!-- Logo -->
+                <div class="flex items-center">
+                    <a href="/" class="flex items-center space-x-2">
+                        <span class="text-2xl">🤖</span>
+                        <span class="text-xl font-bold text-sre-accent">AutoSRE</span>
+                    </a>
+                </div>
+                
+                <!-- Navigation Links -->
+                <div class="hidden md:block">
+                    <div class="flex items-center space-x-1">
+                        <a href="/" 
+                           class="nav-link {% if request.url.path == '/' %}active{% endif %}">
+                            <span class="mr-1">📊</span> Dashboard
+                        </a>
+                        <a href="/evals" 
+                           class="nav-link {% if '/evals' in request.url.path %}active{% endif %}">
+                            <span class="mr-1">🧪</span> Evals
+                        </a>
+                        <a href="/context" 
+                           class="nav-link {% if '/context' in request.url.path %}active{% endif %}">
+                            <span class="mr-1">📚</span> Context
+                        </a>
+                        <a href="/agent" 
+                           class="nav-link {% if '/agent' in request.url.path %}active{% endif %}">
+                            <span class="mr-1">🤖</span> Agent
+                        </a>
+                        <a href="/feedback" 
+                           class="nav-link {% if '/feedback' in request.url.path %}active{% endif %}">
+                            <span class="mr-1">💬</span> Feedback
+                        </a>
+                    </div>
+                </div>
+                
+                <!-- Mobile menu button -->
+                <div class="md:hidden">
+                    <button type="button" 
+                            onclick="document.getElementById('mobile-menu').classList.toggle('hidden')"
+                            class="text-gray-400 hover:text-white p-2">
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Mobile menu -->
+        <div id="mobile-menu" class="hidden md:hidden border-t border-sre-border">
+            <div class="px-2 pt-2 pb-3 space-y-1">
+                <a href="/" class="mobile-nav-link">📊 Dashboard</a>
+                <a href="/evals" class="mobile-nav-link">🧪 Evals</a>
+                <a href="/context" class="mobile-nav-link">📚 Context</a>
+                <a href="/agent" class="mobile-nav-link">🤖 Agent</a>
+                <a href="/feedback" class="mobile-nav-link">💬 Feedback</a>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {% block content %}{% endblock %}
+    </main>
+    
+    <!-- Footer -->
+    <footer class="bg-sre-card border-t border-sre-border mt-auto">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex items-center justify-between text-sm text-gray-500">
+                <span>AutoSRE v0.1.0</span>
+                <span>
+                    <a href="/api/docs" class="hover:text-sre-accent">API Docs</a>
+                    <span class="mx-2">•</span>
+                    <a href="https://github.com/opensre/autosre" class="hover:text-sre-accent">GitHub</a>
+                </span>
+            </div>
+        </div>
+    </footer>
+    
+    <!-- HTMX Config -->
+    <script>
+        // Add loading indicator
+        document.body.addEventListener('htmx:beforeRequest', function(evt) {
+            evt.target.classList.add('htmx-loading');
+        });
+        document.body.addEventListener('htmx:afterRequest', function(evt) {
+            evt.target.classList.remove('htmx-loading');
+        });
+    </script>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html>

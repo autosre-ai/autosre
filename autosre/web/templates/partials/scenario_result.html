@@ -1,0 +1,34 @@
+<!-- Scenario Result -->
+<div class="bg-sre-bg rounded-lg p-4 border {{ 'border-sre-accent' if result.success else 'border-sre-error' }}">
+    <div class="flex items-center justify-between mb-3">
+        {% if result.success %}
+        <span class="text-sre-accent font-medium">✓ Passed</span>
+        {% else %}
+        <span class="text-sre-error font-medium">✗ Failed</span>
+        {% endif %}
+        <span class="text-sm text-gray-500">{{ scenario_name }}</span>
+    </div>
+    
+    <div class="grid grid-cols-2 gap-4 text-sm">
+        <div>
+            <span class="text-gray-400">Accuracy:</span>
+            <span class="font-medium {{ 'text-sre-accent' if result.metrics.accuracy >= 0.7 else 'text-sre-warn' }}">
+                {{ "%.0f"|format(result.metrics.accuracy * 100) }}%
+            </span>
+        </div>
+        {% if result.metrics.time_to_root_cause %}
+        <div>
+            <span class="text-gray-400">TTRC:</span>
+            <span class="font-medium">{{ "%.1f"|format(result.metrics.time_to_root_cause) }}s</span>
+        </div>
+        {% endif %}
+        <div>
+            <span class="text-gray-400">Root Cause:</span>
+            <span class="font-medium">{{ '✓' if result.metrics.root_cause_correct else '✗' }}</span>
+        </div>
+        <div>
+            <span class="text-gray-400">Service:</span>
+            <span class="font-medium">{{ '✓' if result.metrics.service_correct else '✗' }}</span>
+        </div>
+    </div>
+</div>

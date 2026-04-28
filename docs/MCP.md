@@ -67,7 +67,7 @@ You can also run the MCP server directly for testing:
 
 ```bash
 # Via CLI
-opensre mcp
+autosre mcp
 
 # Via Python module
 python -m opensre_core.mcp_server
@@ -286,7 +286,7 @@ The AI will use the OpenSRE MCP tools to gather data from your infrastructure an
 
 ### Server not starting
 
-1. Check that OpenSRE is installed: `opensre --version`
+1. Check that OpenSRE is installed: `autosre --version`
 2. Verify your Python environment has the `mcp` package
 3. Check logs for connection errors to Prometheus/K8s
 
@@ -294,7 +294,7 @@ The AI will use the OpenSRE MCP tools to gather data from your infrastructure an
 
 1. Restart your MCP client (Claude Desktop, VS Code)
 2. Check the MCP client logs for errors
-3. Try running `opensre mcp` directly to see startup messages
+3. Try running `autosre mcp` directly to see startup messages
 
 ### Connection errors
 

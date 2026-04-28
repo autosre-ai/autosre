@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}Evals{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-3xl font-bold">Evaluations</h1>
+            <p class="text-gray-400 mt-1">Test and benchmark agent performance</p>
+        </div>
+        <button onclick="document.getElementById('create-modal').classList.remove('hidden')"
+                class="btn-primary">
+            <span class="mr-2">➕</span> Create Scenario
+        </button>
+    </div>
+    
+    <!-- Summary Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div class="stat-card">
+            <div class="text-2xl font-bold">{{ summary.total_runs }}</div>
+            <div class="text-sm text-gray-400">Total Runs</div>
+        </div>
+        <div class="stat-card">
+            <div class="text-2xl font-bold text-sre-accent">{{ summary.passed }}</div>
+            <div class="text-sm text-gray-400">Passed</div>
+        </div>
+        <div class="stat-card">
+            <div class="text-2xl font-bold text-sre-error">{{ summary.failed }}</div>
+            <div class="text-sm text-gray-400">Failed</div>
+        </div>
+        <div class="stat-card">
+            <div class="text-2xl font-bold">{{ "%.0f"|format(summary.pass_rate) }}%</div>
+            <div class="text-sm text-gray-400">Pass Rate</div>
+        </div>
+        <div class="stat-card">
+            <div class="text-2xl font-bold">{{ "%.0f"|format(summary.avg_accuracy) }}%</div>
+            <div class="text-sm text-gray-400">Avg Accuracy</div>
+        </div>
+    </div>
+    
+    <!-- Two Column Layout -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Scenarios List -->
+        <div class="bg-sre-card rounded-lg border border-sre-border">
+            <div class="p-4 border-b border-sre-border">
+                <h2 class="text-lg font-semibold">📋 Scenarios</h2>
+            </div>
+            <div id="scenario-list" 
+                 hx-get="/evals/list"
+                 hx-trigger="load"
+                 class="divide-y divide-sre-border">
+                {% include "partials/scenario_list.html" %}
+            </div>
+        </div>
+        
+        <!-- Results History -->
+        <div class="bg-sre-card rounded-lg border border-sre-border">
+            <div class="p-4 border-b border-sre-border">
+                <h2 class="text-lg font-semibold">📈 Recent Results</h2>
+            </div>
+            <div id="results-list"
+                 hx-get="/evals/results"
+                 hx-trigger="load"
+                 class="divide-y divide-sre-border">
+                {% include "partials/results_list.html" %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Scenario Modal -->
+<div id="create-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="bg-sre-card rounded-lg border border-sre-border p-6 w-full max-w-lg mx-4">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold">➕ Create Scenario</h3>
+            <button onclick="document.getElementById('create-modal').classList.add('hidden')"
+                    class="text-gray-400 hover:text-white">
+                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        <form hx-post="/evals/create" 
+              hx-target="#create-result"
+              hx-swap="innerHTML">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Name</label>
+                    <input type="text" name="name" required
+                           class="input-field"
+                           placeholder="e.g., high-cpu-scenario">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Description</label>
+                    <input type="text" name="description" required
+                           class="input-field"
+                           placeholder="Brief description of the scenario">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Difficulty</label>
+                    <select name="difficulty" class="input-field">
+                        <option value="easy">Easy</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="hard">Hard</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Expected Root Cause</label>
+                    <textarea name="expected_root_cause" required
+                              class="input-field"
+                              rows="2"
+                              placeholder="What the agent should identify"></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Expected Service (optional)</label>
+                    <input type="text" name="expected_service"
+                           class="input-field"
+                           placeholder="e.g., payment-service">
+                </div>
+                <div id="create-result"></div>
+                <div class="flex space-x-3">
+                    <button type="submit" class="btn-primary flex-1">
+                        Create Scenario
+                    </button>
+                    <button type="button" 
+                            onclick="document.getElementById('create-modal').classList.add('hidden')"
+                            class="btn-secondary">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

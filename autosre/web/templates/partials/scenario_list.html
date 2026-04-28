@@ -1,0 +1,45 @@
+<!-- Scenario List -->
+{% if scenarios %}
+{% for scenario in scenarios %}
+<div class="p-4 hover:bg-sre-bg transition-colors">
+    <div class="flex items-center justify-between">
+        <div class="flex-1 min-w-0">
+            <div class="flex items-center space-x-2">
+                <span class="font-medium truncate">{{ scenario.name }}</span>
+                <span class="badge-{{ 'success' if scenario.difficulty == 'easy' else 'warning' if scenario.difficulty == 'medium' else 'error' }} text-xs">
+                    {{ scenario.difficulty }}
+                </span>
+                {% if scenario.custom %}
+                <span class="badge-info text-xs">custom</span>
+                {% endif %}
+            </div>
+            <div class="text-sm text-gray-400 mt-1 truncate">{{ scenario.description }}</div>
+        </div>
+        <div class="ml-4 flex items-center space-x-2">
+            <button hx-get="/evals/scenario/{{ scenario.name }}"
+                    hx-target="#scenario-detail"
+                    hx-swap="innerHTML"
+                    class="btn-secondary-sm">
+                View
+            </button>
+            <button hx-post="/evals/run/{{ scenario.name }}"
+                    hx-target="#run-result-{{ scenario.name|replace('-', '_') }}"
+                    hx-swap="innerHTML"
+                    class="btn-primary-sm">
+                ▶ Run
+            </button>
+        </div>
+    </div>
+    <div id="run-result-{{ scenario.name|replace('-', '_') }}" class="mt-2"></div>
+</div>
+{% endfor %}
+{% else %}
+<div class="p-8 text-center text-gray-500">
+    <span class="text-4xl">📋</span>
+    <p class="mt-2">No scenarios found</p>
+    <p class="text-sm mt-1">Run <code>autosre init</code> to create sample scenarios</p>
+</div>
+{% endif %}
+
+<!-- Scenario Detail Modal (target for HTMX) -->
+<div id="scenario-detail"></div>

@@ -1,0 +1,39 @@
+<!-- Results List -->
+{% if results %}
+{% for result in results %}
+<div class="p-4 hover:bg-sre-bg transition-colors">
+    <div class="flex items-center justify-between">
+        <div class="flex-1 min-w-0">
+            <div class="flex items-center space-x-2">
+                {% if result.success %}
+                <span class="text-sre-accent">✓</span>
+                {% else %}
+                <span class="text-sre-error">✗</span>
+                {% endif %}
+                <span class="font-medium truncate">{{ result.scenario }}</span>
+            </div>
+            <div class="flex items-center space-x-4 mt-1 text-sm text-gray-400">
+                <span>
+                    Accuracy: 
+                    <span class="{{ 'text-sre-accent' if result.accuracy >= 0.7 else 'text-sre-warn' if result.accuracy >= 0.5 else 'text-sre-error' }}">
+                        {{ "%.0f"|format(result.accuracy * 100) }}%
+                    </span>
+                </span>
+                {% if result.time_to_root_cause %}
+                <span>TTRC: {{ "%.1f"|format(result.time_to_root_cause) }}s</span>
+                {% endif %}
+            </div>
+        </div>
+        <div class="text-sm text-gray-500">
+            {{ result.run_at[:16] if result.run_at else '—' }}
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<div class="p-8 text-center text-gray-500">
+    <span class="text-4xl">📈</span>
+    <p class="mt-2">No results yet</p>
+    <p class="text-sm mt-1">Run a scenario to see results</p>
+</div>
+{% endif %}
