@@ -147,8 +147,16 @@ def agent_analyze(alert_file: str, alert_name: str, service: str, verbose: bool,
     
     # Load alert data
     if alert_file:
-        with open(alert_file) as f:
-            alert_data = json.load(f)
+        try:
+            with open(alert_file) as f:
+                alert_data = json.load(f)
+        except json.JSONDecodeError as e:
+            console.print(f"[red]Error: Invalid JSON in alert file[/red]")
+            console.print(f"[dim]{e}[/dim]")
+            return
+        except Exception as e:
+            console.print(f"[red]Error reading alert file: {e}[/red]")
+            return
     elif alert_name:
         from autosre.foundation.context_store import ContextStore
         store = ContextStore()
