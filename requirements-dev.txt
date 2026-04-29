@@ -11,7 +11,7 @@ faker>=22.0
 
 # Code quality
 ruff>=0.2
-mypy>=1.8
+mypy>=1.20.2
 pre-commit>=3.6
 bandit>=1.7
 
