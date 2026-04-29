@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoSRE - AI-Powered Site Reliability Engineering</title>
+    <meta name="description" content="Open-source AI agent for Site Reliability Engineering. Automate incident response, root cause analysis, and remediation.">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+    <style>
+        :root {
+            --bg: #0d1117;
+            --text: #c9d1d9;
+            --accent: #58a6ff;
+            --accent2: #238636;
+            --card-bg: #161b22;
+            --border: #30363d;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+        
+        /* Hero */
+        .hero {
+            text-align: center;
+            padding: 80px 20px;
+            background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+        }
+        .hero h1 {
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(90deg, #58a6ff, #a371f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .hero .tagline {
+            font-size: 1.5rem;
+            color: #8b949e;
+            margin-bottom: 2rem;
+        }
+        .hero .subtitle {
+            font-size: 1.1rem;
+            max-width: 700px;
+            margin: 0 auto 2rem;
+        }
+        
+        /* Buttons */
+        .btn-group { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+        .btn {
+            padding: 12px 24px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: var(--accent2);
+            color: white;
+        }
+        .btn-primary:hover { background: #2ea043; }
+        .btn-secondary {
+            background: var(--card-bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover { border-color: var(--accent); }
+        
+        /* Features */
+        .features {
+            padding: 80px 20px;
+        }
+        .features h2 {
+            text-align: center;
+            font-size: 2rem;
+            margin-bottom: 3rem;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+        }
+        .feature-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+        }
+        .feature-card h3 {
+            color: var(--accent);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        /* Install */
+        .install {
+            padding: 60px 20px;
+            background: var(--card-bg);
+            text-align: center;
+        }
+        .install h2 { margin-bottom: 2rem; }
+        .code-block {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 1.1rem;
+            display: inline-block;
+            margin-bottom: 1rem;
+        }
+        .code-block code { color: var(--accent); }
+        
+        /* Footer */
+        footer {
+            padding: 40px 20px;
+            text-align: center;
+            border-top: 1px solid var(--border);
+        }
+        footer a { color: var(--accent); text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+        
+        /* Terminal Demo */
+        .terminal {
+            background: #1a1a2e;
+            border-radius: 8px;
+            padding: 20px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.9rem;
+            text-align: left;
+            max-width: 700px;
+            margin: 2rem auto;
+            border: 1px solid var(--border);
+        }
+        .terminal-header {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+        .terminal-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .terminal-dot.red { background: #ff5f56; }
+        .terminal-dot.yellow { background: #ffbd2e; }
+        .terminal-dot.green { background: #27c93f; }
+        .terminal-line { margin: 5px 0; }
+        .terminal-prompt { color: #27c93f; }
+        .terminal-cmd { color: #fff; }
+        .terminal-output { color: #8b949e; }
+        .terminal-highlight { color: #58a6ff; }
+    </style>
+</head>
+<body>
+    <div class="hero">
+        <div class="container">
+            <h1>🤖 AutoSRE</h1>
+            <p class="tagline">AI-Powered Site Reliability Engineering</p>
+            <p class="subtitle">
+                Open-source AI agent that analyzes alerts, identifies root causes, 
+                and suggests remediations — so you can sleep through the night.
+            </p>
+            <div class="btn-group">
+                <a href="https://github.com/autosre-ai/autosre" class="btn btn-primary">
+                    ⭐ View on GitHub
+                </a>
+                <a href="https://github.com/autosre-ai/autosre#quick-start" class="btn btn-secondary">
+                    📖 Documentation
+                </a>
+            </div>
+            
+            <div class="terminal">
+                <div class="terminal-header">
+                    <div class="terminal-dot red"></div>
+                    <div class="terminal-dot yellow"></div>
+                    <div class="terminal-dot green"></div>
+                </div>
+                <div class="terminal-line">
+                    <span class="terminal-prompt">$</span>
+                    <span class="terminal-cmd"> pip install autosre</span>
+                </div>
+                <div class="terminal-line">
+                    <span class="terminal-prompt">$</span>
+                    <span class="terminal-cmd"> autosre init</span>
+                </div>
+                <div class="terminal-line terminal-output">✓ Created .autosre/config.yaml</div>
+                <div class="terminal-line">
+                    <span class="terminal-prompt">$</span>
+                    <span class="terminal-cmd"> autosre agent analyze --alert "High CPU on api-server"</span>
+                </div>
+                <div class="terminal-line terminal-output">
+                    <span class="terminal-highlight">Root Cause:</span> Memory leak in payment service
+                </div>
+                <div class="terminal-line terminal-output">
+                    <span class="terminal-highlight">Suggested Fix:</span> kubectl rollout restart deploy/payment
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <section class="features">
+        <div class="container">
+            <h2>Why AutoSRE?</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>🔍 Smart Analysis</h3>
+                    <p>Correlates alerts with recent changes, runbooks, and service dependencies to find the real root cause.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>📚 Context-Aware</h3>
+                    <p>Learns from your services, runbooks, and past incidents. Gets smarter with every interaction.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🛠️ Actionable</h3>
+                    <p>Suggests specific remediation steps with copy-paste commands. No more digging through docs at 3 AM.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🔌 Integrations</h3>
+                    <p>Connects to Prometheus, Kubernetes, PagerDuty, and more. Works with your existing stack.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🧪 Eval Framework</h3>
+                    <p>33 built-in scenarios to test and improve analysis accuracy. Measure before you trust.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🔒 Privacy First</h3>
+                    <p>Runs locally or on your infrastructure. Your data never leaves your control.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <section class="install">
+        <div class="container">
+            <h2>Get Started in 60 Seconds</h2>
+            <div class="code-block">
+                <code>pip install autosre && autosre init</code>
+            </div>
+            <p style="color: #8b949e;">Requires Python 3.10+</p>
+        </div>
+    </section>
+    
+    <footer>
+        <div class="container">
+            <p>
+                <a href="https://github.com/autosre-ai/autosre">GitHub</a> · 
+                <a href="https://github.com/autosre-ai/autosre/issues">Issues</a> · 
+                <a href="https://github.com/autosre-ai/autosre/blob/main/LICENSE">Apache 2.0 License</a>
+            </p>
+            <p style="margin-top: 1rem; color: #8b949e;">
+                Built with ❤️ for SREs who deserve sleep
+            </p>
+        </div>
+    </footer>
+</body>
+</html>
