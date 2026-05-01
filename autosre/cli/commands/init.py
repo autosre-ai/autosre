@@ -8,16 +8,23 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 console = Console()
 
 
-def run_init(directory: str, quiet: bool = False):
-    """Initialize AutoSRE in the specified directory."""
+def run_init(directory: str, demo: bool = False, quiet: bool = False):
+    """Initialize AutoSRE in the specified directory.
+    
+    Args:
+        directory: Directory to initialize
+        demo: If True, populate with demo data
+        quiet: Suppress output
+    """
     base_dir = Path(directory).resolve()
     
     if not quiet:
         console.print()
-        console.print(Panel.fit(
-            "[bold cyan]🚀 Initializing AutoSRE[/bold cyan]",
-            border_style="cyan"
-        ))
+        title = "[bold cyan]🚀 Initializing AutoSRE"
+        if demo:
+            title += " (Demo Mode)"
+        title += "[/bold cyan]"
+        console.print(Panel.fit(title, border_style="cyan"))
         console.print()
     
     with Progress(
@@ -64,17 +71,178 @@ def run_init(directory: str, quiet: bool = False):
             sample_scenario.write_text(_SAMPLE_SCENARIO)
         progress.update(task, description="[green]✓[/] Created sample scenario")
         progress.remove_task(task)
+        
+        # Demo mode: Add demo services and data
+        if demo:
+            task = progress.add_task("Populating demo data...", total=None)
+            _populate_demo_data(base_dir)
+            progress.update(task, description="[green]✓[/] Populated demo data")
+            progress.remove_task(task)
     
     if not quiet:
         console.print()
         console.print("[bold green]✓ AutoSRE initialized successfully![/bold green]")
         console.print()
+        if demo:
+            console.print("[bold yellow]🎮 Demo Mode:[/bold yellow] Sample services and alerts loaded")
+            console.print()
         console.print("[bold]Next steps:[/bold]")
-        console.print("  1. [cyan]cp .env.example .env[/cyan] and configure your settings")
-        console.print("  2. [cyan]autosre sandbox start[/cyan] to create a local test cluster")
-        console.print("  3. [cyan]autosre context sync --all[/cyan] to populate context")
-        console.print("  4. [cyan]autosre eval run --scenario deployment-failure[/cyan] to test")
+        if demo:
+            console.print("  1. [cyan]autosre status[/cyan] to see demo data")
+            console.print("  2. [cyan]autosre eval run --scenario high_cpu[/cyan] to test")
+            console.print("  3. [cyan]autosre web start[/cyan] to view dashboard")
+        else:
+            console.print("  1. [cyan]cp .env.example .env[/cyan] and configure your settings")
+            console.print("  2. [cyan]autosre sandbox start[/cyan] to create a local test cluster")
+            console.print("  3. [cyan]autosre context sync --all[/cyan] to populate context")
+            console.print("  4. [cyan]autosre eval run --scenario deployment-failure[/cyan] to test")
         console.print()
+
+
+def _populate_demo_data(base_dir: Path):
+    """Populate demo data for testing."""
+    from autosre.foundation.context_store import ContextStore
+    from autosre.foundation.models import (
+        Service, ServiceStatus, Ownership, Alert, Severity,
+        ChangeEvent, ChangeType
+    )
+    from datetime import datetime, timezone, timedelta
+    
+    # ContextStore uses db_path for SQLite location
+    db_path = base_dir / ".autosre" / "context.db"
+    store = ContextStore(db_path=str(db_path))
+    
+    # Add demo services
+    services = [
+        Service(
+            name="api-gateway",
+            namespace="production",
+            status=ServiceStatus.HEALTHY,
+            replicas=3,
+            ready_replicas=3,
+            labels={"app": "api-gateway", "tier": "frontend"},
+            dependencies=["user-service", "order-service"],
+        ),
+        Service(
+            name="user-service",
+            namespace="production",
+            status=ServiceStatus.HEALTHY,
+            replicas=2,
+            ready_replicas=2,
+            labels={"app": "user-service", "tier": "backend"},
+            dependencies=["postgres"],
+        ),
+        Service(
+            name="order-service",
+            namespace="production",
+            status=ServiceStatus.DEGRADED,
+            replicas=3,
+            ready_replicas=2,
+            labels={"app": "order-service", "tier": "backend"},
+            dependencies=["postgres", "redis"],
+        ),
+        Service(
+            name="postgres",
+            namespace="production",
+            status=ServiceStatus.HEALTHY,
+            replicas=1,
+            ready_replicas=1,
+            labels={"app": "postgres", "tier": "database"},
+        ),
+        Service(
+            name="redis",
+            namespace="production",
+            status=ServiceStatus.HEALTHY,
+            replicas=1,
+            ready_replicas=1,
+            labels={"app": "redis", "tier": "cache"},
+        ),
+    ]
+    
+    for service in services:
+        store.add_service(service)
+    
+    # Add demo ownership
+    ownerships = [
+        Ownership(
+            service_name="api-gateway",
+            team="platform",
+            slack_channel="#platform-team",
+            escalation_policy="platform-oncall",
+        ),
+        Ownership(
+            service_name="user-service",
+            team="identity",
+            slack_channel="#identity-team",
+            escalation_policy="identity-oncall",
+        ),
+        Ownership(
+            service_name="order-service",
+            team="commerce",
+            slack_channel="#commerce-team",
+            escalation_policy="commerce-oncall",
+        ),
+    ]
+    
+    for ownership in ownerships:
+        store.set_ownership(ownership)
+    
+    # Add demo alerts
+    now = datetime.now(timezone.utc)
+    alerts = [
+        Alert(
+            id="alert-001",
+            name="HighCPUUsage",
+            severity=Severity.MEDIUM,
+            service_name="order-service",
+            namespace="production",
+            summary="CPU usage above 80% for order-service",
+            fired_at=now - timedelta(minutes=15),
+        ),
+        Alert(
+            id="alert-002",
+            name="PodNotReady",
+            severity=Severity.HIGH,
+            service_name="order-service",
+            namespace="production",
+            summary="1 pod not ready in order-service deployment",
+            fired_at=now - timedelta(minutes=10),
+        ),
+    ]
+    
+    for alert in alerts:
+        store.add_alert(alert)
+    
+    # Add demo changes
+    changes = [
+        ChangeEvent(
+            id="change-001",
+            change_type=ChangeType.DEPLOYMENT,
+            service_name="order-service",
+            description="Deployed order-service v2.3.1",
+            author="deploy-bot",
+            timestamp=now - timedelta(hours=2),
+        ),
+        ChangeEvent(
+            id="change-002",
+            change_type=ChangeType.CONFIG_CHANGE,
+            service_name="order-service",
+            description="Updated connection pool settings",
+            author="sre-team",
+            timestamp=now - timedelta(hours=1),
+        ),
+        ChangeEvent(
+            id="change-003",
+            change_type=ChangeType.SCALE_UP,
+            service_name="api-gateway",
+            description="Scaled from 2 to 3 replicas",
+            author="hpa",
+            timestamp=now - timedelta(minutes=30),
+        ),
+    ]
+    
+    for change in changes:
+        store.add_change(change)
 
 
 _ENV_TEMPLATE = '''# AutoSRE Configuration

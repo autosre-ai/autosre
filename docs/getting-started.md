@@ -37,6 +37,23 @@ pip install -e ".[all,dev]"
 
 ## First Steps
 
+### Quick Demo (No External Dependencies)
+
+```bash
+# Create a demo project
+mkdir autosre-demo && cd autosre-demo
+autosre init --demo
+
+# See the demo data
+sqlite3 .autosre/context.db "select name, status from services;"
+
+# Run an evaluation
+autosre eval run --scenario high_cpu
+
+# Start the web dashboard
+autosre web start --port 8080
+```
+
 ### 1. Initialize Your Project
 
 ```bash

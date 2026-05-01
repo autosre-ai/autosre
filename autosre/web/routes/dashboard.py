@@ -89,6 +89,20 @@ async def status_cards(request: Request):
             "llm_model": _get_active_model(),
             "status": "configured" if _is_llm_configured() else "not_configured",
         },
+        "connectors": {
+            "prometheus": {
+                "url": settings.prometheus_url,
+                "status": "configured",
+            },
+            "slack": {
+                "enabled": settings.slack_enabled,
+                "status": "connected" if settings.slack_enabled else "disabled",
+            },
+            "pagerduty": {
+                "enabled": settings.pagerduty_api_key is not None,
+                "status": "connected" if settings.pagerduty_api_key else "disabled",
+            },
+        },
         "context_store": {
             "services": len(store.list_services()),
             "alerts": len(store.get_firing_alerts()),
@@ -98,8 +112,9 @@ async def status_cards(request: Request):
     }
     
     return templates.TemplateResponse(
-        "partials/status_cards.html",
-        {"request": request, "status": status}
+        request=request,
+        name="partials/status_cards.html",
+        context={"status": status}
     )
 
 
@@ -114,9 +129,9 @@ async def activity_feed(request: Request):
     firing_alerts = store.get_firing_alerts()[:5]
     
     return templates.TemplateResponse(
-        "partials/activity_feed.html",
-        {
-            "request": request,
+        request=request,
+        name="partials/activity_feed.html",
+        context={
             "recent_incidents": recent_incidents,
             "recent_changes": recent_changes,
             "firing_alerts": firing_alerts,

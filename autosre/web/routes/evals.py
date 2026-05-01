@@ -106,11 +106,9 @@ async def run_scenario_endpoint(
     scenario = load_scenario(scenario_name)
     if not scenario:
         return templates.TemplateResponse(
-            "partials/scenario_error.html",
-            {
-                "request": request,
-                "error": f"Scenario '{scenario_name}' not found",
-            }
+            request=request,
+            name="partials/scenario_error.html",
+            context={"error": f"Scenario '{scenario_name}' not found"}
         )
     
     # Create run ID
@@ -187,8 +185,9 @@ async def scenario_detail(request: Request, scenario_name: str):
     scenario = load_scenario(scenario_name)
     if not scenario:
         return templates.TemplateResponse(
-            "partials/scenario_error.html",
-            {"request": request, "error": f"Scenario '{scenario_name}' not found"}
+            request=request,
+            name="partials/scenario_error.html",
+            context={"error": f"Scenario '{scenario_name}' not found"}
         )
     
     # Get results for this scenario
@@ -227,9 +226,9 @@ async def create_scenario(
     # For now, return success message
     
     return templates.TemplateResponse(
-        "partials/scenario_created.html",
-        {
-            "request": request,
+        request=request,
+        name="partials/scenario_created.html",
+        context={
             "name": name,
             "message": f"Scenario '{name}' created successfully",
         }

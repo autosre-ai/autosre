@@ -43,8 +43,9 @@ def cli(ctx: click.Context, quiet: bool, debug: bool):
 
 @cli.command()
 @click.option("--dir", "-d", "directory", default=".", help="Directory to initialize")
+@click.option("--demo", is_flag=True, help="Initialize with demo data for testing")
 @click.pass_context
-def init(ctx: click.Context, directory: str):
+def init(ctx: click.Context, directory: str, demo: bool):
     """Initialize AutoSRE in the current directory.
     
     Creates the necessary directory structure and configuration files
@@ -60,9 +61,10 @@ def init(ctx: click.Context, directory: str):
     Example:
       $ autosre init
       $ autosre init --dir ./my-project
+      $ autosre init --demo             # Initialize with demo data
     """
     from autosre.cli.commands.init import run_init
-    run_init(directory, quiet=ctx.obj.get("quiet", False))
+    run_init(directory, demo=demo, quiet=ctx.obj.get("quiet", False))
 
 
 @cli.command()

@@ -82,11 +82,9 @@ async def submit_feedback(
         )
     except Exception as e:
         return templates.TemplateResponse(
-            "partials/feedback_error.html",
-            {
-                "request": request,
-                "error": f"Failed to submit feedback: {str(e)}",
-            }
+            request=request,
+            name="partials/feedback_error.html",
+            context={"error": f"Failed to submit feedback: {str(e)}"}
         )
 
 
