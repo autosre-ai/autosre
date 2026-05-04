@@ -1,292 +1,179 @@
 """
-Logs Subagent — Investigates using log search.
+Logs Subagent — Investigates log data for errors and patterns.
 
-Skills:
-- search_logs: Search logs with patterns
-- tail_logs: Tail recent logs
-- grep_errors: Find error patterns
+Capabilities:
+- Log search (Elasticsearch, Loki, etc.)
+- Error pattern detection
+- Log aggregation and analysis
+- Correlation with timestamps
 """
 
-import asyncio
 import logging
-import subprocess
 from typing import Any, Optional
 
-from .base import BaseSubagent, Skill
+from .base import BaseSubagent, SubagentConfig
 
 logger = logging.getLogger(__name__)
 
 
-class LocalLogSkill(Skill):
-    """Base skill for local log commands."""
-    
-    log_dir: str = "/var/log"
-    
-    async def run_cmd(self, cmd: list[str], timeout: int = 30) -> str:
-        """Run a shell command."""
-        try:
-            result = await asyncio.to_thread(
-                subprocess.run,
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                shell=False,
-            )
-            
-            output = result.stdout
-            if result.returncode != 0 and result.stderr:
-                output += f"\nStderr: {result.stderr}"
-            
-            return output or "No output"
-            
-        except subprocess.TimeoutExpired:
-            return "Error: Command timed out"
-        except FileNotFoundError:
-            return f"Error: Command not found: {cmd[0]}"
-        except Exception as e:
-            return f"Error: {e}"
+LOGS_CAPABILITIES = """
+**Log Investigation**:
+- Search logs by service, level, message
+- Filter by time range and severity
+- Pattern matching and regex search
+- Error aggregation and counting
+- Trace correlation via trace_id
 
-
-class SearchLogsSkill(LocalLogSkill):
-    """Search logs for patterns."""
-    
-    name: str = "search_logs"
-    description: str = "Search log files for patterns using grep. Good for finding specific errors."
-    parameters: dict[str, Any] = {
-        "pattern": {"type": "string", "description": "Search pattern (regex supported)"},
-        "file": {"type": "string", "description": "Log file path or glob (e.g., '/var/log/app/*.log')"},
-        "context_lines": {"type": "integer", "description": "Lines of context (default: 3)"},
-        "case_insensitive": {"type": "boolean", "description": "Case insensitive search"},
-    }
-    
-    async def execute(
-        self,
-        pattern: str,
-        file: str = "",
-        context_lines: int = 3,
-        case_insensitive: bool = True,
-        **kwargs: Any,
-    ) -> str:
-        cmd = ["grep"]
-        
-        if case_insensitive:
-            cmd.append("-i")
-        
-        cmd.extend(["-C", str(context_lines)])
-        cmd.append(pattern)
-        
-        if file:
-            cmd.append(file)
-        else:
-            cmd.append(f"{self.log_dir}/*.log")
-        
-        return await self.run_cmd(cmd)
-
-
-class TailLogsSkill(LocalLogSkill):
-    """Tail recent log entries."""
-    
-    name: str = "tail_logs"
-    description: str = "Get the most recent log entries from a file."
-    parameters: dict[str, Any] = {
-        "file": {"type": "string", "description": "Log file path"},
-        "lines": {"type": "integer", "description": "Number of lines (default: 100)"},
-    }
-    
-    async def execute(
-        self,
-        file: str,
-        lines: int = 100,
-        **kwargs: Any,
-    ) -> str:
-        cmd = ["tail", "-n", str(lines), file]
-        return await self.run_cmd(cmd)
-
-
-class GrepErrorsSkill(LocalLogSkill):
-    """Find error patterns in logs."""
-    
-    name: str = "grep_errors"
-    description: str = "Search for common error patterns (ERROR, Exception, FATAL, panic)."
-    parameters: dict[str, Any] = {
-        "file": {"type": "string", "description": "Log file path or glob"},
-        "lines": {"type": "integer", "description": "Max lines to return (default: 50)"},
-    }
-    
-    async def execute(
-        self,
-        file: str,
-        lines: int = 50,
-        **kwargs: Any,
-    ) -> str:
-        # Search for common error patterns
-        patterns = [
-            "ERROR",
-            "Exception",
-            "FATAL",
-            "panic",
-            "fail",
-            "timeout",
-            "refused",
-            "OOM",
-        ]
-        
-        pattern = "|".join(patterns)
-        cmd = ["grep", "-E", "-i", pattern, file]
-        
-        result = await self.run_cmd(cmd)
-        
-        # Limit output
-        result_lines = result.split("\n")
-        if len(result_lines) > lines:
-            return "\n".join(result_lines[:lines]) + f"\n... ({len(result_lines) - lines} more lines)"
-        
-        return result
-
-
-class JournalctlSkill(LocalLogSkill):
-    """Search systemd journal logs."""
-    
-    name: str = "journalctl"
-    description: str = "Search systemd journal for service logs (Linux only)."
-    parameters: dict[str, Any] = {
-        "unit": {"type": "string", "description": "Systemd unit name (e.g., 'nginx', 'docker')"},
-        "since": {"type": "string", "description": "Time filter (e.g., '5 minutes ago', '1 hour ago')"},
-        "priority": {"type": "string", "description": "Log priority (emerg, alert, crit, err, warning)"},
-        "lines": {"type": "integer", "description": "Number of lines (default: 100)"},
-    }
-    
-    async def execute(
-        self,
-        unit: str = "",
-        since: str = "5 minutes ago",
-        priority: str = "",
-        lines: int = 100,
-        **kwargs: Any,
-    ) -> str:
-        cmd = ["journalctl", "--no-pager", "-n", str(lines)]
-        
-        if unit:
-            cmd.extend(["-u", unit])
-        
-        if since:
-            cmd.extend(["--since", since])
-        
-        if priority:
-            cmd.extend(["-p", priority])
-        
-        return await self.run_cmd(cmd)
-
-
-class LokiSearchSkill(Skill):
-    """Search Grafana Loki logs."""
-    
-    name: str = "loki_search"
-    description: str = "Search logs in Grafana Loki using LogQL."
-    parameters: dict[str, Any] = {
-        "query": {"type": "string", "description": "LogQL query (e.g., '{job=\"nginx\"} |= \"error\"')"},
-        "limit": {"type": "integer", "description": "Max entries (default: 100)"},
-    }
-    
-    loki_url: str = "http://localhost:3100"
-    
-    async def execute(
-        self,
-        query: str,
-        limit: int = 100,
-        **kwargs: Any,
-    ) -> str:
-        try:
-            import httpx
-        except ImportError:
-            return "Error: httpx not installed"
-        
-        url = f"{self.loki_url}/loki/api/v1/query_range"
-        
-        from datetime import datetime, timedelta
-        now = datetime.utcnow()
-        start = now - timedelta(hours=1)
-        
-        params = {
-            "query": query,
-            "limit": limit,
-            "start": int(start.timestamp() * 1e9),
-            "end": int(now.timestamp() * 1e9),
-        }
-        
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(url, params=params)
-                response.raise_for_status()
-                data = response.json()
-                
-                if data.get("status") != "success":
-                    return f"Error: {data.get('error', 'Unknown error')}"
-                
-                results = data.get("data", {}).get("result", [])
-                if not results:
-                    return "No logs found"
-                
-                # Format results
-                lines = []
-                for stream in results:
-                    labels = stream.get("stream", {})
-                    entries = stream.get("values", [])
-                    
-                    for ts, line in entries[:limit]:
-                        lines.append(line)
-                
-                return "\n".join(lines[:limit]) or "No logs found"
-                
-        except Exception as e:
-            return f"Error: {e}"
+**Common searches**:
+1. Recent errors: level:error AND service:{service}
+2. Exception traces: message:*Exception* OR message:*Error*
+3. Timeout issues: message:*timeout* OR message:*timed out*
+4. Connection problems: message:*connection* AND (message:*refused* OR message:*reset*)
+5. OOM issues: message:*OutOfMemory* OR message:*OOM*
+"""
 
 
 class LogsSubagent(BaseSubagent):
-    """Log investigation subagent."""
+    """Log analysis domain investigation subagent."""
     
-    name = "logs"
-    description = "Investigates using log search: grep, tail, journalctl, Loki"
-    custom_prompt = """You are an expert at log analysis and troubleshooting.
-
-Investigation approach:
-1. Start with recent errors: grep for ERROR, Exception, FATAL
-2. Look for patterns: repeated errors, timeouts, connection failures
-3. Check timestamps: correlate with incident start time
-4. Follow the trace: find related log entries using request IDs
-5. Check dependent services: look for upstream/downstream errors
-
-Common patterns to search:
-- Connection refused / timeout
-- OOM / Out of memory
-- Stack traces and exceptions
-- Authentication failures
-- Rate limiting / throttling
-- DNS resolution failures
-
-Focus on:
-- First occurrence of errors (root cause often appears first)
-- Patterns that changed recently
-- Correlation with deployments or config changes"""
+    agent_id = "logs"
+    agent_name = "Logs Investigation Agent"
+    capabilities_description = LOGS_CAPABILITIES
     
     def __init__(
         self,
-        log_dir: str = "/var/log",
-        loki_url: str = "http://localhost:3100",
-        **kwargs: Any,
+        config: Optional[SubagentConfig] = None,
+        backend: str = "elasticsearch",  # elasticsearch, loki, etc.
     ):
-        super().__init__(**kwargs)
-        self.log_dir = log_dir
-        self.loki_url = loki_url
+        super().__init__(config)
+        self.backend = backend
     
-    def get_skills(self) -> list[Skill]:
-        """Return available log skills."""
-        skills = [
-            SearchLogsSkill(log_dir=self.log_dir),
-            TailLogsSkill(log_dir=self.log_dir),
-            GrepErrorsSkill(log_dir=self.log_dir),
-            JournalctlSkill(log_dir=self.log_dir),
-            LokiSearchSkill(loki_url=self.loki_url),
+    async def get_tools(self) -> list[Any]:
+        """Return log investigation tools."""
+        return [
+            "search_logs",
+            "tail_logs",
+            "count_errors",
+            "get_error_patterns",
+            "search_by_trace_id",
         ]
-        return skills
+    
+    async def execute_tool(self, tool_name: str, **kwargs: Any) -> str:
+        """Execute a log search tool.
+        
+        In a real implementation, this would query Elasticsearch/Loki.
+        """
+        self.record_tool_call(tool_name, kwargs, f"Would execute: {tool_name}")
+        
+        if tool_name == "search_logs":
+            return f"[Would search logs: {kwargs.get('query', 'unknown')}]"
+        elif tool_name == "tail_logs":
+            return f"[Would tail logs for: {kwargs.get('service', 'unknown')}]"
+        elif tool_name == "count_errors":
+            return f"[Would count errors for: {kwargs.get('service', 'unknown')}]"
+        elif tool_name == "get_error_patterns":
+            return f"[Would analyze error patterns]"
+        elif tool_name == "search_by_trace_id":
+            return f"[Would search trace_id: {kwargs.get('trace_id', 'unknown')}]"
+        else:
+            return f"Unknown tool: {tool_name}"
+    
+    async def _run_investigation(
+        self,
+        alert: dict[str, Any],
+        hypotheses: list[str],
+        service_context: str,
+        llm_client: Optional[Any],
+    ) -> str:
+        """Run log investigation."""
+        service_name = alert.get("service", alert.get("name", "unknown"))
+        
+        findings = []
+        self._loop_count = 0
+        
+        # Search for errors
+        self._loop_count += 1
+        error_query = f'level:error AND service:{service_name}'
+        error_result = await self.execute_tool("search_logs", query=error_query)
+        self.add_evidence(
+            skill="search_logs",
+            query=error_query,
+            result=error_result,
+            relevance=0.9,
+        )
+        findings.append(f"**Error Logs Search**: {error_result}")
+        
+        # Get error counts
+        self._loop_count += 1
+        count_result = await self.execute_tool("count_errors", service=service_name)
+        self.add_evidence(
+            skill="count_errors",
+            query=f"Count errors for {service_name}",
+            result=count_result,
+            relevance=0.7,
+        )
+        findings.append(f"**Error Counts**: {count_result}")
+        
+        # Search for exceptions
+        self._loop_count += 1
+        exception_query = f'service:{service_name} AND (message:*Exception* OR message:*Traceback*)'
+        exception_result = await self.execute_tool("search_logs", query=exception_query)
+        self.add_evidence(
+            skill="search_logs",
+            query=exception_query,
+            result=exception_result,
+            relevance=0.85,
+        )
+        findings.append(f"**Exception Search**: {exception_result}")
+        
+        # Check for connection issues
+        self._loop_count += 1
+        connection_query = f'service:{service_name} AND message:*connection*'
+        connection_result = await self.execute_tool("search_logs", query=connection_query)
+        self.add_evidence(
+            skill="search_logs",
+            query=connection_query,
+            result=connection_result,
+            relevance=0.6,
+        )
+        findings.append(f"**Connection Issues Search**: {connection_result}")
+        
+        # Get error patterns
+        self._loop_count += 1
+        patterns_result = await self.execute_tool("get_error_patterns")
+        self.add_evidence(
+            skill="get_error_patterns",
+            query="Analyze error patterns",
+            result=patterns_result,
+            relevance=0.75,
+        )
+        findings.append(f"**Error Patterns**: {patterns_result}")
+        
+        summary = f"""## Logs Investigation: {service_name}
+
+{chr(10).join(findings)}
+
+### Summary
+Searched {self.backend} logs for errors, exceptions, and patterns in {service_name}.
+This is a placeholder - real implementation would query actual log backend.
+
+**Searches Performed**:
+- Error level logs
+- Error count aggregation
+- Exception/traceback patterns
+- Connection-related errors
+- Error pattern analysis
+
+**Confidence**: Low (placeholder data)
+**Recommendation**: Implement actual {self.backend} integration.
+"""
+        
+        return summary
+
+
+def create_logs_subagent(
+    backend: str = "elasticsearch",
+    config: Optional[SubagentConfig] = None,
+) -> LogsSubagent:
+    """Factory function to create Logs subagent."""
+    return LogsSubagent(config=config, backend=backend)
