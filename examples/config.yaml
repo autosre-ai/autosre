@@ -1,0 +1,24 @@
+# AutoSRE v2 Example Config
+#
+# Copy to ~/.autosre/config.yaml or ./config.yaml
+
+llm:
+  provider: anthropic
+  model: claude-sonnet-4-20250514
+  max_tokens: 4096
+  temperature: 0.0
+
+memory:
+  db_path: .autosre/memory.db
+  max_episodes: 1000
+  similarity_threshold: 0.7
+
+investigation:
+  max_iterations: 3
+  max_subagent_loops: 25
+  parallel_subagents: true
+  timeout_seconds: 300
+
+# Paths relative to working directory
+topology_path: topology.yaml
+skills_dir: skills

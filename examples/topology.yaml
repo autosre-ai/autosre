@@ -1,0 +1,117 @@
+# Example topology for AutoSRE v2
+#
+# This file defines your service dependencies, owners, and related metadata.
+# AutoSRE uses this to understand blast radius and investigation context.
+
+services:
+  checkout-service:
+    description: "Main checkout flow service"
+    dependencies:
+      - payment-service
+      - inventory-service
+      - user-service
+    owners:
+      - team-checkout
+      - "@oncall-checkout"
+    alerts:
+      - checkout-5xx
+      - checkout-latency-p99
+      - checkout-error-rate
+    runbooks:
+      - runbooks/checkout-debug.md
+      - runbooks/checkout-rollback.md
+    tier: critical
+    
+  payment-service:
+    description: "Payment processing service"
+    dependencies:
+      - stripe-gateway
+      - fraud-service
+      - payment-db
+    owners:
+      - team-payments
+    alerts:
+      - payment-failures
+      - stripe-timeout
+    runbooks:
+      - runbooks/payment-debug.md
+    tier: critical
+    
+  inventory-service:
+    description: "Inventory and stock management"
+    dependencies:
+      - inventory-db
+      - warehouse-api
+    owners:
+      - team-inventory
+    alerts:
+      - inventory-sync-lag
+      - stock-inconsistency
+    tier: high
+    
+  user-service:
+    description: "User authentication and profile"
+    dependencies:
+      - user-db
+      - auth0
+    owners:
+      - team-identity
+    alerts:
+      - auth-failures
+      - user-service-5xx
+    tier: critical
+
+  # External dependencies (no runbooks, just for context)
+  stripe-gateway:
+    description: "Stripe payment API"
+    external: true
+    
+  fraud-service:
+    description: "Internal fraud detection"
+    dependencies:
+      - ml-inference
+    owners:
+      - team-risk
+    tier: high
+    
+  payment-db:
+    description: "PostgreSQL database for payments"
+    type: database
+    owners:
+      - team-platform
+    tier: critical
+    
+  inventory-db:
+    description: "PostgreSQL database for inventory"
+    type: database
+    owners:
+      - team-platform
+    tier: high
+    
+  user-db:
+    description: "PostgreSQL database for users"
+    type: database
+    owners:
+      - team-platform
+    tier: critical
+
+# Alert mappings - helps AutoSRE understand which service an alert relates to
+alert_mappings:
+  checkout-5xx: checkout-service
+  checkout-latency-p99: checkout-service
+  payment-failures: payment-service
+  stripe-timeout: payment-service
+  auth-failures: user-service
+
+# Tier definitions for prioritization
+tiers:
+  critical:
+    sla_minutes: 15
+    notify_slack: "#incidents-critical"
+  high:
+    sla_minutes: 60
+    notify_slack: "#incidents"
+  medium:
+    sla_minutes: 240
+  low:
+    sla_minutes: 1440

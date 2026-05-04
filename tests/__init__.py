@@ -1,3 +1,3 @@
 """
-Tests for the AutoSRE foundation layer.
+AutoSRE Tests
 """

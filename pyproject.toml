@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "autosre"
-version = "0.1.0"
+version = "0.2.0"
 description = "Open-source AI SRE agent - foundation-first incident investigation, root cause analysis, and auto-remediation"
 readme = "README.md"
 license = "Apache-2.0"
@@ -32,6 +32,7 @@ classifiers = [
     "Environment :: Console",
 ]
 dependencies = [
+    "typer>=0.12.0",
     "click>=8.1.0",
     "pydantic>=2.13.3",
     "rich>=13.0.0",
@@ -69,7 +70,8 @@ dev = [
 ]
 
 [project.scripts]
-autosre = "autosre.cli.main:cli"
+autosre = "autosre.cli:main"
+autosre-v2 = "autosre.cli_v2:app"
 
 [project.urls]
 Homepage = "https://github.com/opensre/autosre"
@@ -78,11 +80,11 @@ Repository = "https://github.com/opensre/autosre"
 Issues = "https://github.com/opensre/autosre/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["autosre"]
+packages = ["src/autosre"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "autosre/",
+    "src/autosre/",
     "scenarios/",
     "docs/",
     "README.md",

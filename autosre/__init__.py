@@ -1,42 +1,23 @@
 """
-AutoSRE - Open-source AI SRE Agent
+AutoSRE v2 — AI-Powered SRE Agent
 
-Built foundation-first: context store, evals, sandbox, then agent logic.
+A world-class open-source SRE agent that investigates production incidents
+autonomously using episodic memory, multi-agent investigation, and 
+service topology awareness.
+
+Example:
+    >>> from autosre import Orchestrator
+    >>> orch = Orchestrator()
+    >>> result = await orch.investigate("checkout-service 5xx spike")
+    >>> print(result.root_cause)
 """
 
-__version__ = "0.1.0"
-__author__ = "OpenSRE Community"
+__version__ = "2.0.0-alpha.1"
+__author__ = "Sainath + Clawd"
 
-from autosre.foundation.context_store import ContextStore
-from autosre.foundation.models import Service, Ownership, ChangeEvent
-from autosre.logging import get_logger, configure_logging
-from autosre.exceptions import (
-    AutoSREError,
-    ConfigurationError,
-    ConnectionError,
-    ContextError,
-    AgentError,
-    SandboxError,
-    EvalError,
-)
+from .config import Settings
 
 __all__ = [
-    # Core
-    "ContextStore",
-    "Service",
-    "Ownership", 
-    "ChangeEvent",
-    # Logging
-    "get_logger",
-    "configure_logging",
-    # Exceptions
-    "AutoSREError",
-    "ConfigurationError",
-    "ConnectionError",
-    "ContextError",
-    "AgentError",
-    "SandboxError",
-    "EvalError",
-    # Version
+    "Settings",
     "__version__",
 ]

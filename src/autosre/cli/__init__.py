@@ -8,6 +8,6 @@ Provides a beautiful, user-friendly CLI for managing AutoSRE:
 - Agent operations
 """
 
-from autosre.cli.main import cli
+from autosre.cli.main import app, main, cli
 
-__all__ = ["cli"]
+__all__ = ["app", "main", "cli"]
