@@ -13,7 +13,7 @@ from .state import (
 )
 from .planner import run_planner, apply_plan_to_state
 from .synthesizer import run_synthesizer, apply_synthesis_to_state
-from .writeup import run_writeup, finalize_report
+from .writeup import run_writeup, format_report_markdown
 
 __all__ = [
     # State models
@@ -34,5 +34,5 @@ __all__ = [
     "apply_synthesis_to_state",
     # Writeup
     "run_writeup",
-    "finalize_report",
+    "format_report_markdown",
 ]

@@ -1,6 +1,6 @@
 """AutoSRE Subagents — Domain-specific investigation agents."""
 
-from .base import BaseSubagent, SubagentConfig, MockSubagent
+from .base import BaseSubagent, SubagentConfig, MockSubagent, run_subagents_parallel
 from .kubernetes import KubernetesSubagent, create_kubernetes_subagent
 from .metrics import MetricsSubagent, create_metrics_subagent
 from .logs import LogsSubagent, create_logs_subagent
@@ -10,6 +10,7 @@ __all__ = [
     "BaseSubagent",
     "SubagentConfig",
     "MockSubagent",
+    "run_subagents_parallel",
     # Kubernetes
     "KubernetesSubagent",
     "create_kubernetes_subagent",

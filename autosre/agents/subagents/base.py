@@ -235,3 +235,63 @@ class MockSubagent(BaseSubagent):
             relevance=0.5,
         )
         return f"Mock investigation of alert: {alert.get('name', 'unknown')}"
+
+
+import asyncio
+from ..state import InvestigationState, Hypothesis
+
+
+async def run_subagents_parallel(
+    state: InvestigationState,
+    subagents: list[BaseSubagent],
+    hypotheses: Optional[list[Hypothesis]] = None,
+) -> list[SubagentResult]:
+    """Run multiple subagents in parallel.
+    
+    Args:
+        state: Current investigation state.
+        subagents: List of subagent instances to run.
+        hypotheses: Hypotheses to test.
+        
+    Returns:
+        List of SubagentResult from each subagent.
+    """
+    # Build context
+    alert = state.alert
+    hyp_strings = [h.hypothesis for h in (hypotheses or state.hypotheses)]
+    service_context = ""
+    if state.topology_context.get("available"):
+        ctx = state.topology_context
+        service_context = f"Service: {ctx.get('service', state.service_name)}\n"
+        service_context += f"Tier: {ctx.get('tier', 'unknown')}\n"
+        deps = ctx.get("dependencies", [])
+        if deps:
+            service_context += f"Dependencies: {', '.join(deps)}"
+    
+    # Create tasks
+    tasks = [
+        subagent.investigate(
+            alert=alert,
+            hypotheses=hyp_strings,
+            service_context=service_context,
+        )
+        for subagent in subagents
+    ]
+    
+    # Run in parallel
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Convert exceptions to failed results
+    final_results: list[SubagentResult] = []
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            final_results.append(SubagentResult(
+                agent_id=subagents[i].agent_id,
+                status=InvestigationStatus.FAILED,
+                findings=f"Subagent failed: {result}",
+                error=str(result),
+            ))
+        else:
+            final_results.append(result)
+    
+    return final_results
