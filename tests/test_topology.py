@@ -1,159 +1,184 @@
-"""
-Tests for service topology.
-"""
+"""Tests for Service Topology."""
 
 import pytest
+from pathlib import Path
 import tempfile
-import os
 
-from autosre.foundation.context_store import ContextStore
-from autosre.foundation.topology import ServiceTopology
-from autosre.foundation.models import Service, ServiceStatus
-
-
-@pytest.fixture
-def temp_db():
-    """Create a temporary database for testing."""
-    fd, path = tempfile.mkstemp(suffix=".db")
-    os.close(fd)
-    yield path
-    os.unlink(path)
-
-
-@pytest.fixture
-def store(temp_db):
-    """Create a context store with temporary database."""
-    return ContextStore(db_path=temp_db)
-
-
-@pytest.fixture
-def topology(store):
-    """Create a topology with test services."""
-    # Create a service topology:
-    # frontend -> api-gateway -> [user-service, order-service] -> database
-    
-    store.add_service(Service(
-        name="frontend",
-        dependencies=["api-gateway"],
-        status=ServiceStatus.HEALTHY,
-    ))
-    store.add_service(Service(
-        name="api-gateway",
-        dependencies=["user-service", "order-service"],
-        status=ServiceStatus.HEALTHY,
-    ))
-    store.add_service(Service(
-        name="user-service",
-        dependencies=["database"],
-        status=ServiceStatus.HEALTHY,
-    ))
-    store.add_service(Service(
-        name="order-service",
-        dependencies=["database"],
-        status=ServiceStatus.HEALTHY,
-    ))
-    store.add_service(Service(
-        name="database",
-        dependencies=[],
-        status=ServiceStatus.HEALTHY,
-    ))
-    
-    topo = ServiceTopology(store)
-    topo.refresh()
-    return topo
+from autosre.topology import ServiceTopology, ServiceInfo
 
 
 class TestServiceTopology:
-    """Tests for ServiceTopology."""
+    """Test topology loading and queries."""
     
-    def test_get_dependencies(self, topology):
+    @pytest.fixture
+    def sample_topology(self) -> ServiceTopology:
+        """Create a sample topology for testing."""
+        return ServiceTopology.from_dict({
+            "services": {
+                "checkout-service": {
+                    "description": "Main checkout flow",
+                    "dependencies": ["payment-service", "inventory-service"],
+                    "owners": ["team-checkout"],
+                    "alerts": ["checkout-5xx", "checkout-latency"],
+                    "tier": "critical",
+                },
+                "payment-service": {
+                    "description": "Payment processing",
+                    "dependencies": ["stripe-gateway", "payment-db"],
+                    "owners": ["team-payments"],
+                    "alerts": ["payment-failures"],
+                    "tier": "critical",
+                },
+                "inventory-service": {
+                    "description": "Inventory management",
+                    "dependencies": ["inventory-db"],
+                    "owners": ["team-inventory"],
+                    "tier": "high",
+                },
+                "stripe-gateway": {
+                    "description": "Stripe API",
+                    "external": True,
+                },
+                "payment-db": {
+                    "type": "database",
+                },
+                "inventory-db": {
+                    "type": "database",
+                },
+            },
+            "alert_mappings": {
+                "checkout-5xx": "checkout-service",
+                "payment-timeout": "payment-service",
+            },
+            "tiers": {
+                "critical": {
+                    "sla_minutes": 15,
+                    "notify_slack": "#incidents-critical",
+                },
+                "high": {
+                    "sla_minutes": 60,
+                },
+            },
+        })
+    
+    def test_load_services(self, sample_topology: ServiceTopology):
+        """Test that services are loaded correctly."""
+        assert len(sample_topology) == 6
+        assert "checkout-service" in sample_topology
+        assert "payment-service" in sample_topology
+    
+    def test_get_service(self, sample_topology: ServiceTopology):
+        """Test getting service info."""
+        svc = sample_topology.get_service("checkout-service")
+        assert svc is not None
+        assert svc.description == "Main checkout flow"
+        assert svc.tier == "critical"
+        assert "payment-service" in svc.dependencies
+    
+    def test_get_dependencies_direct(self, sample_topology: ServiceTopology):
         """Test getting direct dependencies."""
-        deps = topology.get_dependencies("api-gateway")
-        
-        assert "user-service" in deps
-        assert "order-service" in deps
-        assert len(deps) == 2
+        deps = sample_topology.get_dependencies("checkout-service")
+        assert set(deps) == {"payment-service", "inventory-service"}
     
-    def test_get_dependencies_recursive(self, topology):
+    def test_get_dependencies_recursive(self, sample_topology: ServiceTopology):
         """Test getting transitive dependencies."""
-        deps = topology.get_dependencies("api-gateway", recursive=True)
-        
-        assert "user-service" in deps
-        assert "order-service" in deps
-        assert "database" in deps
-        assert len(deps) == 3
+        deps = sample_topology.get_dependencies("checkout-service", recursive=True)
+        assert "payment-service" in deps
+        assert "stripe-gateway" in deps  # transitive
+        assert "payment-db" in deps  # transitive
+        assert "inventory-service" in deps
+        assert "inventory-db" in deps  # transitive
     
-    def test_get_dependents(self, topology):
+    def test_get_dependents_direct(self, sample_topology: ServiceTopology):
         """Test getting direct dependents."""
-        deps = topology.get_dependents("database")
-        
-        assert "user-service" in deps
-        assert "order-service" in deps
-        assert len(deps) == 2
+        dependents = sample_topology.get_dependents("payment-service")
+        assert dependents == ["checkout-service"]
     
-    def test_get_dependents_recursive(self, topology):
-        """Test getting transitive dependents."""
-        deps = topology.get_dependents("database", recursive=True)
-        
-        assert "user-service" in deps
-        assert "order-service" in deps
-        assert "api-gateway" in deps
-        assert "frontend" in deps
-        assert len(deps) == 4
+    def test_get_blast_radius(self, sample_topology: ServiceTopology):
+        """Test blast radius calculation."""
+        # If payment-db fails, payment-service fails, then checkout fails
+        blast = sample_topology.get_blast_radius("payment-db")
+        assert "payment-service" in blast
+        assert "checkout-service" in blast
     
-    def test_impact_radius(self, topology):
-        """Test impact radius calculation."""
-        impact = topology.get_impact_radius("database")
+    def test_get_service_for_alert(self, sample_topology: ServiceTopology):
+        """Test alert to service mapping."""
+        # From explicit mapping
+        assert sample_topology.get_service_for_alert("checkout-5xx") == "checkout-service"
+        assert sample_topology.get_service_for_alert("payment-timeout") == "payment-service"
         
-        assert impact["service"] == "database"
-        assert impact["direct_dependents"] == 2
-        assert impact["total_impacted"] == 4  # All services depend on it
+        # From service alerts list
+        assert sample_topology.get_service_for_alert("payment-failures") == "payment-service"
+        
+        # Unknown
+        assert sample_topology.get_service_for_alert("unknown-alert") is None
     
-    def test_find_root_cause_candidates(self, topology):
-        """Test finding root cause candidates."""
-        # If user-service and order-service are both failing,
-        # database should be a root cause candidate
-        failing = ["user-service", "order-service"]
-        candidates = topology.find_root_cause_candidates(failing)
-        
-        assert "database" in candidates
+    def test_get_owners(self, sample_topology: ServiceTopology):
+        """Test getting service owners."""
+        owners = sample_topology.get_owners("checkout-service")
+        assert owners == ["team-checkout"]
     
-    def test_critical_path(self, topology):
-        """Test finding critical path between services."""
-        path = topology.get_critical_path("frontend", "database")
-        
-        assert path is not None
-        assert path[0] == "frontend"
-        assert path[-1] == "database"
-        assert "api-gateway" in path
+    def test_get_tier(self, sample_topology: ServiceTopology):
+        """Test tier configuration retrieval."""
+        tier = sample_topology.get_tier("checkout-service")
+        assert tier is not None
+        assert tier.sla_minutes == 15
+        assert tier.notify_slack == "#incidents-critical"
     
-    def test_no_path(self, topology):
-        """Test when no path exists."""
-        # Database doesn't depend on anything
-        path = topology.get_critical_path("database", "frontend")
-        
-        assert path is None
+    def test_get_critical_services(self, sample_topology: ServiceTopology):
+        """Test filtering critical services."""
+        critical = sample_topology.get_critical_services()
+        assert set(critical) == {"checkout-service", "payment-service"}
     
-    def test_health_summary(self, topology, store):
-        """Test service health summary."""
-        # Make one service unhealthy
-        store.add_service(Service(
-            name="database",
-            dependencies=[],
-            status=ServiceStatus.DOWN,
-        ))
-        topology.refresh()
+    def test_to_context(self, sample_topology: ServiceTopology):
+        """Test context generation for prompts."""
+        ctx = sample_topology.to_context("checkout-service")
         
-        summary = topology.get_service_health_summary()
-        
-        assert summary["total"] == 5
-        assert summary["down"] == 1
-        assert summary["healthy"] == 4
+        assert ctx["available"] is True
+        assert ctx["service"] == "checkout-service"
+        assert ctx["tier"] == "critical"
+        assert "payment-service" in ctx["dependencies"]
+        assert ctx["blast_radius_size"] == 0  # checkout is top-level
     
-    def test_mermaid_diagram(self, topology):
-        """Test Mermaid diagram generation."""
-        diagram = topology.to_mermaid()
+    def test_format_for_prompt(self, sample_topology: ServiceTopology):
+        """Test prompt formatting."""
+        text = sample_topology.format_for_prompt("checkout-service")
         
-        assert "graph TD" in diagram
-        assert "frontend" in diagram
-        assert "-->" in diagram
+        assert "checkout-service" in text
+        assert "critical" in text
+        assert "payment-service" in text
+        assert "team-checkout" in text
+    
+    def test_load_from_yaml(self, tmp_path: Path):
+        """Test loading from YAML file."""
+        yaml_content = """
+services:
+  test-service:
+    description: "Test service"
+    dependencies:
+      - dep-a
+      - dep-b
+    tier: high
+  dep-a:
+    description: "Dependency A"
+  dep-b:
+    description: "Dependency B"
+"""
+        yaml_file = tmp_path / "topology.yaml"
+        yaml_file.write_text(yaml_content)
+        
+        topology = ServiceTopology.from_yaml(yaml_file)
+        
+        assert len(topology) == 3
+        assert topology.get_service("test-service") is not None
+        assert topology.get_dependencies("test-service") == ["dep-a", "dep-b"]
+    
+    def test_external_service(self, sample_topology: ServiceTopology):
+        """Test external service flag."""
+        svc = sample_topology.get_service("stripe-gateway")
+        assert svc is not None
+        assert svc.external is True
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
