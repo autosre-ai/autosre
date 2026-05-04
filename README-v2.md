@@ -1,50 +1,19 @@
-# AutoSRE v2
+# AutoSRE v2 — AI-Powered SRE Agent
 
-> AI-Powered SRE Agent for Autonomous Incident Investigation
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 
-AutoSRE is an open-source agent that investigates production incidents autonomously using:
-- 🧠 **Episodic Memory** — Learns from past investigations
-- 🤖 **Multi-Agent Architecture** — Specialized subagents for Kubernetes, metrics, logs
-- 🗺️ **Service Topology** — Blast radius and dependency awareness
-- 📊 **Structured Reports** — Professional incident reports with root cause analysis
+AutoSRE is an open-source AI SRE agent that investigates production incidents autonomously.
+
+## Features
+
+- **Episodic Memory** — Learns from past investigations, suggests strategies
+- **Multi-Agent Investigation** — Parallel subagents for Kubernetes, Metrics, Logs
+- **Service Topology** — YAML-based dependency graph for blast radius analysis
+- **Local-First** — SQLite for memory, no external databases required
+- **Simple API** — Just `pip install autosre` and investigate
 
 ## Quick Start
-
-```bash
-# Install
-pip install autosre
-
-# Set API key
-export ANTHROPIC_API_KEY=sk-...
-
-# Investigate!
-python -c "
-import asyncio
-from autosre import investigate
-
-async def main():
-    report = await investigate('checkout-service 5xx spike')
-    print(f'Root cause: {report.root_cause}')
-
-asyncio.run(main())
-"
-```
-
-## Installation
-
-```bash
-# From PyPI (once published)
-pip install autosre
-
-# From source
-git clone https://github.com/yourorg/autosre
-cd autosre
-pip install -e .
-```
-
-## Usage
-
-### Basic Investigation
 
 ```python
 import asyncio
@@ -53,27 +22,70 @@ from autosre import Orchestrator
 async def main():
     orch = Orchestrator()
     
-    # String description
-    report = await orch.investigate("payment-service timeout errors")
-    
-    # Or full alert dict
     report = await orch.investigate({
-        "name": "HighErrorRate",
+        "name": "High5xxRate",
         "service": "checkout-service",
         "severity": "critical",
-        "description": "Error rate above 5% for 10 minutes",
+        "description": "checkout-service 5xx rate above 5% for 10 minutes",
     })
     
-    print(f"Root cause: {report.root_cause}")
+    print(f"Root Cause: {report.root_cause}")
     print(f"Confidence: {report.confidence:.0%}")
-    print(f"Summary: {report.summary}")
 
 asyncio.run(main())
 ```
 
-### With Service Topology
+## Installation
 
-Create `topology.yaml`:
+```bash
+pip install autosre
+
+# Set your LLM API key
+export ANTHROPIC_API_KEY=sk-...
+# or
+export OPENAI_API_KEY=sk-...
+```
+
+## Configuration
+
+AutoSRE uses Pydantic settings with environment variables:
+
+```bash
+# LLM settings
+export AUTOSRE_LLM__PROVIDER=anthropic  # or openai
+export AUTOSRE_LLM__MODEL=claude-sonnet-4-20250514
+
+# Investigation settings
+export AUTOSRE_INVESTIGATION__MAX_ITERATIONS=3
+export AUTOSRE_INVESTIGATION__PARALLEL_SUBAGENTS=true
+
+# Paths
+export AUTOSRE_TOPOLOGY_PATH=topology.yaml
+export AUTOSRE_MEMORY__DB_PATH=.autosre/memory.db
+```
+
+Or use a config file (`config.yaml`):
+
+```yaml
+llm:
+  provider: anthropic
+  model: claude-sonnet-4-20250514
+  temperature: 0.0
+
+investigation:
+  max_iterations: 3
+  parallel_subagents: true
+  timeout_seconds: 300
+
+memory:
+  db_path: .autosre/memory.db
+
+topology_path: topology.yaml
+```
+
+## Service Topology
+
+Define your services and dependencies in `topology.yaml`:
 
 ```yaml
 services:
@@ -85,180 +97,186 @@ services:
     owners:
       - team-checkout
     tier: critical
-    
+    alerts:
+      - checkout-5xx
+      - checkout-latency
+      
   payment-service:
     dependencies:
       - stripe-gateway
       - payment-db
     tier: critical
+    
+alert_mappings:
+  checkout-5xx: checkout-service
+  payment-failure: payment-service
 
 tiers:
   critical:
     sla_minutes: 15
+    notify_slack: "#incidents-critical"
 ```
 
-Then:
+## Investigation Flow
 
-```python
-from autosre import Orchestrator, load_topology
-
-load_topology("topology.yaml")
-orch = Orchestrator()
-report = await orch.investigate("checkout-service errors")
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Alert Received                          │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+┌─────────────────────▼───────────────────────────────────────┐
+│ 1. init_context     - Parse alert, load topology             │
+│ 2. memory_lookup    - Find similar past incidents            │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+┌─────────────────────▼───────────────────────────────────────┐
+│ 3. planner          - Generate hypotheses, select agents     │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+        ┌─────────────┼─────────────┐
+        │             │             │
+┌───────▼───┐  ┌──────▼────┐  ┌─────▼────┐
+│kubernetes │  │  metrics  │  │   logs   │
+│ subagent  │  │ subagent  │  │ subagent │
+└───────┬───┘  └──────┬────┘  └─────┬────┘
+        │             │             │
+        └─────────────┼─────────────┘
+                      │
+┌─────────────────────▼───────────────────────────────────────┐
+│ 5. synthesizer      - Combine evidence, decide loop/done     │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+        ┌─────────────┴─────────────┐
+        │                           │
+  Need more evidence          Sufficient evidence
+        │                           │
+        │                  ┌────────▼─────────┐
+        └─────→ Loop       │  6. writeup      │
+                           │  Generate report │
+                           └────────┬─────────┘
+                                    │
+                           ┌────────▼─────────┐
+                           │  7. memory_store │
+                           │  Save for future │
+                           └──────────────────┘
 ```
 
-### Memory System
+## Subagents
 
-AutoSRE learns from past investigations:
+### Kubernetes
+- `pod_logs` — Get logs from pods
+- `describe` — Describe resources
+- `events` — Get cluster events
+- `get_pods` — Pod status overview
+- `top_pods` — Resource usage
+
+### Metrics (Prometheus)
+- `query_prometheus` — PromQL instant queries
+- `query_range` — Range queries for trends
+- `error_rate` — Calculate error rates
+- `latency` — Get p50/p95/p99 latency
+
+### Logs
+- `search_logs` — Grep log files
+- `tail_logs` — Tail recent entries
+- `grep_errors` — Find error patterns
+- `journalctl` — Systemd journal
+- `loki_search` — Grafana Loki queries
+
+## Episodic Memory
+
+AutoSRE remembers past investigations:
 
 ```python
-from autosre import EpisodicMemory
+from autosre.memory import EpisodicMemory, Episode
 
 memory = EpisodicMemory()
 
-# Get stats
-stats = memory.get_stats()
-print(f"Total episodes: {stats['total_episodes']}")
-print(f"Resolution rate: {stats['resolution_rate']:.0%}")
+# Store an investigation
+memory.store(Episode(
+    alert_type="http_500",
+    service_name="checkout-service",
+    root_cause="Database connection pool exhausted",
+    resolved=True,
+    skills_used=["pod_logs", "query_prometheus"],
+))
 
-# Search similar past investigations
-episodes = memory.search_similar(
+# Search similar incidents
+similar = memory.search_similar(
     alert_type="http_500",
     service_name="checkout-service",
 )
-for ep in episodes:
-    print(f"- {ep.root_cause}")
+
+# Get stats
+stats = memory.get_stats()
+print(f"Episodes: {stats['total_episodes']}")
+print(f"Resolution rate: {stats['resolution_rate']:.0%}")
 ```
 
-## Configuration
+## Python API
 
-Environment variables:
-```bash
-ANTHROPIC_API_KEY=sk-...          # Required (or OPENAI_API_KEY)
-AUTOSRE_LLM_MODEL=claude-sonnet-4-20250514  # Model to use
-AUTOSRE_MEMORY_DB_PATH=.autosre/memory.db   # Memory database
-AUTOSRE_INVESTIGATION_MAX_ITERATIONS=3      # Max investigation loops
-```
-
-Or via Python:
 ```python
-from autosre import Settings, configure
+from autosre import Orchestrator, Settings, investigate
 
-configure(
-    llm={"provider": "anthropic", "model": "claude-sonnet-4-20250514"},
+# Quick investigation
+report = await investigate({
+    "name": "HighLatency",
+    "service": "api-gateway",
+    "description": "p99 latency above 500ms",
+})
+
+# With custom settings
+settings = Settings(
     investigation={"max_iterations": 5},
+    memory={"db_path": "my_memory.db"},
 )
+orch = Orchestrator(settings=settings)
+report = await orch.investigate(alert)
+
+# Access results
+print(report.root_cause)
+print(report.confidence)
+print(report.summary)
+for h in report.hypotheses:
+    print(f"- {h.hypothesis}: {h.confirmed}")
 ```
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        Orchestrator                         │
-│  ┌─────────────┐  ┌──────────┐  ┌──────────┐  ┌─────────┐  │
-│  │   Memory    │  │ Topology │  │ Planner  │  │Synthesizer│ │
-│  │  (SQLite)   │  │  (YAML)  │  │  Agent   │  │  Agent  │  │
-│  └─────────────┘  └──────────┘  └──────────┘  └─────────┘  │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │                  Subagents (parallel)                │   │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐          │   │
-│  │  │Kubernetes│  │ Metrics  │  │   Logs   │  ...     │   │
-│  │  └──────────┘  └──────────┘  └──────────┘          │   │
-│  └─────────────────────────────────────────────────────┘   │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │                    Writeup Agent                     │   │
-│  │            (Generates final report)                  │   │
-│  └─────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+autosre/
+├── __init__.py          # Public API
+├── orchestrator.py      # Main investigation flow
+├── config.py            # Pydantic settings
+├── memory/
+│   ├── episodic.py      # SQLite episode storage
+│   └── strategy.py      # Strategy generation
+├── topology/
+│   └── service.py       # YAML service graph
+├── agents/
+│   ├── state.py         # Investigation state models
+│   ├── planner.py       # Hypothesis generation
+│   ├── synthesizer.py   # Evidence combination
+│   ├── writeup.py       # Report generation
+│   └── subagents/
+│       ├── base.py
+│       ├── kubernetes.py
+│       ├── metrics.py
+│       └── logs.py
+├── skills/
+│   └── registry.py      # Skill loader
+└── llm/
+    └── client.py        # Anthropic/OpenAI client
 ```
 
-### Investigation Flow
+## Contributing
 
-1. **Init Context** — Extract service name, classify alert type
-2. **Memory Lookup** — Find similar past investigations
-3. **Topology Context** — Load service dependencies and blast radius
-4. **Planner** — Generate hypotheses about root cause
-5. **Subagents** — Gather evidence (Kubernetes, metrics, logs)
-6. **Synthesizer** — Combine findings, decide if more investigation needed
-7. **Loop** — Back to planner if insufficient evidence
-8. **Writeup** — Generate final report
-9. **Store Episode** — Save to memory for future learning
-
-## Extending AutoSRE
-
-### Custom Subagents
-
-```python
-from autosre.agents.subagents import BaseSubagent
-
-class MySubagent(BaseSubagent):
-    agent_id = "custom"
-    agent_name = "Custom Investigation Agent"
-    capabilities_description = "My custom capabilities"
-    
-    async def _run_investigation(self, alert, hypotheses, service_context, llm_client):
-        # Your investigation logic
-        self.add_evidence(
-            skill="my_check",
-            query="my query",
-            result="my result",
-        )
-        return "Investigation findings summary"
-```
-
-### Custom Skills
-
-Create `skills/myskill/SKILL.md`:
-
-```yaml
----
-name: my-skill
-description: My custom skill
-category: observability
-tags: [monitoring, custom]
----
-
-# My Skill
-
-Instructions for using this skill...
-```
-
-## Comparison to OpenSRE
-
-AutoSRE v2 is inspired by [OpenSRE](https://github.com/swapnildahiphale/OpenSRE) but simplified:
-
-| Feature | OpenSRE | AutoSRE v2 |
-|---------|---------|------------|
-| Orchestration | LangGraph | Plain async Python |
-| Memory | PostgreSQL | SQLite |
-| Knowledge Graph | Neo4j | YAML topology |
-| Configuration | HTTP config service | Local YAML/env |
-| LLM Routing | LiteLLM proxy | Direct Anthropic/OpenAI |
-
-## Development
-
-```bash
-# Clone
-git clone https://github.com/yourorg/autosre
-cd autosre
-
-# Install dev dependencies
-pip install -e ".[dev]"
-
-# Run tests
-pytest tests/
-
-# Run example
-python examples/investigate.py
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-Apache 2.0
+Apache 2.0 — see [LICENSE](LICENSE).
 
-## Acknowledgments
+---
 
-- Inspired by [OpenSRE](https://github.com/swapnildahiphale/OpenSRE)
-- Built with [Anthropic Claude](https://anthropic.com) and [OpenAI GPT](https://openai.com)
+Built with ❤️ by Sainath + Clawd

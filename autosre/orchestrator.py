@@ -1,16 +1,9 @@
 """
-Orchestrator — Main investigation flow coordinator.
+AutoSRE Orchestrator — Main investigation flow controller.
 
-Implements the investigation loop:
-1. init_context — Parse alert, load topology
-2. memory_lookup — Find similar past incidents
-3. planner — Generate hypotheses, select subagents
-4. subagents — Execute in parallel
-5. synthesizer — Combine evidence, decide loop/done
-6. writeup — Generate final report
-7. memory_store — Save episode for future
-
-This replaces LangGraph with plain async Python for simplicity.
+Replaces LangGraph with plain async Python.
+Manages the investigation lifecycle:
+    init → memory_lookup → topology → planner → subagents → synthesizer → loop/writeup
 """
 
 import asyncio
@@ -18,26 +11,21 @@ import logging
 import time
 from typing import Any, Optional
 
-from .agents.planner import apply_plan_to_state, run_planner
-from .agents.state import (
-    Evidence,
-    InvestigationReport,
+from .agents import (
     InvestigationState,
     InvestigationStatus,
+    InvestigationReport,
+    SynthesisDecision,
 )
-from .agents.subagents import (
-    BaseSubagent,
-    KubernetesSubagent,
-    LogsSubagent,
-    MetricsSubagent,
-    run_subagents_parallel,
-)
-from .agents.synthesizer import apply_synthesis_to_state, run_synthesizer
+from .agents.planner import run_planner, apply_plan_to_state
+from .agents.synthesizer import run_synthesizer, apply_synthesis_to_state
 from .agents.writeup import run_writeup
+from .agents.subagents import get_subagent, list_subagents
 from .config import Settings, get_settings
 from .llm import BaseLLMClient, get_llm_client
-from .memory import EpisodicMemory, Episode, enhance_prompt_with_memory
-from .topology import ServiceTopology, get_topology, load_topology
+from .memory import EpisodicMemory, Episode
+from .memory.strategy import get_or_generate_strategy, enhance_prompt_with_memory
+from .topology import ServiceTopology, get_topology
 
 logger = logging.getLogger(__name__)
 
@@ -45,16 +33,20 @@ logger = logging.getLogger(__name__)
 class Orchestrator:
     """Main investigation orchestrator.
     
-    Coordinates the full investigation flow from alert to report.
+    Coordinates the investigation flow:
+    1. Initialize context (extract service, alert type)
+    2. Lookup similar past investigations from memory
+    3. Load service topology for blast radius awareness
+    4. Run planner to generate hypotheses
+    5. Dispatch subagents in parallel
+    6. Synthesize findings and decide whether to loop
+    7. Generate final report
+    8. Store episode in memory
     
     Example:
-        >>> orch = Orchestrator()
-        >>> result = await orch.investigate({
-        ...     "name": "High5xxRate",
-        ...     "service": "checkout-service",
-        ...     "description": "5xx rate above 5% for 10 minutes"
-        ... })
-        >>> print(result.root_cause)
+        >>> orchestrator = Orchestrator()
+        >>> report = await orchestrator.investigate("payment-service 500 errors")
+        >>> print(report.root_cause)
     """
     
     def __init__(
@@ -65,100 +57,112 @@ class Orchestrator:
         topology: Optional[ServiceTopology] = None,
     ):
         self.settings = settings or get_settings()
-        self.llm_client = llm_client
-        self.memory = memory or EpisodicMemory(db_path=self.settings.memory.db_path)
-        self.topology = topology
-        
-        # Available subagents
-        self._subagents: dict[str, BaseSubagent] = {}
-        self._init_subagents()
+        self._llm_client = llm_client
+        self._memory = memory
+        self._topology = topology
     
-    def _init_subagents(self) -> None:
-        """Initialize available subagents."""
-        self._subagents = {
-            "kubernetes": KubernetesSubagent(llm_client=self.llm_client),
-            "metrics": MetricsSubagent(llm_client=self.llm_client),
-            "logs": LogsSubagent(llm_client=self.llm_client),
-        }
+    @property
+    def llm_client(self) -> BaseLLMClient:
+        """Get LLM client (lazy initialized)."""
+        if self._llm_client is None:
+            self._llm_client = get_llm_client()
+        return self._llm_client
     
-    def _get_topology(self) -> ServiceTopology:
-        """Get topology, loading from config if needed."""
-        if self.topology:
-            return self.topology
-        
-        if self.settings.topology_path.exists():
-            return load_topology(self.settings.topology_path)
-        
-        return get_topology()
+    @property
+    def memory(self) -> EpisodicMemory:
+        """Get episodic memory (lazy initialized)."""
+        if self._memory is None:
+            self._memory = EpisodicMemory(self.settings.memory.db_path)
+        return self._memory
+    
+    @property
+    def topology(self) -> ServiceTopology:
+        """Get service topology (lazy initialized)."""
+        if self._topology is None:
+            self._topology = get_topology()
+        return self._topology
     
     async def investigate(
         self,
-        alert: dict[str, Any],
+        alert: dict[str, Any] | str,
         thread_id: str = "",
-        images: Optional[list[dict[str, Any]]] = None,
+        max_iterations: Optional[int] = None,
     ) -> InvestigationReport:
-        """Run full investigation on an alert.
+        """Run a full investigation.
         
         Args:
-            alert: Alert dictionary with name, service, description, etc.
-            thread_id: Optional thread ID for tracking.
-            images: Optional images/screenshots related to the alert.
+            alert: Alert dict or description string.
+            thread_id: Optional tracking ID.
+            max_iterations: Override max investigation iterations.
             
         Returns:
-            InvestigationReport with findings and root cause.
+            Final investigation report.
         """
         start_time = time.time()
+        
+        # Normalize alert input
+        if isinstance(alert, str):
+            alert = {"name": alert, "description": alert}
         
         # Initialize state
         state = InvestigationState(
             alert=alert,
-            thread_id=thread_id,
-            images=images or [],
-            max_iterations=self.settings.investigation.max_iterations,
+            thread_id=thread_id or f"inv-{int(time.time())}",
+            max_iterations=max_iterations or self.settings.investigation.max_iterations,
             max_subagent_loops=self.settings.investigation.max_subagent_loops,
         )
         
-        state.status = InvestigationStatus.RUNNING
+        logger.info(f"[ORCHESTRATOR] Starting investigation: {alert.get('name', 'unknown')}")
         
         try:
-            # Step 1: Init context
+            # Phase 1: Initialize context
             await self._init_context(state)
             
-            # Step 2: Memory lookup
+            # Phase 2: Memory lookup
             await self._memory_lookup(state)
             
-            # Steps 3-5: Investigation loop
-            while state.iteration < state.max_iterations:
-                # Step 3: Plan
+            # Phase 3: Topology context
+            await self._topology_context(state)
+            
+            # Phase 4-6: Investigation loop
+            state.status = InvestigationStatus.RUNNING
+            
+            while state.status == InvestigationStatus.RUNNING:
+                # Run planner
                 plan = await run_planner(
                     state=state,
-                    available_agents=list(self._subagents.keys()),
+                    available_agents=list_subagents(),
                     llm_client=self.llm_client,
                 )
                 apply_plan_to_state(state, plan)
                 
-                # Step 4: Execute subagents
+                # Run subagents (parallel if enabled)
                 await self._run_subagents(state)
                 
-                # Step 5: Synthesize
+                # Run synthesizer
+                force_conclude = state.iteration >= state.max_iterations - 1
                 decision = await run_synthesizer(
                     state=state,
                     llm_client=self.llm_client,
+                    force_conclude=force_conclude,
                 )
                 apply_synthesis_to_state(state, decision)
-                
-                if state.status == InvestigationStatus.COMPLETED:
-                    break
             
-            # Step 6: Generate report
+            # Phase 7: Generate report
             report = await run_writeup(
                 state=state,
                 llm_client=self.llm_client,
             )
             state.report = report
             
-            # Step 7: Store in memory
-            await self._memory_store(state, time.time() - start_time)
+            # Phase 8: Store episode
+            await self._store_episode(state, report)
+            
+            duration = time.time() - start_time
+            logger.info(
+                f"[ORCHESTRATOR] Investigation complete in {duration:.1f}s: "
+                f"{report.root_cause or 'no root cause determined'}"
+            )
             
             return report
             
@@ -168,188 +172,248 @@ class Orchestrator:
             state.error = str(e)
             
             # Return partial report
-            return state.finalize_report()
+            return InvestigationReport(
+                id=state.investigation_id,
+                created_at=state.created_at,
+                alert=state.alert,
+                service_name=state.service_name,
+                status=InvestigationStatus.FAILED,
+                summary=f"Investigation failed: {e}",
+                iterations=state.iteration,
+                duration_seconds=time.time() - start_time,
+            )
     
     async def _init_context(self, state: InvestigationState) -> None:
-        """Initialize investigation context from alert."""
-        logger.info(f"[ORCHESTRATOR] Initializing context for alert: {state.alert.get('name', 'unknown')}")
+        """Extract service name and alert type from alert."""
+        alert = state.alert
         
         # Extract service name
-        service_name = (
-            state.alert.get("service") or
-            state.alert.get("service_name") or
-            state.alert.get("labels", {}).get("service") or
+        state.service_name = (
+            alert.get("service") or
+            alert.get("service_name") or
+            alert.get("labels", {}).get("service") or
             ""
         )
-        state.service_name = service_name
         
         # Extract alert type
-        alert_type = (
-            state.alert.get("alert_type") or
-            state.alert.get("alertname") or
-            state.alert.get("name") or
-            "unknown"
+        state.alert_type = (
+            alert.get("alertname") or
+            alert.get("alert_type") or
+            alert.get("name") or
+            self._classify_alert(alert)
         )
-        state.alert_type = self._normalize_alert_type(alert_type)
         
-        # Load topology context
-        topology = self._get_topology()
+        logger.debug(
+            f"[ORCHESTRATOR] Context: service={state.service_name}, "
+            f"alert_type={state.alert_type}"
+        )
+    
+    def _classify_alert(self, alert: dict) -> str:
+        """Simple alert classification from description."""
+        desc = str(alert.get("description", "")).lower()
+        name = str(alert.get("name", "")).lower()
+        combined = f"{name} {desc}"
         
-        if service_name and service_name in topology:
-            state.topology_context = topology.to_context(service_name)
-        elif service_name:
-            # Try to find service from alert mapping
-            mapped_service = topology.get_service_for_alert(state.alert_type)
-            if mapped_service:
-                state.service_name = mapped_service
-                state.topology_context = topology.to_context(mapped_service)
-            else:
-                state.topology_context = {"available": False}
-        else:
-            state.topology_context = {"available": False}
+        classifications = [
+            ("503", "http_503"),
+            ("500", "http_500"),
+            ("5xx", "http_5xx"),
+            ("timeout", "timeout"),
+            ("oom", "out_of_memory"),
+            ("memory", "memory_issue"),
+            ("cpu", "cpu_issue"),
+            ("latency", "high_latency"),
+            ("error", "error"),
+            ("crash", "crash"),
+            ("down", "service_down"),
+        ]
         
-        state.add_message("init", f"Investigating {state.alert_type} for {state.service_name or 'unknown service'}")
+        for keyword, alert_type in classifications:
+            if keyword in combined:
+                return alert_type
+        
+        return "unknown"
     
     async def _memory_lookup(self, state: InvestigationState) -> None:
         """Look up similar past investigations."""
-        logger.info(f"[ORCHESTRATOR] Looking up similar incidents...")
-        
-        similar = self.memory.search_similar(
-            alert_type=state.alert_type,
-            service_name=state.service_name,
-            limit=3,
-        )
-        
-        if similar:
-            state.memory_context = {
-                "has_similar_episodes": True,
-                "episode_count": len(similar),
-                "similar_episodes": [
-                    {
-                        "alert_type": ep.alert_type,
-                        "service_name": ep.service_name,
-                        "root_cause": ep.root_cause,
-                        "resolved": ep.resolved,
-                    }
-                    for ep in similar
-                ],
-                "enhanced_prompt": enhance_prompt_with_memory(
-                    prompt="",
+        try:
+            similar = self.memory.search_similar(
+                alert_type=state.alert_type,
+                service_name=state.service_name,
+                limit=self.settings.memory.max_episodes,
+            )
+            
+            if similar:
+                # Try to get/generate strategy
+                strategy = await get_or_generate_strategy(
                     memory=self.memory,
-                    service_name=state.service_name,
                     alert_type=state.alert_type,
-                    similar_episodes=similar,
-                ),
-            }
-            logger.info(f"[ORCHESTRATOR] Found {len(similar)} similar past incidents")
-        else:
-            state.memory_context = {"has_similar_episodes": False}
-            logger.info("[ORCHESTRATOR] No similar past incidents found")
+                    service_name=state.service_name,
+                    llm_client=self.llm_client,
+                )
+                
+                state.memory_context = {
+                    "has_similar_episodes": True,
+                    "episode_count": len(similar),
+                    "episodes": [
+                        {
+                            "id": ep.id,
+                            "alert_type": ep.alert_type,
+                            "service_name": ep.service_name,
+                            "root_cause": ep.root_cause,
+                            "resolved": ep.resolved,
+                        }
+                        for ep in similar
+                    ],
+                    "enhanced_prompt": enhance_prompt_with_memory(
+                        prompt="",
+                        memory=self.memory,
+                        service_name=state.service_name,
+                        alert_type=state.alert_type,
+                        strategy=strategy,
+                        similar_episodes=similar,
+                    ),
+                }
+                
+                logger.debug(f"[ORCHESTRATOR] Found {len(similar)} similar episodes")
+            else:
+                state.memory_context = {"has_similar_episodes": False}
+                
+        except Exception as e:
+            logger.warning(f"[ORCHESTRATOR] Memory lookup failed: {e}")
+            state.memory_context = {"has_similar_episodes": False, "error": str(e)}
+    
+    async def _topology_context(self, state: InvestigationState) -> None:
+        """Load service topology context."""
+        if not state.service_name:
+            state.topology_context = {"available": False}
+            return
+        
+        try:
+            ctx = self.topology.to_context(state.service_name)
+            state.topology_context = ctx
+            
+            if ctx.get("available"):
+                logger.debug(
+                    f"[ORCHESTRATOR] Topology: {len(ctx.get('dependencies', []))} deps, "
+                    f"{ctx.get('blast_radius_size', 0)} blast radius"
+                )
+        except Exception as e:
+            logger.warning(f"[ORCHESTRATOR] Topology lookup failed: {e}")
+            state.topology_context = {"available": False, "error": str(e)}
     
     async def _run_subagents(self, state: InvestigationState) -> None:
         """Run selected subagents in parallel."""
-        selected = state.selected_agents
-        
-        if not selected:
-            logger.warning("[ORCHESTRATOR] No subagents selected")
+        if not state.selected_agents:
+            logger.warning("[ORCHESTRATOR] No agents selected, skipping subagent phase")
             return
         
-        logger.info(f"[ORCHESTRATOR] Running subagents: {selected}")
+        # Prepare hypotheses for subagents
+        hypotheses = [h.hypothesis for h in state.hypotheses]
         
-        # Get subagent instances
-        subagents = [
-            self._subagents[name]
-            for name in selected
-            if name in self._subagents
-        ]
+        # Prepare service context
+        service_context = self.topology.format_for_prompt(state.service_name) if state.service_name else ""
         
-        if not subagents:
-            logger.warning(f"[ORCHESTRATOR] No valid subagents found for: {selected}")
-            return
-        
-        # Run in parallel
         if self.settings.investigation.parallel_subagents:
-            results = await run_subagents_parallel(
-                state=state,
-                subagents=subagents,
-                hypotheses=state.hypotheses,
-            )
+            # Run in parallel
+            tasks = []
+            for agent_id in state.selected_agents:
+                task = self._run_single_subagent(
+                    agent_id=agent_id,
+                    alert=state.alert,
+                    hypotheses=hypotheses,
+                    service_context=service_context,
+                )
+                tasks.append(task)
+            
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.error(f"[ORCHESTRATOR] Subagent error: {result}")
+                else:
+                    state.add_agent_result(result)
         else:
-            # Sequential fallback
-            results = []
-            for subagent in subagents:
-                result = await subagent.run(state, state.hypotheses)
-                results.append(result)
+            # Run sequentially
+            for agent_id in state.selected_agents:
+                result = await self._run_single_subagent(
+                    agent_id=agent_id,
+                    alert=state.alert,
+                    hypotheses=hypotheses,
+                    service_context=service_context,
+                )
+                state.add_agent_result(result)
+    
+    async def _run_single_subagent(
+        self,
+        agent_id: str,
+        alert: dict,
+        hypotheses: list[str],
+        service_context: str,
+    ):
+        """Run a single subagent."""
+        from .agents.subagents import SubagentResult
         
-        # Add results to state
-        for result in results:
-            state.add_agent_result(result)
-            logger.info(
-                f"[ORCHESTRATOR] {result.agent_id}: "
-                f"{len(result.evidence)} evidence items, "
-                f"{result.duration_seconds:.1f}s"
+        try:
+            subagent = get_subagent(agent_id)
+            result = await subagent.investigate(
+                alert=alert,
+                hypotheses=hypotheses,
+                service_context=service_context,
+                llm_client=self.llm_client,
+            )
+            return result
+        except ValueError as e:
+            logger.warning(f"[ORCHESTRATOR] Unknown subagent {agent_id}: {e}")
+            from .agents.state import SubagentResult, InvestigationStatus
+            return SubagentResult(
+                agent_id=agent_id,
+                status=InvestigationStatus.FAILED,
+                findings=f"Unknown subagent: {agent_id}",
+                error=str(e),
             )
     
-    async def _memory_store(self, state: InvestigationState, duration: float) -> None:
-        """Store completed investigation in memory."""
-        if not state.report:
-            return
-        
-        episode = Episode(
-            alert_type=state.alert_type,
-            alert_description=state.alert.get("description", "")[:500],
-            severity=state.alert.get("severity", "info"),
-            service_name=state.service_name,
-            services=[state.service_name] if state.service_name else [],
-            resolved=state.status == InvestigationStatus.COMPLETED,
-            root_cause=state.report.root_cause,
-            summary=state.report.summary,
-            skills_used=state.get_all_skills_used(),
-            key_findings=[
-                {"skill": ev.skill, "finding": ev.summary or ev.result[:200]}
-                for ev in state.all_evidence[:10]
-            ],
-            duration_seconds=duration,
-            effectiveness_score=state.synthesis.confidence if state.synthesis else 0.5,
-        )
-        
-        self.memory.store(episode)
-        logger.info(f"[ORCHESTRATOR] Stored episode: {episode.id}")
-    
-    def _normalize_alert_type(self, alert_type: str) -> str:
-        """Normalize alert type to standard format."""
-        # Convert to lowercase, replace spaces with underscores
-        normalized = alert_type.lower().replace(" ", "_").replace("-", "_")
-        
-        # Map common variations
-        mappings = {
-            "high5xxrate": "http_500",
-            "5xx": "http_500",
-            "500error": "http_500",
-            "highlatency": "high_latency",
-            "latencyp99": "high_latency",
-            "oomkilled": "out_of_memory",
-            "outofmemory": "out_of_memory",
-            "highcpu": "cpu_issue",
-            "cpuspike": "cpu_issue",
-        }
-        
-        return mappings.get(normalized.replace("_", ""), normalized)
+    async def _store_episode(
+        self,
+        state: InvestigationState,
+        report: InvestigationReport,
+    ) -> None:
+        """Store investigation as episode in memory."""
+        try:
+            episode = Episode(
+                alert_type=state.alert_type,
+                alert_description=str(state.alert.get("description", "")),
+                severity=state.alert.get("severity", "info"),
+                service_name=state.service_name,
+                services=[state.service_name] if state.service_name else [],
+                resolved=report.root_cause is not None,
+                root_cause=report.root_cause,
+                summary=report.summary,
+                skills_used=report.skills_used,
+                duration_seconds=report.duration_seconds,
+                effectiveness_score=report.confidence,
+            )
+            
+            self.memory.store(episode)
+            logger.debug(f"[ORCHESTRATOR] Stored episode: {episode.id}")
+            
+        except Exception as e:
+            logger.warning(f"[ORCHESTRATOR] Failed to store episode: {e}")
 
 
 # Convenience function
 async def investigate(
-    alert: dict[str, Any],
-    **kwargs: Any,
+    alert: dict[str, Any] | str,
+    **kwargs,
 ) -> InvestigationReport:
-    """Quick investigation without explicitly creating an orchestrator.
+    """Run an investigation using default orchestrator.
     
     Args:
-        alert: Alert dictionary.
-        **kwargs: Passed to Orchestrator constructor.
+        alert: Alert dict or description string.
+        **kwargs: Passed to Orchestrator.investigate().
         
     Returns:
-        InvestigationReport.
+        Investigation report.
     """
-    orch = Orchestrator(**kwargs)
-    return await orch.investigate(alert)
+    orchestrator = Orchestrator()
+    return await orchestrator.investigate(alert, **kwargs)
