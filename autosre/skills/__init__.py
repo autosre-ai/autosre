@@ -1,17 +1,19 @@
-"""AutoSRE Skills — Pluggable investigation capabilities."""
+"""AutoSRE Skills — Skill registry and loader."""
 
 from .registry import (
     Skill,
-    SkillMetadata,
+    SkillDefinition,
+    SkillParameter,
     SkillRegistry,
-    get_skill_registry,
+    get_registry,
     load_skills,
 )
 
 __all__ = [
     "Skill",
-    "SkillMetadata",
+    "SkillDefinition",
+    "SkillParameter",
     "SkillRegistry",
-    "get_skill_registry",
+    "get_registry",
     "load_skills",
 ]

@@ -1,246 +1,270 @@
 """
-Skills Registry — Dynamic skill discovery and loading.
+Skill Registry — Loads and manages skills from YAML + Python files.
 
-Skills are pluggable investigation capabilities (like OpenSRE's skill system).
-Each skill is a directory containing:
-- SKILL.md: Documentation with YAML frontmatter
-- Scripts or tools for investigation
+Skills are modular investigation tools that subagents can use.
+Each skill has:
+- A YAML definition (metadata, parameters)
+- A Python implementation (actual code)
 """
 
+import importlib.util
 import logging
-import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
-from pydantic import BaseModel, Field
 import yaml
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
 
-class SkillMetadata(BaseModel):
-    """Metadata from SKILL.md frontmatter."""
+class SkillParameter(BaseModel):
+    """Definition of a skill parameter."""
+    
+    name: str
+    type: str = "string"
+    description: str = ""
+    required: bool = False
+    default: Any = None
+
+
+class SkillDefinition(BaseModel):
+    """Definition of a skill from YAML."""
     
     name: str
     description: str = ""
-    version: str = "1.0.0"
-    author: str = ""
-    category: str = "general"
-    tags: list[str] = Field(default_factory=list)
+    category: str = ""  # kubernetes, metrics, logs, etc.
+    parameters: list[SkillParameter] = Field(default_factory=list)
     requires: list[str] = Field(default_factory=list)  # Required tools/binaries
-    
-    # Skill configuration
-    enabled: bool = True
-    agents: list[str] = Field(default_factory=list)  # Which agents can use this
+    examples: list[str] = Field(default_factory=list)
 
 
-class Skill(BaseModel):
-    """A loaded skill."""
+class Skill:
+    """A loaded skill ready for execution."""
     
-    id: str  # Directory name
-    path: Path
-    metadata: SkillMetadata
-    readme: str = ""  # Full SKILL.md content
+    def __init__(
+        self,
+        definition: SkillDefinition,
+        execute_fn: Callable[..., Any],
+    ):
+        self.definition = definition
+        self.name = definition.name
+        self.description = definition.description
+        self.category = definition.category
+        self._execute_fn = execute_fn
     
-    def get_scripts(self) -> list[Path]:
-        """Get all executable scripts in the skill directory."""
-        scripts = []
-        for ext in ["*.sh", "*.py", "*.js"]:
-            scripts.extend(self.path.glob(ext))
-        return sorted(scripts)
+    async def execute(self, **kwargs: Any) -> str:
+        """Execute the skill with given parameters."""
+        result = self._execute_fn(**kwargs)
+        
+        # Handle async functions
+        if hasattr(result, "__await__"):
+            result = await result
+        
+        return str(result)
     
-    def to_catalog_entry(self) -> str:
-        """Format for skill catalog prompt."""
-        return f"""### {self.metadata.name}
-{self.metadata.description}
-- Category: {self.metadata.category}
-- Tags: {', '.join(self.metadata.tags) if self.metadata.tags else 'none'}
-"""
+    def to_tool_definition(self) -> dict[str, Any]:
+        """Convert to OpenAI-style tool definition."""
+        properties = {}
+        required = []
+        
+        for param in self.definition.parameters:
+            properties[param.name] = {
+                "type": param.type,
+                "description": param.description,
+            }
+            if param.required:
+                required.append(param.name)
+            if param.default is not None:
+                properties[param.name]["default"] = param.default
+        
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                },
+            },
+        }
 
 
 class SkillRegistry:
-    """Registry of available investigation skills.
+    """Registry for loading and managing skills."""
     
-    Discovers skills from a directory structure like:
-    
-        skills/
-        ├── kubernetes/
-        │   ├── SKILL.md
-        │   ├── get_pods.sh
-        │   └── describe_resource.py
-        ├── prometheus/
-        │   ├── SKILL.md
-        │   └── query.sh
-        ...
-    """
-    
-    def __init__(self, skills_dir: Path | str = "skills"):
-        self.skills_dir = Path(skills_dir)
+    def __init__(self, skills_dir: Optional[Path] = None):
+        self.skills_dir = skills_dir
         self._skills: dict[str, Skill] = {}
-        self._loaded = False
+        self._categories: dict[str, list[str]] = {}
     
-    def load(self) -> None:
-        """Load all skills from the skills directory."""
-        if not self.skills_dir.exists():
-            logger.warning(f"[SKILLS] Directory not found: {self.skills_dir}")
-            self._loaded = True
-            return
+    def register(self, skill: Skill) -> None:
+        """Register a skill."""
+        self._skills[skill.name] = skill
         
-        for skill_dir in sorted(self.skills_dir.iterdir()):
-            if not skill_dir.is_dir():
-                continue
-            
-            skill_md = skill_dir / "SKILL.md"
-            if not skill_md.exists():
-                continue
-            
-            try:
-                skill = self._load_skill(skill_dir, skill_md)
-                self._skills[skill.id] = skill
-                logger.debug(f"[SKILLS] Loaded: {skill.id} ({skill.metadata.name})")
-            except Exception as e:
-                logger.warning(f"[SKILLS] Failed to load {skill_dir.name}: {e}")
+        if skill.category:
+            if skill.category not in self._categories:
+                self._categories[skill.category] = []
+            self._categories[skill.category].append(skill.name)
         
-        self._loaded = True
-        logger.info(f"[SKILLS] Loaded {len(self._skills)} skills from {self.skills_dir}")
+        logger.debug(f"[SKILLS] Registered: {skill.name}")
     
-    def _load_skill(self, skill_dir: Path, skill_md: Path) -> Skill:
-        """Load a single skill from its directory."""
-        content = skill_md.read_text(encoding="utf-8")
-        
-        # Parse YAML frontmatter
-        metadata_dict = {}
-        readme = content
-        
-        match = re.match(r"^---\s*\n(.*?)\n---\s*\n?", content, re.DOTALL)
-        if match:
-            try:
-                metadata_dict = yaml.safe_load(match.group(1)) or {}
-            except yaml.YAMLError:
-                pass
-            readme = content[match.end():]
-        
-        # Ensure name exists
-        if "name" not in metadata_dict:
-            metadata_dict["name"] = skill_dir.name
-        
-        metadata = SkillMetadata(**metadata_dict)
-        
-        return Skill(
-            id=skill_dir.name,
-            path=skill_dir,
-            metadata=metadata,
-            readme=readme.strip(),
-        )
+    def get(self, name: str) -> Optional[Skill]:
+        """Get a skill by name."""
+        return self._skills.get(name)
     
-    def get(self, skill_id: str) -> Optional[Skill]:
-        """Get a skill by ID."""
-        if not self._loaded:
-            self.load()
-        return self._skills.get(skill_id)
-    
-    def list(self) -> list[Skill]:
-        """List all loaded skills."""
-        if not self._loaded:
-            self.load()
-        return list(self._skills.values())
-    
-    def list_ids(self) -> list[str]:
-        """List all skill IDs."""
-        if not self._loaded:
-            self.load()
+    def list_all(self) -> list[str]:
+        """List all skill names."""
         return list(self._skills.keys())
     
-    def filter_by_agent(self, agent_id: str) -> list[Skill]:
-        """Get skills available to a specific agent."""
-        if not self._loaded:
-            self.load()
-        
-        result = []
-        for skill in self._skills.values():
-            if not skill.metadata.agents or agent_id in skill.metadata.agents:
-                result.append(skill)
-        return result
+    def list_by_category(self, category: str) -> list[str]:
+        """List skills in a category."""
+        return self._categories.get(category, [])
     
-    def filter_by_category(self, category: str) -> list[Skill]:
-        """Get skills in a specific category."""
-        if not self._loaded:
-            self.load()
-        return [s for s in self._skills.values() if s.metadata.category == category]
+    def get_categories(self) -> list[str]:
+        """List all categories."""
+        return list(self._categories.keys())
     
-    def get_catalog(
-        self,
-        agent_id: Optional[str] = None,
-        enabled_only: bool = True,
-    ) -> str:
-        """Generate skill catalog text for LLM prompts.
+    def load_from_directory(self, skills_dir: Optional[Path] = None) -> int:
+        """Load skills from a directory.
         
-        Args:
-            agent_id: Filter to skills for this agent.
-            enabled_only: Only include enabled skills.
-            
-        Returns:
-            Markdown-formatted skill catalog.
+        Directory structure:
+            skills/
+            ├── kubernetes/
+            │   ├── skill.yaml      # Skill definitions
+            │   ├── pod_logs.py     # Implementation
+            │   └── describe.py
+            ├── metrics/
+            │   ├── skill.yaml
+            │   └── query.py
+        
+        Returns number of skills loaded.
         """
-        if not self._loaded:
-            self.load()
+        if skills_dir:
+            self.skills_dir = skills_dir
         
-        skills = list(self._skills.values())
+        if not self.skills_dir or not self.skills_dir.exists():
+            logger.warning(f"[SKILLS] Directory not found: {self.skills_dir}")
+            return 0
         
-        if agent_id:
-            skills = [s for s in skills 
-                     if not s.metadata.agents or agent_id in s.metadata.agents]
+        count = 0
         
-        if enabled_only:
-            skills = [s for s in skills if s.metadata.enabled]
+        for category_dir in self.skills_dir.iterdir():
+            if not category_dir.is_dir():
+                continue
+            
+            skill_yaml = category_dir / "skill.yaml"
+            if not skill_yaml.exists():
+                continue
+            
+            # Load skill definitions
+            with open(skill_yaml) as f:
+                data = yaml.safe_load(f) or {}
+            
+            category = category_dir.name
+            
+            for skill_data in data.get("skills", []):
+                skill_name = skill_data.get("name")
+                if not skill_name:
+                    continue
+                
+                # Create definition
+                parameters = [
+                    SkillParameter(**p) if isinstance(p, dict) else SkillParameter(name=str(p))
+                    for p in skill_data.get("parameters", [])
+                ]
+                
+                definition = SkillDefinition(
+                    name=skill_name,
+                    description=skill_data.get("description", ""),
+                    category=category,
+                    parameters=parameters,
+                    requires=skill_data.get("requires", []),
+                    examples=skill_data.get("examples", []),
+                )
+                
+                # Load implementation
+                impl_file = category_dir / f"{skill_name}.py"
+                execute_fn = self._load_implementation(impl_file, skill_name)
+                
+                if execute_fn:
+                    skill = Skill(definition=definition, execute_fn=execute_fn)
+                    self.register(skill)
+                    count += 1
         
-        if not skills:
-            return "No skills available."
+        logger.info(f"[SKILLS] Loaded {count} skills from {self.skills_dir}")
+        return count
+    
+    def _load_implementation(
+        self,
+        impl_file: Path,
+        skill_name: str,
+    ) -> Optional[Callable[..., Any]]:
+        """Load skill implementation from Python file."""
+        if not impl_file.exists():
+            logger.warning(f"[SKILLS] Implementation not found: {impl_file}")
+            return self._create_stub(skill_name)
         
-        lines = ["# Available Skills\n"]
+        try:
+            spec = importlib.util.spec_from_file_location(skill_name, impl_file)
+            if not spec or not spec.loader:
+                return None
+            
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            
+            # Look for execute function
+            if hasattr(module, "execute"):
+                return module.execute
+            elif hasattr(module, skill_name):
+                return getattr(module, skill_name)
+            elif hasattr(module, "main"):
+                return module.main
+            else:
+                logger.warning(f"[SKILLS] No execute function in {impl_file}")
+                return self._create_stub(skill_name)
+                
+        except Exception as e:
+            logger.error(f"[SKILLS] Failed to load {impl_file}: {e}")
+            return self._create_stub(skill_name)
+    
+    def _create_stub(self, skill_name: str) -> Callable[..., str]:
+        """Create a stub implementation."""
+        def stub(**kwargs: Any) -> str:
+            return f"Skill '{skill_name}' not implemented. Args: {kwargs}"
+        return stub
+    
+    def to_catalog(self) -> str:
+        """Generate skill catalog text for prompts."""
+        lines = []
         
-        # Group by category
-        categories: dict[str, list[Skill]] = {}
-        for skill in skills:
-            cat = skill.metadata.category
-            if cat not in categories:
-                categories[cat] = []
-            categories[cat].append(skill)
-        
-        for category in sorted(categories.keys()):
-            lines.append(f"## {category.title()}\n")
-            for skill in categories[category]:
-                lines.append(skill.to_catalog_entry())
+        for category in sorted(self._categories.keys()):
+            lines.append(f"## {category.title()}")
+            
+            for skill_name in self._categories[category]:
+                skill = self._skills.get(skill_name)
+                if skill:
+                    lines.append(f"- **{skill.name}**: {skill.description}")
+            
+            lines.append("")
         
         return "\n".join(lines)
-    
-    def __len__(self) -> int:
-        if not self._loaded:
-            self.load()
-        return len(self._skills)
-    
-    def __contains__(self, skill_id: str) -> bool:
-        if not self._loaded:
-            self.load()
-        return skill_id in self._skills
 
 
-# Global registry instance
+# Global registry
 _registry: Optional[SkillRegistry] = None
 
 
-def get_skill_registry(skills_dir: Optional[Path | str] = None) -> SkillRegistry:
+def get_registry() -> SkillRegistry:
     """Get global skill registry."""
     global _registry
-    if _registry is None or skills_dir is not None:
-        _registry = SkillRegistry(skills_dir or "skills")
-        _registry.load()
+    if _registry is None:
+        _registry = SkillRegistry()
     return _registry
 
 
-def load_skills(skills_dir: Path | str) -> SkillRegistry:
-    """Load skills from directory and set as global registry."""
-    global _registry
-    _registry = SkillRegistry(skills_dir)
-    _registry.load()
-    return _registry
+def load_skills(skills_dir: Path) -> int:
+    """Load skills from directory into global registry."""
+    return get_registry().load_from_directory(skills_dir)

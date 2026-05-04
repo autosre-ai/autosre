@@ -11,8 +11,12 @@ from .state import (
     SubagentResult,
     SynthesisDecision,
 )
+from .planner import run_planner, apply_plan_to_state
+from .synthesizer import run_synthesizer, apply_synthesis_to_state
+from .writeup import run_writeup, finalize_report
 
 __all__ = [
+    # State models
     "Evidence",
     "Hypothesis",
     "InvestigationPlan",
@@ -22,4 +26,13 @@ __all__ = [
     "Priority",
     "SubagentResult",
     "SynthesisDecision",
+    # Planner
+    "run_planner",
+    "apply_plan_to_state",
+    # Synthesizer
+    "run_synthesizer",
+    "apply_synthesis_to_state",
+    # Writeup
+    "run_writeup",
+    "finalize_report",
 ]
