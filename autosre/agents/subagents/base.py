@@ -1,11 +1,10 @@
 """
-Subagent Base — Base class for investigation subagents.
+Base Subagent — Abstract base class for investigation subagents.
 
-Subagents are domain-specific investigation agents (Kubernetes, Metrics, Logs, etc.)
-that gather evidence to test hypotheses. They execute skills and report findings.
+Each subagent specializes in a domain (kubernetes, metrics, logs, etc.)
+and runs a ReAct loop to gather evidence.
 """
 
-import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
@@ -13,323 +12,226 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
-from ..llm import BaseLLMClient, get_llm_client
-from ..agents.state import (
-    Evidence,
-    Hypothesis,
-    InvestigationState,
-    InvestigationStatus,
-    SubagentResult,
-)
+from ..state import Evidence, SubagentResult, InvestigationStatus
 
 logger = logging.getLogger(__name__)
-
-
-class Skill(BaseModel):
-    """Definition of an executable skill."""
-    
-    name: str
-    description: str = ""
-    parameters: dict[str, Any] = Field(default_factory=dict)
-    
-    async def execute(self, **kwargs: Any) -> str:
-        """Execute the skill. Override in subclasses."""
-        raise NotImplementedError(f"Skill {self.name} not implemented")
 
 
 class SubagentConfig(BaseModel):
     """Configuration for a subagent."""
     
-    name: str
-    description: str = ""
+    agent_id: str
     max_loops: int = 25
+    timeout_seconds: float = 120.0
+    
+    # Domain-specific config
     skills: list[str] = Field(default_factory=list)
-    custom_prompt: str = ""
+    system_prompt_extra: str = ""
 
 
-SUBAGENT_SYSTEM_TEMPLATE = """You are the {agent_name} investigation agent for an AI SRE system.
-Your role is to INVESTIGATE a production incident — gather evidence from your domain and report findings.
+SUBAGENT_BASE_PROMPT = """You are the {agent_name} investigation agent for an AI SRE system.
 
-{custom_prompt}
+Your role is to INVESTIGATE a production incident by gathering evidence from your domain.
+DO NOT take any remediation actions - investigation only.
 
-## Investigation Context
-Alert: {alert_summary}
-
-## Service Context
-{service_context}
+## Alert
+{alert}
 
 ## Hypotheses to Test
 {hypotheses}
 
-## Available Skills
-{skills_list}
+## Service Context
+{service_context}
 
-## How to Work
-1. Use skills to gather evidence for each hypothesis
-2. Be systematic — test one hypothesis at a time
-3. Record what you find (or don't find) as evidence
-4. Stop when you have sufficient evidence or exhaust relevant queries
+## Your Domain Capabilities
+{capabilities}
 
-## Rules
-- NEVER modify production resources — investigation is read-only
-- Do NOT call the same skill with the same arguments twice
-- Do NOT fabricate data — if a query returns nothing, report "no data found"
-- If your domain has no relevant signals for this alert, say so and stop
-- Report WHAT you found (or didn't find), with evidence
+## Investigation Guidelines
+1. Start with the most likely hypothesis first
+2. Gather concrete evidence (logs, metrics, events)
+3. If you find nothing relevant in your domain, say so clearly
+4. Do NOT fabricate data - report what you actually find
+5. Summarize your findings with confidence level
 
-When finished, respond with a JSON summary:
-{{
-    "findings": "Summary of what you found",
-    "evidence": [
-        {{"skill": "skill_name", "query": "what you queried", "result": "what you found"}}
-    ],
-    "confidence": 0.0-1.0
-}}"""
+{extra_instructions}"""
 
 
 class BaseSubagent(ABC):
-    """Base class for investigation subagents.
+    """Abstract base for investigation subagents.
     
-    Subclasses should:
-    1. Set `name` and `description` class attributes
-    2. Implement `get_skills()` to return available skills
-    3. Optionally override `custom_prompt` for domain-specific guidance
+    Each subagent:
+    1. Has domain-specific skills/tools
+    2. Runs a ReAct loop to gather evidence
+    3. Returns findings summary with evidence
     """
     
-    name: str = "base"
-    description: str = "Base investigation subagent"
-    custom_prompt: str = ""
+    agent_id: str = "base"
+    agent_name: str = "Base Agent"
+    capabilities_description: str = "General investigation"
     
-    def __init__(
-        self,
-        llm_client: Optional[BaseLLMClient] = None,
-        max_loops: int = 25,
-    ):
-        self.llm_client = llm_client
-        self.max_loops = max_loops
-        self._skills: dict[str, Skill] = {}
+    def __init__(self, config: Optional[SubagentConfig] = None):
+        self.config = config or SubagentConfig(agent_id=self.agent_id)
+        self._start_time: float = 0
+        self._loop_count: int = 0
+        self._evidence: list[Evidence] = []
+        self._tool_calls: list[dict] = []
     
     @abstractmethod
-    def get_skills(self) -> list[Skill]:
-        """Return list of available skills for this subagent."""
+    async def get_tools(self) -> list[Any]:
+        """Return list of tools available to this subagent.
+        
+        Each tool should be a callable that takes parameters
+        and returns string results.
+        """
         pass
     
-    def register_skill(self, skill: Skill) -> None:
-        """Register a skill for use."""
-        self._skills[skill.name] = skill
-    
-    async def run(
+    @abstractmethod
+    async def execute_tool(
         self,
-        state: InvestigationState,
-        hypotheses: Optional[list[Hypothesis]] = None,
+        tool_name: str,
+        **kwargs: Any,
+    ) -> str:
+        """Execute a tool call and return result."""
+        pass
+    
+    def build_system_prompt(
+        self,
+        alert: dict[str, Any],
+        hypotheses: list[str],
+        service_context: str = "",
+    ) -> str:
+        """Build system prompt for this subagent."""
+        return SUBAGENT_BASE_PROMPT.format(
+            agent_name=self.agent_name,
+            alert=alert,
+            hypotheses="\n".join(f"- {h}" for h in hypotheses) if hypotheses else "None specified",
+            service_context=service_context or "No service context available",
+            capabilities=self.capabilities_description,
+            extra_instructions=self.config.system_prompt_extra,
+        )
+    
+    async def investigate(
+        self,
+        alert: dict[str, Any],
+        hypotheses: list[str],
+        service_context: str = "",
+        llm_client: Optional[Any] = None,
     ) -> SubagentResult:
-        """Run investigation and return results.
+        """Run investigation loop.
         
-        Args:
-            state: Current investigation state.
-            hypotheses: Specific hypotheses to test.
-            
-        Returns:
-            SubagentResult with findings and evidence.
+        This is a simplified version that doesn't actually run LLM loops.
+        Real implementation would use ReAct pattern with tool calls.
+        
+        For now, we just gather basic evidence and return.
         """
-        start_time = time.time()
-        
-        # Get or create LLM client
-        llm = self.llm_client or get_llm_client()
-        
-        # Get available skills
-        skills = self.get_skills()
-        for skill in skills:
-            self.register_skill(skill)
-        
-        # Build skill descriptions
-        skills_list = "\n".join(
-            f"- **{s.name}**: {s.description}"
-            for s in skills
-        )
-        
-        # Build hypotheses text
-        if hypotheses:
-            hypotheses_text = "\n".join(f"- {h.hypothesis}" for h in hypotheses)
-        else:
-            hypotheses_text = "No specific hypotheses — investigate broadly."
-        
-        # Build service context
-        service_context = ""
-        if state.topology_context.get("available"):
-            ctx = state.topology_context
-            service_context = f"""Service: {ctx.get('service', 'unknown')}
-Tier: {ctx.get('tier', 'unknown')}
-Dependencies: {', '.join(ctx.get('dependencies', []))}
-Dependents: {', '.join(ctx.get('dependents', [])[:5])}"""
-        
-        # Build system prompt
-        import json
-        system = SUBAGENT_SYSTEM_TEMPLATE.format(
-            agent_name=self.name,
-            custom_prompt=self.custom_prompt,
-            alert_summary=json.dumps(state.alert, indent=2),
-            service_context=service_context or "No topology information available.",
-            hypotheses=hypotheses_text,
-            skills_list=skills_list,
-        )
-        
-        # Run investigation loop
-        evidence: list[Evidence] = []
-        findings = ""
-        error: Optional[str] = None
-        loops = 0
+        self._start_time = time.time()
+        self._loop_count = 0
+        self._evidence = []
+        self._tool_calls = []
         
         try:
-            # Simple approach: let LLM decide which skills to use
-            prompt = f"Begin investigating the alert. Use available skills to gather evidence."
+            # Subclass implements actual investigation
+            findings = await self._run_investigation(
+                alert=alert,
+                hypotheses=hypotheses,
+                service_context=service_context,
+                llm_client=llm_client,
+            )
             
-            for loop in range(self.max_loops):
-                loops = loop + 1
-                
-                response = await llm.complete(
-                    prompt=prompt,
-                    system=system,
-                    max_tokens=2000,
-                    temperature=0.3,
-                )
-                
-                content = response.content
-                
-                # Check if response contains skill calls (simple pattern matching)
-                skill_calls = self._extract_skill_calls(content)
-                
-                if not skill_calls:
-                    # No more skill calls - agent is done
-                    findings = content
-                    break
-                
-                # Execute skill calls
-                results = []
-                for skill_name, skill_args in skill_calls:
-                    if skill_name in self._skills:
-                        try:
-                            result = await self._skills[skill_name].execute(**skill_args)
-                            evidence.append(Evidence(
-                                source=self.name,
-                                skill=skill_name,
-                                query=json.dumps(skill_args),
-                                result=result[:5000],  # Truncate
-                            ))
-                            results.append(f"[{skill_name}]: {result[:1000]}")
-                        except Exception as e:
-                            results.append(f"[{skill_name}]: Error - {e}")
-                    else:
-                        results.append(f"[{skill_name}]: Unknown skill")
-                
-                # Build follow-up prompt with results
-                prompt = f"Skill results:\n" + "\n".join(results) + "\n\nContinue investigation or provide final findings."
-        
+            duration = time.time() - self._start_time
+            
+            return SubagentResult(
+                agent_id=self.agent_id,
+                status=InvestigationStatus.COMPLETED,
+                findings=findings,
+                evidence=self._evidence,
+                duration_seconds=duration,
+                react_loops=self._loop_count,
+            )
+            
         except Exception as e:
-            logger.error(f"[SUBAGENT:{self.name}] Error: {e}")
-            error = str(e)
-            findings = f"Investigation failed: {e}"
-        
-        duration = time.time() - start_time
-        
-        # Parse findings JSON if present
-        if not findings:
-            findings = f"Agent {self.name} completed {loops} loops."
-        
-        logger.info(
-            f"[SUBAGENT:{self.name}] Completed in {duration:.1f}s, "
-            f"{loops} loops, {len(evidence)} evidence items"
-        )
-        
-        return SubagentResult(
-            agent_id=self.name,
-            status=InvestigationStatus.FAILED if error else InvestigationStatus.COMPLETED,
-            findings=findings,
-            evidence=evidence,
-            duration_seconds=duration,
-            react_loops=loops,
-            error=error,
-        )
-    
-    def _extract_skill_calls(self, content: str) -> list[tuple[str, dict[str, Any]]]:
-        """Extract skill calls from LLM response.
-        
-        Looks for patterns like:
-        - @skill_name(arg1="value", arg2=123)
-        - SKILL: skill_name {"arg": "value"}
-        
-        Returns list of (skill_name, args_dict) tuples.
-        """
-        import re
-        import json
-        
-        calls: list[tuple[str, dict[str, Any]]] = []
-        
-        # Pattern 1: SKILL: name {json}
-        pattern1 = r'SKILL:\s*(\w+)\s*(\{[^}]+\})'
-        for match in re.finditer(pattern1, content):
-            skill_name = match.group(1)
-            try:
-                args = json.loads(match.group(2))
-                calls.append((skill_name, args))
-            except json.JSONDecodeError:
-                pass
-        
-        # Pattern 2: @skill_name(kwargs)
-        pattern2 = r'@(\w+)\(([^)]*)\)'
-        for match in re.finditer(pattern2, content):
-            skill_name = match.group(1)
-            args_str = match.group(2)
-            try:
-                # Try to parse as JSON
-                args = json.loads("{" + args_str + "}")
-                calls.append((skill_name, args))
-            except json.JSONDecodeError:
-                # Parse as simple key=value pairs
-                args = {}
-                for pair in args_str.split(","):
-                    if "=" in pair:
-                        k, v = pair.split("=", 1)
-                        args[k.strip()] = v.strip().strip('"\'')
-                if args:
-                    calls.append((skill_name, args))
-        
-        return calls
-
-
-async def run_subagents_parallel(
-    state: InvestigationState,
-    subagents: list[BaseSubagent],
-    hypotheses: Optional[list[Hypothesis]] = None,
-) -> list[SubagentResult]:
-    """Run multiple subagents in parallel.
-    
-    Args:
-        state: Investigation state.
-        subagents: List of subagent instances.
-        hypotheses: Hypotheses to test.
-        
-    Returns:
-        List of results from all subagents.
-    """
-    tasks = [
-        subagent.run(state, hypotheses)
-        for subagent in subagents
-    ]
-    
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    
-    # Convert exceptions to failed results
-    final_results: list[SubagentResult] = []
-    for i, result in enumerate(results):
-        if isinstance(result, Exception):
-            final_results.append(SubagentResult(
-                agent_id=subagents[i].name,
+            logger.error(f"[{self.agent_id}] Investigation failed: {e}")
+            
+            return SubagentResult(
+                agent_id=self.agent_id,
                 status=InvestigationStatus.FAILED,
-                findings=f"Subagent failed: {result}",
-                error=str(result),
-            ))
-        else:
-            final_results.append(result)
+                findings=f"Investigation failed: {e}",
+                evidence=self._evidence,
+                duration_seconds=time.time() - self._start_time,
+                react_loops=self._loop_count,
+                error=str(e),
+            )
     
-    return final_results
+    @abstractmethod
+    async def _run_investigation(
+        self,
+        alert: dict[str, Any],
+        hypotheses: list[str],
+        service_context: str,
+        llm_client: Optional[Any],
+    ) -> str:
+        """Subclass implements actual investigation logic.
+        
+        Returns findings summary string.
+        """
+        pass
+    
+    def add_evidence(
+        self,
+        skill: str,
+        query: str,
+        result: str,
+        relevance: float = 0.5,
+    ) -> None:
+        """Add evidence gathered during investigation."""
+        self._evidence.append(Evidence(
+            source=self.agent_id,
+            skill=skill,
+            query=query,
+            result=result,
+            relevance=relevance,
+        ))
+    
+    def record_tool_call(
+        self,
+        tool_name: str,
+        args: dict[str, Any],
+        result: str,
+    ) -> None:
+        """Record a tool call for tracking."""
+        self._tool_calls.append({
+            "tool": tool_name,
+            "args": args,
+            "result": result[:500],  # Truncate for storage
+            "loop": self._loop_count,
+        })
+
+
+class MockSubagent(BaseSubagent):
+    """Mock subagent for testing."""
+    
+    agent_id = "mock"
+    agent_name = "Mock Agent"
+    capabilities_description = "Mock investigation for testing"
+    
+    async def get_tools(self) -> list[Any]:
+        return []
+    
+    async def execute_tool(self, tool_name: str, **kwargs: Any) -> str:
+        return f"Mock result for {tool_name}"
+    
+    async def _run_investigation(
+        self,
+        alert: dict[str, Any],
+        hypotheses: list[str],
+        service_context: str,
+        llm_client: Optional[Any],
+    ) -> str:
+        self._loop_count = 1
+        self.add_evidence(
+            skill="mock_check",
+            query="mock query",
+            result="Mock evidence gathered",
+            relevance=0.5,
+        )
+        return f"Mock investigation of alert: {alert.get('name', 'unknown')}"
