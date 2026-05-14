@@ -1,0 +1,206 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# AutoSRE — Demo Stack
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# A complete demo environment with AutoSRE, Prometheus, and a sample app
+# that generates alerts for testing.
+#
+# Quick Start:
+#   docker-compose -f docker-compose.demo.yml up -d
+#   open http://localhost:3000   # AutoSRE UI
+#   open http://localhost:9090   # Prometheus
+#   open http://localhost:9093   # Alertmanager
+#
+# Generate a test alert:
+#   curl -X POST http://localhost:8000/api/v1/demo/trigger-alert
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # AutoSRE API
+  # ─────────────────────────────────────────────────────────────────────────────
+  autosre-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: autosre-demo-api
+    restart: unless-stopped
+    environment:
+      # Database (SQLite for demo simplicity)
+      DATABASE_URL: sqlite+aiosqlite:///data/autosre.db
+      # LLM - Use Ollama for local inference (no API key needed)
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3}
+      # Fallback to OpenAI if provided
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Infrastructure connections
+      PROMETHEUS_URL: http://prometheus:9090
+      ALERTMANAGER_URL: http://alertmanager:9093
+      # Demo mode settings
+      AUTOSRE_ENV: demo
+      AUTOSRE_DEBUG: "true"
+      AUTOSRE_LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+    volumes:
+      - autosre-data:/data
+    depends_on:
+      - prometheus
+      - alertmanager
+    networks:
+      - autosre-demo
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Ollama - Local LLM Inference
+  # ─────────────────────────────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: autosre-demo-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    # Uncomment for GPU support (NVIDIA)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - autosre-demo
+
+  # Pull a model on startup (run once)
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: autosre-demo-ollama-pull
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    entrypoint: ["ollama", "pull", "${OLLAMA_MODEL:-llama3}"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    networks:
+      - autosre-demo
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Prometheus - Metrics Collection
+  # ─────────────────────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: autosre-demo-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./demo/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./demo/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - autosre-demo
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Alertmanager - Alert Routing
+  # ─────────────────────────────────────────────────────────────────────────────
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: autosre-demo-alertmanager
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./demo/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    networks:
+      - autosre-demo
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Demo App - Simulates a real service with metrics and failure modes
+  # ─────────────────────────────────────────────────────────────────────────────
+  demo-app:
+    build:
+      context: ./demo/app
+      dockerfile: Dockerfile
+    container_name: autosre-demo-app
+    restart: unless-stopped
+    environment:
+      # Failure probability (0.0 - 1.0)
+      ERROR_RATE: ${DEMO_ERROR_RATE:-0.05}
+      # Response time variation
+      LATENCY_BASE_MS: ${DEMO_LATENCY_MS:-50}
+      LATENCY_VARIANCE_MS: ${DEMO_LATENCY_VARIANCE:-20}
+    ports:
+      - "8080:8080"  # Demo app
+      - "8081:8081"  # Metrics endpoint
+    networks:
+      - autosre-demo
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Load Generator - Continuous traffic to demo app
+  # ─────────────────────────────────────────────────────────────────────────────
+  load-generator:
+    build:
+      context: ./demo/load-generator
+      dockerfile: Dockerfile
+    container_name: autosre-demo-load
+    restart: unless-stopped
+    environment:
+      TARGET_URL: http://demo-app:8080
+      REQUESTS_PER_SECOND: ${DEMO_RPS:-10}
+    depends_on:
+      - demo-app
+    networks:
+      - autosre-demo
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Grafana (Optional) - Visualization
+  # ─────────────────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: autosre-demo-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=autosre
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./demo/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - autosre-demo
+
+networks:
+  autosre-demo:
+    driver: bridge
+
+volumes:
+  autosre-data:
+  ollama-models:
+  prometheus-data:
+  alertmanager-data:
+  grafana-data:

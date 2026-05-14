@@ -1,0 +1,33 @@
+apiVersion: v2
+name: autosre
+description: AutoSRE V2 - AI-powered Site Reliability Engineering platform
+
+type: application
+version: 0.1.0
+appVersion: "2.0.0"
+
+keywords:
+  - sre
+  - reliability
+  - kubernetes
+  - ai
+  - observability
+  - incident-response
+
+home: https://github.com/your-org/autosre-v2
+sources:
+  - https://github.com/your-org/autosre-v2
+
+maintainers:
+  - name: AutoSRE Team
+    email: team@autosre.dev
+
+dependencies:
+  - name: postgresql
+    version: "14.0.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+  - name: redis
+    version: "18.0.0"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled

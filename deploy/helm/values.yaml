@@ -1,0 +1,319 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# AutoSRE V2 Helm Values
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Override these values with:
+#   helm install autosre ./deploy/helm -f custom-values.yaml
+#   helm install autosre ./deploy/helm --set api.replicas=3
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Global settings
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+
+# ─────────────────────────────────────────────────────────────────────────────
+# API Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+api:
+  enabled: true
+  
+  image:
+    repository: ghcr.io/your-org/autosre-api
+    tag: "latest"
+    pullPolicy: Always
+  
+  replicas: 2
+  
+  # Resource limits
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: 2
+      memory: 2Gi
+  
+  # Autoscaling
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  
+  # Pod disruption budget
+  pdb:
+    enabled: true
+    minAvailable: 1
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 8000
+  
+  # Environment variables
+  env:
+    AUTOSRE_ENV: production
+    AUTOSRE_DEBUG: "false"
+    AUTOSRE_LOG_LEVEL: INFO
+    AUTOSRE_LOG_FORMAT: json
+    API_WORKERS: "4"
+  
+  # Environment from secrets
+  envFromSecrets:
+    - name: autosre-secrets
+  
+  # Additional environment from ConfigMaps
+  envFromConfigMaps: []
+  
+  # Volume mounts
+  extraVolumes: []
+  extraVolumeMounts: []
+  
+  # Pod annotations
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics"
+  
+  # Node selector
+  nodeSelector: {}
+  
+  # Tolerations
+  tolerations: []
+  
+  # Affinity
+  affinity: {}
+  
+  # Security context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+
+# ─────────────────────────────────────────────────────────────────────────────
+# UI Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+ui:
+  enabled: true
+  
+  image:
+    repository: ghcr.io/your-org/autosre-ui
+    tag: "latest"
+    pullPolicy: Always
+  
+  replicas: 2
+  
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1
+      memory: 512Mi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+  
+  pdb:
+    enabled: true
+    minAvailable: 1
+  
+  service:
+    type: ClusterIP
+    port: 3000
+  
+  env:
+    NODE_ENV: production
+  
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Ingress Configuration
+# ─────────────────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx
+  
+  # Annotations for your ingress controller
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  
+  # Hosts configuration
+  hosts:
+    - host: autosre.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          service: ui
+        - path: /api
+          pathType: Prefix
+          service: api
+  
+  # TLS configuration
+  tls:
+    - secretName: autosre-tls
+      hosts:
+        - autosre.example.com
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PostgreSQL (Bitnami subchart)
+# ─────────────────────────────────────────────────────────────────────────────
+postgresql:
+  enabled: true
+  
+  auth:
+    username: autosre
+    password: ""  # Set via --set or values file
+    database: autosre
+    existingSecret: ""
+  
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 2
+        memory: 2Gi
+
+# External database (when postgresql.enabled=false)
+externalDatabase:
+  host: ""
+  port: 5432
+  database: autosre
+  user: autosre
+  password: ""
+  existingSecret: ""
+  existingSecretKey: DATABASE_URL
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Redis (Bitnami subchart)
+# ─────────────────────────────────────────────────────────────────────────────
+redis:
+  enabled: true
+  
+  architecture: standalone
+  
+  auth:
+    enabled: false
+  
+  master:
+    persistence:
+      enabled: false
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+# External Redis (when redis.enabled=false)
+externalRedis:
+  host: ""
+  port: 6379
+  password: ""
+  existingSecret: ""
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Secrets
+# ─────────────────────────────────────────────────────────────────────────────
+secrets:
+  # Create secrets from values (not recommended for production)
+  create: false
+  
+  # Secret values (use external secrets manager in production)
+  secretKey: ""
+  openaiApiKey: ""
+  anthropicApiKey: ""
+  slackBotToken: ""
+  pagerdutyApiKey: ""
+  
+  # Use existing secret
+  existingSecret: ""
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RBAC
+# ─────────────────────────────────────────────────────────────────────────────
+rbac:
+  create: true
+  
+  # Permissions level: reader, operator, admin
+  level: reader
+  
+  # Additional rules
+  extraRules: []
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Service Account
+# ─────────────────────────────────────────────────────────────────────────────
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Monitoring (Prometheus Operator)
+# ─────────────────────────────────────────────────────────────────────────────
+metrics:
+  enabled: true
+  
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+    labels:
+      release: prometheus
+  
+  prometheusRule:
+    enabled: true
+    labels:
+      release: prometheus
+    rules:
+      - alert: AutoSREAPIDown
+        expr: up{job="autosre-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "AutoSRE API is down"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Network Policies
+# ─────────────────────────────────────────────────────────────────────────────
+networkPolicy:
+  enabled: false
+  
+  # Allow ingress from these namespaces
+  allowedNamespaces:
+    - ingress-nginx
+    - monitoring
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pod Security
+# ─────────────────────────────────────────────────────────────────────────────
+podSecurityPolicy:
+  enabled: false
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Feature Flags
+# ─────────────────────────────────────────────────────────────────────────────
+features:
+  k8sOperations: true
+  autoRemediation: false
+  metricsExport: true

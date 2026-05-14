@@ -1,0 +1,25 @@
+apiVersion: v2
+name: autosre
+version: 2.0.0
+appVersion: "2.0.0"
+description: AI-Powered SRE Assistant
+type: application
+keywords:
+  - sre
+  - ai
+  - automation
+  - kubernetes
+  - observability
+home: https://github.com/your-org/autosre
+maintainers:
+  - name: AutoSRE Team
+    email: autosre@your-org.com
+dependencies:
+  - name: postgresql
+    version: "13.2.24"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: "18.6.1"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled

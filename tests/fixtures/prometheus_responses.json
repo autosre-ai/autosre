@@ -1,0 +1,279 @@
+{
+  "instant_query_success": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {
+            "__name__": "up",
+            "job": "prometheus",
+            "instance": "localhost:9090"
+          },
+          "value": [1705312800, "1"]
+        }
+      ]
+    }
+  },
+  "range_query_success": {
+    "status": "success",
+    "data": {
+      "resultType": "matrix",
+      "result": [
+        {
+          "metric": {
+            "__name__": "container_cpu_usage_seconds_total",
+            "pod": "payment-service-abc123",
+            "namespace": "production"
+          },
+          "values": [
+            [1705312800, "0.5"],
+            [1705312815, "0.6"],
+            [1705312830, "0.55"],
+            [1705312845, "0.7"],
+            [1705312860, "0.65"]
+          ]
+        }
+      ]
+    }
+  },
+  "error_rate_query": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {
+            "service": "payment-service",
+            "namespace": "production"
+          },
+          "value": [1705312800, "0.05"]
+        }
+      ]
+    }
+  },
+  "latency_percentile_query": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {
+            "service": "payment-service"
+          },
+          "value": [1705312800, "0.250"]
+        }
+      ]
+    }
+  },
+  "empty_result": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": []
+    }
+  },
+  "error_response": {
+    "status": "error",
+    "errorType": "bad_data",
+    "error": "invalid query"
+  },
+  "high_cpu_metrics": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {
+            "pod": "api-gateway-xyz789",
+            "namespace": "production",
+            "container": "api-gateway"
+          },
+          "value": [1705312800, "0.85"]
+        },
+        {
+          "metric": {
+            "pod": "api-gateway-abc123",
+            "namespace": "production",
+            "container": "api-gateway"
+          },
+          "value": [1705312800, "0.92"]
+        }
+      ]
+    }
+  },
+  "memory_usage": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {
+            "pod": "payment-service-def456",
+            "namespace": "production"
+          },
+          "value": [1705312800, "1073741824"]
+        }
+      ]
+    }
+  },
+  "request_rate": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {
+            "service": "payment-service"
+          },
+          "value": [1705312800, "150.5"]
+        }
+      ]
+    }
+  },
+  "labels_response": {
+    "status": "success",
+    "data": ["up", "http_requests_total", "container_cpu_usage_seconds_total"]
+  },
+  "series_response": {
+    "status": "success",
+    "data": [
+      {"__name__": "up", "job": "prometheus"},
+      {"__name__": "up", "job": "node"}
+    ]
+  },
+  "metadata_response": {
+    "status": "success",
+    "data": {
+      "http_requests_total": [
+        {
+          "type": "counter",
+          "help": "Total HTTP requests",
+          "unit": ""
+        }
+      ]
+    }
+  },
+  "resource_usage_cpu": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {
+            "pod": "test-pod-abc123",
+            "namespace": "production",
+            "container": "main"
+          },
+          "value": [1705312800, "0.45"]
+        },
+        {
+          "metric": {
+            "pod": "test-pod-def456",
+            "namespace": "production",
+            "container": "main"
+          },
+          "value": [1705312800, "0.72"]
+        }
+      ]
+    }
+  },
+  "resource_usage_memory": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {
+            "pod": "test-pod-abc123",
+            "namespace": "production",
+            "container": "main"
+          },
+          "value": [1705312800, "536870912"]
+        },
+        {
+          "metric": {
+            "pod": "test-pod-def456",
+            "namespace": "production",
+            "container": "main"
+          },
+          "value": [1705312800, "1073741824"]
+        }
+      ]
+    }
+  },
+  "container_restarts": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {
+            "pod": "payment-service-abc123",
+            "namespace": "production",
+            "container": "main"
+          },
+          "value": [1705312800, "5"]
+        }
+      ]
+    }
+  },
+  "http_requests_by_status": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {
+            "service": "payment-service",
+            "status_code": "200"
+          },
+          "value": [1705312800, "950"]
+        },
+        {
+          "metric": {
+            "service": "payment-service",
+            "status_code": "500"
+          },
+          "value": [1705312800, "50"]
+        }
+      ]
+    }
+  },
+  "histogram_buckets": {
+    "status": "success",
+    "data": {
+      "resultType": "vector",
+      "result": [
+        {
+          "metric": {
+            "service": "payment-service",
+            "le": "0.1"
+          },
+          "value": [1705312800, "100"]
+        },
+        {
+          "metric": {
+            "service": "payment-service",
+            "le": "0.5"
+          },
+          "value": [1705312800, "450"]
+        },
+        {
+          "metric": {
+            "service": "payment-service",
+            "le": "1.0"
+          },
+          "value": [1705312800, "900"]
+        },
+        {
+          "metric": {
+            "service": "payment-service",
+            "le": "+Inf"
+          },
+          "value": [1705312800, "1000"]
+        }
+      ]
+    }
+  }
+}

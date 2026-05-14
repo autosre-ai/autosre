@@ -1,0 +1,107 @@
+╔═══════════════════════════════════════════════════════════════════╗
+║                                                                   ║
+║      █████╗ ██╗   ██╗████████╗ ██████╗ ███████╗██████╗ ███████╗   ║
+║     ██╔══██╗██║   ██║╚══██╔══╝██╔═══██╗██╔════╝██╔══██╗██╔════╝   ║
+║     ███████║██║   ██║   ██║   ██║   ██║███████╗██████╔╝█████╗     ║
+║     ██╔══██║██║   ██║   ██║   ██║   ██║╚════██║██╔══██╗██╔══╝     ║
+║     ██║  ██║╚██████╔╝   ██║   ╚██████╔╝███████║██║  ██║███████╗   ║
+║     ╚═╝  ╚═╝ ╚═════╝    ╚═╝    ╚═════╝ ╚══════╝╚═╝  ╚═╝╚══════╝   ║
+║                                                                   ║
+║              AI-Powered SRE Assistant v{{ .Chart.AppVersion }}                    ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+Thank you for installing {{ .Chart.Name }}!
+
+Your release is named: {{ .Release.Name }}
+Namespace: {{ .Release.Namespace }}
+
+=== DEPLOYMENT STATUS ===
+
+{{- if .Values.api.enabled }}
+✅ API Server: Deployed ({{ .Values.api.replicaCount }} replicas)
+{{- else }}
+⬜ API Server: Disabled
+{{- end }}
+
+{{- if .Values.ui.enabled }}
+✅ UI: Deployed ({{ .Values.ui.replicaCount }} replicas)
+{{- else }}
+⬜ UI: Disabled
+{{- end }}
+
+{{- if .Values.postgresql.enabled }}
+✅ PostgreSQL: Deployed (Bitnami subchart)
+{{- else }}
+🔗 PostgreSQL: External ({{ .Values.externalPostgresql.host }}:{{ .Values.externalPostgresql.port }})
+{{- end }}
+
+{{- if .Values.redis.enabled }}
+✅ Redis: Deployed (Bitnami subchart)
+{{- else }}
+🔗 Redis: External ({{ .Values.externalRedis.host }}:{{ .Values.externalRedis.port }})
+{{- end }}
+
+=== ACCESS INSTRUCTIONS ===
+
+{{- if .Values.ingress.enabled }}
+The application is accessible via Ingress:
+{{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+{{- else }}
+
+To access the application, run:
+
+# Port-forward the API
+kubectl port-forward svc/{{ include "autosre.fullname" . }}-api {{ .Values.api.service.port }}:{{ .Values.api.service.port }} -n {{ .Release.Namespace }}
+
+# Port-forward the UI
+kubectl port-forward svc/{{ include "autosre.fullname" . }}-ui 8080:{{ .Values.ui.service.port }} -n {{ .Release.Namespace }}
+
+Then access:
+  - UI: http://localhost:8080
+  - API: http://localhost:{{ .Values.api.service.port }}
+{{- end }}
+
+=== HEALTH CHECK ===
+
+To check the health of your deployment:
+
+kubectl get pods -n {{ .Release.Namespace }} -l "app.kubernetes.io/instance={{ .Release.Name }}"
+
+# Check API health
+kubectl exec -it $(kubectl get pod -n {{ .Release.Namespace }} -l "app.kubernetes.io/component=api,app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}") -n {{ .Release.Namespace }} -- wget -qO- http://localhost:8080/health/ready
+
+=== MONITORING ===
+
+{{- if .Values.serviceMonitor.enabled }}
+✅ ServiceMonitor is enabled. Metrics will be scraped by Prometheus.
+{{- else }}
+⚠️  ServiceMonitor is disabled. Enable it for Prometheus integration:
+    --set serviceMonitor.enabled=true
+{{- end }}
+
+Metrics endpoint: http://{{ include "autosre.fullname" . }}-api:9090/metrics
+
+=== CONFIGURATION ===
+
+To view the current configuration:
+kubectl get configmap {{ include "autosre.configMapName" . }} -n {{ .Release.Namespace }} -o yaml
+
+=== TROUBLESHOOTING ===
+
+View API logs:
+kubectl logs -f -l "app.kubernetes.io/component=api,app.kubernetes.io/instance={{ .Release.Name }}" -n {{ .Release.Namespace }}
+
+View UI logs:
+kubectl logs -f -l "app.kubernetes.io/component=ui,app.kubernetes.io/instance={{ .Release.Name }}" -n {{ .Release.Namespace }}
+
+=== DOCUMENTATION ===
+
+For more information, visit:
+  - Chart README: https://github.com/your-org/autosre/tree/main/deploy/helm/autosre
+  - Documentation: https://docs.autosre.io
+
+Happy SRE-ing! 🚀

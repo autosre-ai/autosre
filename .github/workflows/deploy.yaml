@@ -1,0 +1,204 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+        default: staging
+      version:
+        description: 'Version to deploy (e.g., v1.0.0 or latest)'
+        required: true
+        default: 'latest'
+      dry_run:
+        description: 'Dry run (helm diff only)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  HELM_CHART_PATH: ./deploy/helm/autosre
+
+jobs:
+  validate:
+    name: Validate Deployment
+    runs-on: ubuntu-latest
+
+    outputs:
+      image_tag: ${{ steps.resolve.outputs.image_tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: resolve
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if [[ "$VERSION" == "latest" ]]; then
+            # Get latest tag from git
+            VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "main")
+          fi
+          echo "image_tag=${VERSION#v}" >> $GITHUB_OUTPUT
+          echo "Deploying version: ${VERSION#v}"
+
+      - name: Validate Helm chart
+        run: |
+          helm lint ${{ env.HELM_CHART_PATH }}
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event.inputs.environment == 'staging'
+    environment:
+      name: staging
+      url: https://staging.autosre.example.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_STAGING }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_STAGING }} --region ${{ secrets.AWS_REGION }}
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install Helm Diff plugin
+        run: helm plugin install https://github.com/databus23/helm-diff || true
+
+      - name: Helm diff
+        run: |
+          helm diff upgrade autosre ${{ env.HELM_CHART_PATH }} \
+            --namespace autosre \
+            --values ${{ env.HELM_CHART_PATH }}/values.yaml \
+            --values ${{ env.HELM_CHART_PATH }}/values-staging.yaml \
+            --set image.tag=${{ needs.validate.outputs.image_tag }} \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
+            || true
+
+      - name: Helm upgrade (dry run)
+        if: github.event.inputs.dry_run == 'true'
+        run: |
+          helm upgrade autosre ${{ env.HELM_CHART_PATH }} \
+            --namespace autosre \
+            --values ${{ env.HELM_CHART_PATH }}/values.yaml \
+            --values ${{ env.HELM_CHART_PATH }}/values-staging.yaml \
+            --set image.tag=${{ needs.validate.outputs.image_tag }} \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
+            --dry-run
+
+      - name: Helm upgrade
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          helm upgrade --install autosre ${{ env.HELM_CHART_PATH }} \
+            --namespace autosre \
+            --create-namespace \
+            --values ${{ env.HELM_CHART_PATH }}/values.yaml \
+            --values ${{ env.HELM_CHART_PATH }}/values-staging.yaml \
+            --set image.tag=${{ needs.validate.outputs.image_tag }} \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
+            --wait \
+            --timeout 10m
+
+      - name: Verify deployment
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          kubectl rollout status deployment/autosre -n autosre --timeout=5m
+          kubectl get pods -n autosre -l app=autosre
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event.inputs.environment == 'production'
+    environment:
+      name: production
+      url: https://autosre.example.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_PRODUCTION }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_PRODUCTION }} --region ${{ secrets.AWS_REGION }}
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install Helm Diff plugin
+        run: helm plugin install https://github.com/databus23/helm-diff || true
+
+      - name: Helm diff
+        run: |
+          helm diff upgrade autosre ${{ env.HELM_CHART_PATH }} \
+            --namespace autosre \
+            --values ${{ env.HELM_CHART_PATH }}/values.yaml \
+            --values ${{ env.HELM_CHART_PATH }}/values-production.yaml \
+            --set image.tag=${{ needs.validate.outputs.image_tag }} \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
+            || true
+
+      - name: Helm upgrade (dry run)
+        if: github.event.inputs.dry_run == 'true'
+        run: |
+          helm upgrade autosre ${{ env.HELM_CHART_PATH }} \
+            --namespace autosre \
+            --values ${{ env.HELM_CHART_PATH }}/values.yaml \
+            --values ${{ env.HELM_CHART_PATH }}/values-production.yaml \
+            --set image.tag=${{ needs.validate.outputs.image_tag }} \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
+            --dry-run
+
+      - name: Helm upgrade
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          helm upgrade --install autosre ${{ env.HELM_CHART_PATH }} \
+            --namespace autosre \
+            --create-namespace \
+            --values ${{ env.HELM_CHART_PATH }}/values.yaml \
+            --values ${{ env.HELM_CHART_PATH }}/values-production.yaml \
+            --set image.tag=${{ needs.validate.outputs.image_tag }} \
+            --set image.repository=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} \
+            --wait \
+            --timeout 10m
+
+      - name: Verify deployment
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          kubectl rollout status deployment/autosre -n autosre --timeout=5m
+          kubectl get pods -n autosre -l app=autosre
+
+      - name: Run smoke tests
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          # Wait for service to be ready
+          sleep 30
+          
+          # Basic health check
+          ENDPOINT=$(kubectl get svc autosre -n autosre -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          curl -sf "http://${ENDPOINT}/health" || exit 1
+          echo "Smoke tests passed!"

@@ -1,0 +1,150 @@
+{
+  "pods": [
+    {
+      "name": "payment-service-abc123",
+      "namespace": "production",
+      "phase": "Running",
+      "ready": true,
+      "restart_count": 0,
+      "node": "node-1",
+      "labels": {
+        "app": "payment-service",
+        "version": "v1.2.3"
+      },
+      "containers": [
+        {
+          "name": "payment-service",
+          "ready": true,
+          "restart_count": 0,
+          "state": "running"
+        }
+      ]
+    },
+    {
+      "name": "payment-service-def456",
+      "namespace": "production",
+      "phase": "Running",
+      "ready": false,
+      "restart_count": 5,
+      "node": "node-2",
+      "labels": {
+        "app": "payment-service",
+        "version": "v1.2.3"
+      },
+      "containers": [
+        {
+          "name": "payment-service",
+          "ready": false,
+          "restart_count": 5,
+          "state": "waiting: CrashLoopBackOff"
+        }
+      ]
+    },
+    {
+      "name": "api-gateway-xyz789",
+      "namespace": "production",
+      "phase": "Running",
+      "ready": true,
+      "restart_count": 0,
+      "node": "node-1",
+      "labels": {
+        "app": "api-gateway",
+        "version": "v2.0.0"
+      },
+      "containers": [
+        {
+          "name": "api-gateway",
+          "ready": true,
+          "restart_count": 0,
+          "state": "running"
+        },
+        {
+          "name": "envoy-sidecar",
+          "ready": true,
+          "restart_count": 0,
+          "state": "running"
+        }
+      ]
+    }
+  ],
+  "deployments": [
+    {
+      "name": "payment-service",
+      "namespace": "production",
+      "replicas": 3,
+      "ready_replicas": 2,
+      "available_replicas": 2,
+      "labels": {
+        "app": "payment-service"
+      }
+    },
+    {
+      "name": "api-gateway",
+      "namespace": "production",
+      "replicas": 2,
+      "ready_replicas": 2,
+      "available_replicas": 2,
+      "labels": {
+        "app": "api-gateway"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "payment-service-def456.event1",
+      "namespace": "production",
+      "type": "Warning",
+      "reason": "OOMKilled",
+      "message": "Container payment-service was killed due to OOM",
+      "count": 5,
+      "first_timestamp": "2024-01-15T09:00:00Z",
+      "last_timestamp": "2024-01-15T10:00:00Z",
+      "involved_object_kind": "Pod",
+      "involved_object_name": "payment-service-def456"
+    },
+    {
+      "name": "payment-service-def456.event2",
+      "namespace": "production",
+      "type": "Warning",
+      "reason": "BackOff",
+      "message": "Back-off restarting failed container",
+      "count": 5,
+      "first_timestamp": "2024-01-15T09:05:00Z",
+      "last_timestamp": "2024-01-15T10:05:00Z",
+      "involved_object_kind": "Pod",
+      "involved_object_name": "payment-service-def456"
+    },
+    {
+      "name": "payment-service.event3",
+      "namespace": "production",
+      "type": "Normal",
+      "reason": "ScalingReplicaSet",
+      "message": "Scaled up replica set payment-service-abc to 3",
+      "count": 1,
+      "first_timestamp": "2024-01-15T08:00:00Z",
+      "last_timestamp": "2024-01-15T08:00:00Z",
+      "involved_object_kind": "Deployment",
+      "involved_object_name": "payment-service"
+    }
+  ],
+  "nodes": [
+    {
+      "name": "node-1",
+      "ready": true,
+      "cpu_capacity": "4",
+      "memory_capacity": "16Gi",
+      "labels": {
+        "node-role.kubernetes.io/worker": ""
+      }
+    },
+    {
+      "name": "node-2",
+      "ready": true,
+      "cpu_capacity": "4",
+      "memory_capacity": "16Gi",
+      "labels": {
+        "node-role.kubernetes.io/worker": ""
+      }
+    }
+  ]
+}

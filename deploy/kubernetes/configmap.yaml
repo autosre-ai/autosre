@@ -1,0 +1,48 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# AutoSRE V2 — ConfigMap
+# ═══════════════════════════════════════════════════════════════════════════════
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: autosre-config
+  namespace: autosre
+  labels:
+    app.kubernetes.io/name: autosre
+    app.kubernetes.io/component: config
+data:
+  # Application settings
+  AUTOSRE_ENV: "production"
+  AUTOSRE_DEBUG: "false"
+  AUTOSRE_LOG_LEVEL: "INFO"
+  AUTOSRE_LOG_FORMAT: "json"
+  
+  # API configuration
+  API_HOST: "0.0.0.0"
+  API_PORT: "8000"
+  API_WORKERS: "4"
+  
+  # UI configuration
+  UI_PORT: "3000"
+  NEXT_PUBLIC_API_URL: "https://api.autosre.example.com"
+  
+  # Database (non-sensitive)
+  DB_POOL_SIZE: "10"
+  DB_MAX_OVERFLOW: "20"
+  DB_POOL_TIMEOUT: "30"
+  
+  # Redis (non-sensitive)
+  REDIS_DB: "0"
+  REDIS_MAX_CONNECTIONS: "50"
+  
+  # Kubernetes operations
+  K8S_NAMESPACE_DEFAULT: "default"
+  K8S_OPERATION_TIMEOUT: "300"
+  
+  # Feature flags
+  FEATURE_K8S_OPERATIONS: "true"
+  FEATURE_AUTO_REMEDIATION: "false"
+  FEATURE_METRICS_EXPORT: "true"
+  
+  # Rate limiting
+  RATE_LIMIT_PER_MINUTE: "100"
+  RATE_LIMIT_BURST: "20"

@@ -1,0 +1,62 @@
+# AutoSRE Configuration Example
+
+# General settings
+debug: false
+log_level: INFO
+
+# Default LLM provider and model
+default_provider: openai
+default_model: gpt-4-turbo
+
+# Provider configurations
+openai:
+  enabled: true
+  default_model: gpt-4-turbo
+  max_retries: 3
+  timeout: 120.0
+
+anthropic:
+  enabled: true
+  default_model: claude-3-sonnet-20240229
+  max_retries: 3
+  timeout: 120.0
+
+ollama:
+  enabled: true
+  base_url: http://localhost:11434
+  default_model: llama3
+  timeout: 300.0
+
+azure_openai:
+  enabled: false
+  # api_version: 2024-02-15-preview
+  # base_url: https://your-resource.openai.azure.com
+  # deployment_name: your-deployment
+
+together:
+  enabled: false
+  base_url: https://api.together.xyz/v1
+  default_model: meta-llama/Llama-3-70b-chat-hf
+
+# Cache settings
+cache:
+  enabled: true
+  backend: memory  # memory, disk, or redis
+  ttl_seconds: 3600
+  max_size: 1000
+  # disk_path: .cache/autosre
+  # redis_url: redis://localhost:6379/0
+
+# Retry settings
+retry:
+  max_retries: 3
+  base_delay: 1.0
+  max_delay: 60.0
+  exponential_base: 2.0
+  jitter: true
+
+# Token settings
+tokens:
+  default_max_tokens: 4096
+  default_context_window: 128000
+  response_reserve: 1024

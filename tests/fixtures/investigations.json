@@ -1,0 +1,86 @@
+[
+  {
+    "investigation_id": "inv-001",
+    "thread_id": "thread-001",
+    "status": "completed",
+    "alert": {
+      "name": "HighErrorRate",
+      "service": "payment-service",
+      "severity": "critical"
+    },
+    "hypotheses": [
+      {
+        "hypothesis": "Memory leak causing OOM kills",
+        "priority": "high",
+        "agents_to_test": ["kubernetes", "metrics"],
+        "confidence": 0.8
+      }
+    ],
+    "selected_agents": ["kubernetes", "metrics", "log_analysis"],
+    "agent_states": {
+      "kubernetes": {
+        "name": "kubernetes",
+        "status": "completed",
+        "findings": [
+          {
+            "category": "kubernetes",
+            "detail": "Pod payment-service-abc123 restarted 5 times",
+            "severity": "high",
+            "confidence": 0.9
+          }
+        ],
+        "summary": "Found OOMKilled pods"
+      },
+      "metrics": {
+        "name": "metrics",
+        "status": "completed",
+        "findings": [
+          {
+            "category": "metrics",
+            "detail": "Memory usage spike to 95%",
+            "severity": "high",
+            "confidence": 0.85
+          }
+        ],
+        "summary": "Memory usage anomaly detected"
+      }
+    },
+    "conclusion": "Root cause: OOMKilled pods due to memory leak",
+    "structured_report": {
+      "title": "Payment Service OOMKill Incident",
+      "severity": "critical",
+      "services": ["payment-service"],
+      "root_cause": "Memory leak causing OOM",
+      "action_items": [
+        {
+          "action": "Increase memory limit",
+          "priority": "high",
+          "owner": "platform-team"
+        }
+      ],
+      "resolution_status": "mitigated"
+    }
+  },
+  {
+    "investigation_id": "inv-002",
+    "thread_id": "thread-002",
+    "status": "running",
+    "alert": {
+      "name": "HighCPUUsage",
+      "service": "api-gateway",
+      "severity": "warning"
+    },
+    "hypotheses": [
+      {
+        "hypothesis": "Traffic spike causing high CPU",
+        "priority": "high",
+        "agents_to_test": ["metrics"],
+        "confidence": 0.6
+      }
+    ],
+    "selected_agents": ["metrics"],
+    "agent_states": {},
+    "iteration": 1,
+    "conclusion": ""
+  }
+]

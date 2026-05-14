@@ -1,0 +1,518 @@
+# AutoSRE Helm Chart Values
+# Enterprise-ready configuration
+
+# -- Global settings
+global:
+  # -- Image pull secrets for private registries
+  imagePullSecrets: []
+  # -- Storage class for persistent volumes
+  storageClass: ""
+
+# -- Common labels applied to all resources
+commonLabels: {}
+
+# -- Common annotations applied to all resources
+commonAnnotations: {}
+
+# =============================================================================
+# API Configuration
+# =============================================================================
+api:
+  # -- Enable API deployment
+  enabled: true
+  
+  # -- Number of API replicas
+  replicaCount: 2
+  
+  image:
+    # -- API image repository
+    repository: autosre/api
+    # -- Image pull policy
+    pullPolicy: IfNotPresent
+    # -- Image tag (defaults to appVersion)
+    tag: ""
+  
+  # -- Service account configuration
+  serviceAccount:
+    # -- Create service account
+    create: true
+    # -- Service account name (generated if not set)
+    name: ""
+    # -- Annotations for service account
+    annotations: {}
+  
+  # -- Pod annotations
+  podAnnotations: {}
+  
+  # -- Pod labels
+  podLabels: {}
+  
+  # -- Pod security context
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+  
+  # -- Container security context
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  
+  # -- Resource limits and requests
+  resources:
+    limits:
+      cpu: "2"
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  
+  # -- Liveness probe configuration
+  livenessProbe:
+    httpGet:
+      path: /health/live
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  
+  # -- Readiness probe configuration
+  readinessProbe:
+    httpGet:
+      path: /health/ready
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  
+  # -- Startup probe configuration
+  startupProbe:
+    httpGet:
+      path: /health/live
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 30
+  
+  # -- Service configuration
+  service:
+    type: ClusterIP
+    port: 8080
+    # -- Annotations for the service
+    annotations: {}
+  
+  # -- Pod anti-affinity configuration
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/component: api
+            topologyKey: kubernetes.io/hostname
+  
+  # -- Node selector
+  nodeSelector: {}
+  
+  # -- Tolerations
+  tolerations: []
+  
+  # -- Topology spread constraints
+  topologySpreadConstraints: []
+  
+  # -- Extra environment variables
+  extraEnv: []
+  
+  # -- Extra environment variables from secrets/configmaps
+  extraEnvFrom: []
+  
+  # -- Extra volumes
+  extraVolumes: []
+  
+  # -- Extra volume mounts
+  extraVolumeMounts: []
+
+# =============================================================================
+# UI Configuration
+# =============================================================================
+ui:
+  # -- Enable UI deployment
+  enabled: true
+  
+  # -- Number of UI replicas
+  replicaCount: 2
+  
+  image:
+    # -- UI image repository
+    repository: autosre/ui
+    # -- Image pull policy
+    pullPolicy: IfNotPresent
+    # -- Image tag (defaults to appVersion)
+    tag: ""
+  
+  # -- Pod annotations
+  podAnnotations: {}
+  
+  # -- Pod labels
+  podLabels: {}
+  
+  # -- Pod security context
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    fsGroup: 101
+  
+  # -- Container security context
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  
+  # -- Resource limits and requests
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  # -- Liveness probe configuration
+  livenessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  
+  # -- Readiness probe configuration
+  readinessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  
+  # -- Service configuration
+  service:
+    type: ClusterIP
+    port: 80
+    annotations: {}
+  
+  # -- Pod anti-affinity
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/component: ui
+            topologyKey: kubernetes.io/hostname
+  
+  # -- Node selector
+  nodeSelector: {}
+  
+  # -- Tolerations
+  tolerations: []
+  
+  # -- Extra environment variables
+  extraEnv: []
+  
+  # -- Extra volumes
+  extraVolumes: []
+  
+  # -- Extra volume mounts
+  extraVolumeMounts: []
+
+# =============================================================================
+# Ingress Configuration
+# =============================================================================
+ingress:
+  # -- Enable ingress
+  enabled: false
+  
+  # -- Ingress class name
+  className: nginx
+  
+  # -- Ingress annotations
+  annotations: {}
+    # kubernetes.io/tls-acme: "true"
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  
+  # -- Ingress hosts configuration
+  hosts:
+    - host: autosre.local
+      paths:
+        - path: /api
+          pathType: Prefix
+          service: api
+        - path: /
+          pathType: Prefix
+          service: ui
+  
+  # -- TLS configuration
+  tls: []
+  #  - secretName: autosre-tls
+  #    hosts:
+  #      - autosre.local
+
+# =============================================================================
+# PostgreSQL Configuration
+# =============================================================================
+postgresql:
+  # -- Enable PostgreSQL subchart
+  enabled: true
+  
+  auth:
+    # -- PostgreSQL username
+    username: autosre
+    # -- PostgreSQL password (generate if empty)
+    password: ""
+    # -- PostgreSQL database name
+    database: autosre
+    # -- Name of existing secret with credentials
+    existingSecret: ""
+  
+  primary:
+    persistence:
+      # -- Enable persistence
+      enabled: true
+      # -- Storage size
+      size: 10Gi
+    
+    resources:
+      limits:
+        cpu: "1"
+        memory: 1Gi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+
+# -- External PostgreSQL configuration (when postgresql.enabled=false)
+externalPostgresql:
+  # -- External PostgreSQL host
+  host: ""
+  # -- External PostgreSQL port
+  port: 5432
+  # -- External PostgreSQL database
+  database: autosre
+  # -- External PostgreSQL username
+  username: autosre
+  # -- External PostgreSQL password
+  password: ""
+  # -- Name of existing secret with 'postgresql-password' key
+  existingSecret: ""
+  # -- Enable SSL connection
+  sslMode: require
+
+# =============================================================================
+# Redis Configuration
+# =============================================================================
+redis:
+  # -- Enable Redis subchart
+  enabled: true
+  
+  architecture: standalone
+  
+  auth:
+    # -- Enable Redis authentication
+    enabled: true
+    # -- Redis password (generate if empty)
+    password: ""
+    # -- Name of existing secret with credentials
+    existingSecret: ""
+  
+  master:
+    persistence:
+      # -- Enable persistence
+      enabled: true
+      # -- Storage size
+      size: 5Gi
+    
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+# -- External Redis configuration (when redis.enabled=false)
+externalRedis:
+  # -- External Redis host
+  host: ""
+  # -- External Redis port
+  port: 6379
+  # -- External Redis password
+  password: ""
+  # -- Name of existing secret with 'redis-password' key
+  existingSecret: ""
+  # -- Enable TLS
+  tls: false
+
+# =============================================================================
+# Application Configuration
+# =============================================================================
+config:
+  # -- Log level (debug, info, warn, error)
+  logLevel: info
+  
+  # -- Log format (json, text)
+  logFormat: json
+  
+  # -- Enable debug mode
+  debug: false
+  
+  # -- AI model provider (openai, anthropic, local)
+  aiProvider: openai
+  
+  # -- AI model name
+  aiModel: gpt-4
+  
+  # -- Kubernetes clusters to manage (list of cluster names)
+  managedClusters: []
+  
+  # -- Prometheus endpoint for metrics queries
+  prometheusUrl: ""
+  
+  # -- Alertmanager endpoint
+  alertmanagerUrl: ""
+  
+  # -- PagerDuty integration key
+  pagerdutyKey: ""
+  
+  # -- Slack webhook URL for notifications
+  slackWebhook: ""
+
+# -- Secrets configuration
+secrets:
+  # -- OpenAI API key
+  openaiApiKey: ""
+  
+  # -- Anthropic API key
+  anthropicApiKey: ""
+  
+  # -- JWT signing secret
+  jwtSecret: ""
+  
+  # -- Name of existing secret containing all secrets
+  existingSecret: ""
+
+# =============================================================================
+# RBAC Configuration
+# =============================================================================
+rbac:
+  # -- Create RBAC resources
+  create: true
+  
+  # -- Create ClusterRole for cross-namespace operations
+  clusterWide: false
+  
+  # -- Additional rules for the Role/ClusterRole
+  extraRules: []
+  
+  # -- Namespaces to grant access to (if clusterWide=false)
+  allowedNamespaces: []
+
+# =============================================================================
+# Autoscaling Configuration
+# =============================================================================
+autoscaling:
+  api:
+    # -- Enable HPA for API
+    enabled: false
+    # -- Minimum replicas
+    minReplicas: 2
+    # -- Maximum replicas
+    maxReplicas: 10
+    # -- Target CPU utilization percentage
+    targetCPUUtilizationPercentage: 70
+    # -- Target memory utilization percentage
+    targetMemoryUtilizationPercentage: 80
+    # -- Custom metrics for scaling
+    customMetrics: []
+  
+  ui:
+    # -- Enable HPA for UI
+    enabled: false
+    # -- Minimum replicas
+    minReplicas: 2
+    # -- Maximum replicas
+    maxReplicas: 5
+    # -- Target CPU utilization percentage
+    targetCPUUtilizationPercentage: 70
+
+# =============================================================================
+# Pod Disruption Budget
+# =============================================================================
+podDisruptionBudget:
+  api:
+    # -- Enable PDB for API
+    enabled: true
+    # -- Minimum available pods
+    minAvailable: 1
+    # -- Maximum unavailable pods (alternative to minAvailable)
+    # maxUnavailable: 1
+  
+  ui:
+    # -- Enable PDB for UI
+    enabled: true
+    # -- Minimum available pods
+    minAvailable: 1
+
+# =============================================================================
+# Monitoring Configuration
+# =============================================================================
+serviceMonitor:
+  # -- Enable ServiceMonitor for Prometheus Operator
+  enabled: false
+  
+  # -- Namespace for ServiceMonitor (defaults to release namespace)
+  namespace: ""
+  
+  # -- Labels for ServiceMonitor
+  labels: {}
+  
+  # -- Scrape interval
+  interval: 30s
+  
+  # -- Scrape timeout
+  scrapeTimeout: 10s
+  
+  # -- Honor labels
+  honorLabels: false
+  
+  # -- Metric relabeling configs
+  metricRelabelings: []
+  
+  # -- Relabeling configs
+  relabelings: []
+
+# =============================================================================
+# Network Policies
+# =============================================================================
+networkPolicy:
+  # -- Enable network policies
+  enabled: false
+  
+  # -- Allowed ingress sources
+  ingressRules: []
+  
+  # -- Allowed egress destinations
+  egressRules: []

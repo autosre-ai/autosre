@@ -1,0 +1,131 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# AutoSRE V2 — All-in-One (API + UI + SQLite)
+# For individuals who want the simplest possible deployment
+# ═══════════════════════════════════════════════════════════════════════════════
+
+FROM python:3.12-slim-bookworm AS python-deps
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential curl && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir uv
+
+COPY pyproject.toml uv.lock* ./
+RUN uv pip install --system -e . || (uv lock && uv pip install --system -e .)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Node.js UI build
+# ─────────────────────────────────────────────────────────────────────────────
+FROM node:20-bookworm-slim AS ui-build
+
+WORKDIR /app
+
+COPY ui/package.json ui/package-lock.json* ui/pnpm-lock.yaml* ./
+RUN if [ -f pnpm-lock.yaml ]; then \
+      npm install -g pnpm && pnpm install --frozen-lockfile; \
+    else \
+      npm ci; \
+    fi
+
+COPY ui/ .
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npm run build
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Final all-in-one image
+# ─────────────────────────────────────────────────────────────────────────────
+FROM python:3.12-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    NODE_ENV=production \
+    AUTOSRE_DB_TYPE=sqlite \
+    AUTOSRE_DATA_DIR=/data
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    supervisor \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js runtime
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
+
+# Install kubectl for K8s operations
+RUN curl -LO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
+    install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \
+    rm kubectl
+
+# Copy Python dependencies
+COPY --from=python-deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=python-deps /usr/local/bin /usr/local/bin
+
+# Copy application code
+COPY src/ /app/src/
+COPY alembic/ /app/alembic/ 2>/dev/null || true
+COPY alembic.ini /app/ 2>/dev/null || true
+
+# Copy UI build
+COPY --from=ui-build /app/.next/standalone /app/ui/
+COPY --from=ui-build /app/.next/static /app/ui/.next/static
+COPY --from=ui-build /app/public /app/ui/public 2>/dev/null || true
+
+# Create non-root user and directories
+RUN useradd -m -u 1000 -s /bin/bash autosre && \
+    mkdir -p /data /var/log/supervisor && \
+    chown -R autosre:autosre /app /data /var/log/supervisor
+
+# Supervisor configuration
+COPY --chown=autosre:autosre <<'EOF' /etc/supervisor/conf.d/autosre.conf
+[supervisord]
+nodaemon=true
+user=root
+logfile=/var/log/supervisor/supervisord.log
+pidfile=/var/run/supervisord.pid
+
+[program:api]
+command=python -m uvicorn src.autosre.api:app --host 0.0.0.0 --port 8000
+directory=/app
+user=autosre
+autostart=true
+autorestart=true
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+
+[program:ui]
+command=node /app/ui/server.js
+directory=/app/ui
+user=autosre
+environment=PORT=3000,AUTOSRE_API_URL=http://localhost:8000
+autostart=true
+autorestart=true
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+EOF
+
+EXPOSE 3000 8000
+
+VOLUME ["/data"]
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8000/health && curl -f http://localhost:3000/ || exit 1
+
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/autosre.conf"]

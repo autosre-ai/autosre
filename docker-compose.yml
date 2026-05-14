@@ -1,0 +1,177 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# AutoSRE V2 — Local Development Stack
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Quick Start:
+#   make docker-up       Start all services
+#   make docker-down     Stop everything
+#   make docker-logs     Follow logs
+#
+# Services:
+#   - autosre-api (8000)  Python/FastAPI backend
+#   - autosre-ui  (3000)  React/Next.js frontend
+#   - postgres    (5432)  Database
+#   - redis       (6379)  Caching
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PostgreSQL — primary database
+  # ─────────────────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: autosre-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-autosre}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-autosre_local}
+      POSTGRES_DB: ${POSTGRES_DB:-autosre}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-autosre} -d ${POSTGRES_DB:-autosre}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - autosre-internal
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Redis — caching and rate limiting
+  # ─────────────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: autosre-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - autosre-internal
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # AutoSRE API — Python/FastAPI backend
+  # ─────────────────────────────────────────────────────────────────────────────
+  autosre-api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: autosre-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Database
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-autosre}:${POSTGRES_PASSWORD:-autosre_local}@postgres:5432/${POSTGRES_DB:-autosre}
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+      # App config
+      AUTOSRE_ENV: ${AUTOSRE_ENV:-development}
+      AUTOSRE_DEBUG: ${AUTOSRE_DEBUG:-true}
+      AUTOSRE_LOG_LEVEL: ${AUTOSRE_LOG_LEVEL:-INFO}
+      AUTOSRE_SECRET_KEY: ${AUTOSRE_SECRET_KEY:-dev-secret-key-change-in-production}
+      # LLM config
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Kubernetes (optional)
+      KUBECONFIG: /app/.kube/config
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      # Development: mount source for hot reload
+      - ./src:/app/src:ro
+      # Kubernetes config (optional)
+      - ${KUBECONFIG:-~/.kube/config}:/app/.kube/config:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=100m
+    mem_limit: 1g
+    cpus: 2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - autosre-internal
+      - autosre-external
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # AutoSRE UI — React/Next.js frontend
+  # ─────────────────────────────────────────────────────────────────────────────
+  autosre-ui:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ui
+    container_name: autosre-ui
+    restart: unless-stopped
+    environment:
+      AUTOSRE_API_URL: http://autosre-api:8000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      PORT: 3000
+    ports:
+      - "${UI_PORT:-3000}:3000"
+    depends_on:
+      autosre-api:
+        condition: service_healthy
+    mem_limit: 512m
+    cpus: 1
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/', r => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - autosre-internal
+      - autosre-external
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Networks
+# ─────────────────────────────────────────────────────────────────────────────
+networks:
+  autosre-internal:
+    driver: bridge
+    internal: true  # No external access
+  autosre-external:
+    driver: bridge  # External access for API calls
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Volumes
+# ─────────────────────────────────────────────────────────────────────────────
+volumes:
+  postgres-data:
+    name: autosre-postgres-data
+  redis-data:
+    name: autosre-redis-data

@@ -1,0 +1,195 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# AutoSRE V2 — ServiceMonitor (Prometheus Operator)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Requires: prometheus-operator or kube-prometheus-stack
+# Install: helm install prometheus prometheus-community/kube-prometheus-stack
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# API ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: autosre-api
+  namespace: autosre
+  labels:
+    app.kubernetes.io/name: autosre
+    app.kubernetes.io/component: api
+    # Match prometheus operator selector
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: autosre
+      app.kubernetes.io/component: api
+  namespaceSelector:
+    matchNames:
+      - autosre
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: true
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod
+        - sourceLabels: [__meta_kubernetes_namespace]
+          targetLabel: namespace
+---
+# PrometheusRule for alerts
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: autosre-alerts
+  namespace: autosre
+  labels:
+    app.kubernetes.io/name: autosre
+    release: prometheus
+spec:
+  groups:
+    - name: autosre.rules
+      rules:
+        # High error rate
+        - alert: AutoSREHighErrorRate
+          expr: |
+            sum(rate(http_requests_total{job="autosre-api", status=~"5.."}[5m])) 
+            / sum(rate(http_requests_total{job="autosre-api"}[5m])) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            service: autosre
+          annotations:
+            summary: "AutoSRE API high error rate"
+            description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes"
+        
+        # API down
+        - alert: AutoSREAPIDown
+          expr: up{job="autosre-api"} == 0
+          for: 1m
+          labels:
+            severity: critical
+            service: autosre
+          annotations:
+            summary: "AutoSRE API is down"
+            description: "AutoSRE API has been down for more than 1 minute"
+        
+        # High latency
+        - alert: AutoSREHighLatency
+          expr: |
+            histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="autosre-api"}[5m])) by (le)) > 2
+          for: 5m
+          labels:
+            severity: warning
+            service: autosre
+          annotations:
+            summary: "AutoSRE API high latency"
+            description: "95th percentile latency is {{ $value | humanizeDuration }}"
+        
+        # Pod restarts
+        - alert: AutoSREPodRestarts
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="autosre"}[1h]) > 5
+          labels:
+            severity: warning
+            service: autosre
+          annotations:
+            summary: "AutoSRE pod frequent restarts"
+            description: "Pod {{ $labels.pod }} has restarted {{ $value }} times in the last hour"
+        
+        # Memory pressure
+        - alert: AutoSREHighMemory
+          expr: |
+            container_memory_usage_bytes{namespace="autosre"} 
+            / container_spec_memory_limit_bytes{namespace="autosre"} > 0.9
+          for: 5m
+          labels:
+            severity: warning
+            service: autosre
+          annotations:
+            summary: "AutoSRE high memory usage"
+            description: "Container {{ $labels.container }} is using {{ $value | humanizePercentage }} of memory limit"
+        
+        # PostgreSQL connection issues
+        - alert: AutoSREDatabaseConnectionFailed
+          expr: |
+            autosre_database_connections_active == 0 and autosre_database_connections_total > 0
+          for: 2m
+          labels:
+            severity: critical
+            service: autosre
+          annotations:
+            summary: "AutoSRE database connection failed"
+            description: "No active database connections for 2 minutes"
+---
+# Grafana Dashboard ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: autosre-dashboard
+  namespace: autosre
+  labels:
+    app.kubernetes.io/name: autosre
+    grafana_dashboard: "1"  # Auto-discovered by Grafana sidecar
+data:
+  autosre-dashboard.json: |
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "id": null,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "title": "Request Rate",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "targets": [{
+            "expr": "sum(rate(http_requests_total{job=\"autosre-api\"}[5m])) by (status)",
+            "legendFormat": "{{status}}"
+          }]
+        },
+        {
+          "title": "Latency (p95)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "targets": [{
+            "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job=\"autosre-api\"}[5m])) by (le))",
+            "legendFormat": "p95"
+          }]
+        },
+        {
+          "title": "Active Pods",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 8},
+          "targets": [{
+            "expr": "count(up{job=\"autosre-api\"} == 1)",
+            "legendFormat": "Pods"
+          }]
+        },
+        {
+          "title": "Memory Usage",
+          "type": "gauge",
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 8},
+          "targets": [{
+            "expr": "sum(container_memory_usage_bytes{namespace=\"autosre\"}) / sum(container_spec_memory_limit_bytes{namespace=\"autosre\"})",
+            "legendFormat": "Memory %"
+          }]
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 38,
+      "style": "dark",
+      "tags": ["autosre", "api"],
+      "templating": {"list": []},
+      "time": {"from": "now-1h", "to": "now"},
+      "timepicker": {},
+      "timezone": "",
+      "title": "AutoSRE Overview",
+      "uid": "autosre-overview",
+      "version": 1,
+      "weekStart": ""
+    }

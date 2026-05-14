@@ -1,0 +1,107 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# AutoSRE V2 — Ingress
+# ═══════════════════════════════════════════════════════════════════════════════
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: autosre
+  namespace: autosre
+  labels:
+    app.kubernetes.io/name: autosre
+    app.kubernetes.io/component: ingress
+  annotations:
+    # NGINX Ingress Controller
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    
+    # Rate limiting
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-connections: "50"
+    
+    # Enable CORS
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, PUT, POST, DELETE, PATCH, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization"
+    
+    # TLS (cert-manager)
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    
+    # AWS ALB Ingress (alternative)
+    # alb.ingress.kubernetes.io/scheme: internet-facing
+    # alb.ingress.kubernetes.io/target-type: ip
+    # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:...
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - autosre.example.com
+        - api.autosre.example.com
+      secretName: autosre-tls
+  rules:
+    # Main UI
+    - host: autosre.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: autosre-ui
+                port:
+                  number: 3000
+    
+    # API (separate subdomain)
+    - host: api.autosre.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: autosre-api
+                port:
+                  number: 8000
+---
+# Alternative: Single-domain routing (API under /api path)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: autosre-single-domain
+  namespace: autosre
+  labels:
+    app.kubernetes.io/name: autosre
+    app.kubernetes.io/component: ingress
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - autosre.example.com
+      secretName: autosre-single-tls
+  rules:
+    - host: autosre.example.com
+      http:
+        paths:
+          # API routes
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: autosre-api
+                port:
+                  number: 8000
+          # UI routes (default)
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: autosre-ui
+                port:
+                  number: 3000

@@ -1,0 +1,211 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# AutoSRE V2 — RBAC (Role-Based Access Control)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# The API service needs permissions to:
+# - Read/watch resources for monitoring
+# - Execute operations for remediation (if enabled)
+# - Access secrets for credentials (scoped)
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Service Account for API
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: autosre-api
+  namespace: autosre
+  labels:
+    app.kubernetes.io/name: autosre
+    app.kubernetes.io/component: api
+---
+# Service Account for UI (minimal permissions)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: autosre-ui
+  namespace: autosre
+  labels:
+    app.kubernetes.io/name: autosre
+    app.kubernetes.io/component: ui
+---
+# ClusterRole for reading cluster-wide resources
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: autosre-reader
+  labels:
+    app.kubernetes.io/name: autosre
+rules:
+  # Core resources - read access
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - services
+      - endpoints
+      - nodes
+      - namespaces
+      - events
+      - configmaps
+      - persistentvolumeclaims
+      - replicationcontrollers
+    verbs: ["get", "list", "watch"]
+  
+  # Apps resources
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - replicasets
+      - statefulsets
+      - daemonsets
+    verbs: ["get", "list", "watch"]
+  
+  # Batch resources
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch"]
+  
+  # Autoscaling
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs: ["get", "list", "watch"]
+  
+  # Networking
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+      - networkpolicies
+    verbs: ["get", "list", "watch"]
+  
+  # Metrics (for resource usage)
+  - apiGroups: ["metrics.k8s.io"]
+    resources:
+      - pods
+      - nodes
+    verbs: ["get", "list"]
+---
+# ClusterRole for operations (more permissive - use with caution)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: autosre-operator
+  labels:
+    app.kubernetes.io/name: autosre
+rules:
+  # Pod operations
+  - apiGroups: [""]
+    resources:
+      - pods
+    verbs: ["get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources:
+      - pods/exec
+    verbs: ["create"]  # For debugging
+  
+  # Deployment operations
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - deployments/scale
+    verbs: ["get", "list", "watch", "patch", "update"]
+  
+  # Rollout operations
+  - apiGroups: ["apps"]
+    resources:
+      - deployments/rollback
+    verbs: ["create"]
+  
+  # StatefulSet operations
+  - apiGroups: ["apps"]
+    resources:
+      - statefulsets
+      - statefulsets/scale
+    verbs: ["get", "list", "watch", "patch", "update"]
+  
+  # Service operations
+  - apiGroups: [""]
+    resources:
+      - services
+    verbs: ["get", "list", "watch", "patch"]
+  
+  # ConfigMap updates (for dynamic config)
+  - apiGroups: [""]
+    resources:
+      - configmaps
+    verbs: ["get", "list", "watch", "patch", "update"]
+  
+  # Events (for creating audit events)
+  - apiGroups: [""]
+    resources:
+      - events
+    verbs: ["get", "list", "watch", "create"]
+---
+# ClusterRoleBinding - Reader (default)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: autosre-api-reader
+  labels:
+    app.kubernetes.io/name: autosre
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: autosre-reader
+subjects:
+  - kind: ServiceAccount
+    name: autosre-api
+    namespace: autosre
+---
+# ClusterRoleBinding - Operator (optional - enable for remediation)
+# Uncomment to enable write operations
+# apiVersion: rbac.authorization.k8s.io/v1
+# kind: ClusterRoleBinding
+# metadata:
+#   name: autosre-api-operator
+#   labels:
+#     app.kubernetes.io/name: autosre
+# roleRef:
+#   apiGroup: rbac.authorization.k8s.io
+#   kind: ClusterRole
+#   name: autosre-operator
+# subjects:
+#   - kind: ServiceAccount
+#     name: autosre-api
+#     namespace: autosre
+---
+# Role for namespace-scoped secrets access
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: autosre-secrets-reader
+  namespace: autosre
+  labels:
+    app.kubernetes.io/name: autosre
+rules:
+  - apiGroups: [""]
+    resources:
+      - secrets
+    resourceNames:
+      - autosre-secrets
+    verbs: ["get"]
+---
+# RoleBinding for secrets
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: autosre-api-secrets
+  namespace: autosre
+  labels:
+    app.kubernetes.io/name: autosre
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: autosre-secrets-reader
+subjects:
+  - kind: ServiceAccount
+    name: autosre-api
+    namespace: autosre

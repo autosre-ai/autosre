@@ -1,0 +1,74 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# AutoSRE V2 — API Backend (Python/FastAPI)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+FROM python:3.12-slim-bookworm AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dependencies stage
+# ─────────────────────────────────────────────────────────────────────────────
+FROM base AS deps
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for fast dependency management
+RUN pip install --no-cache-dir uv
+
+# Copy dependency files
+COPY pyproject.toml uv.lock* ./
+
+# Install dependencies (create lockfile if missing)
+RUN uv pip install --system -e . || (uv lock && uv pip install --system -e .)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Production stage
+# ─────────────────────────────────────────────────────────────────────────────
+FROM base AS production
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install kubectl for K8s operations
+RUN curl -LO "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
+    install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \
+    rm kubectl
+
+# Copy dependencies from deps stage
+COPY --from=deps /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=deps /usr/local/bin /usr/local/bin
+
+# Create non-root user
+RUN useradd -m -u 1000 -s /bin/bash autosre && \
+    mkdir -p /app /data && \
+    chown -R autosre:autosre /app /data
+
+# Copy application code
+COPY --chown=autosre:autosre src/ /app/src/
+COPY --chown=autosre:autosre alembic/ /app/alembic/ 2>/dev/null || true
+COPY --chown=autosre:autosre alembic.ini /app/ 2>/dev/null || true
+
+ENV PYTHONPATH=/app
+
+USER autosre
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["python", "-m", "uvicorn", "src.autosre.api:app", "--host", "0.0.0.0", "--port", "8000"]

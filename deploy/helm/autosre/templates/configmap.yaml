@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "autosre.configMapName" . }}
+  labels:
+    {{- include "autosre.labels" . | nindent 4 }}
+data:
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  LOG_FORMAT: {{ .Values.config.logFormat | quote }}
+  DEBUG: {{ .Values.config.debug | quote }}
+  AI_PROVIDER: {{ .Values.config.aiProvider | quote }}
+  AI_MODEL: {{ .Values.config.aiModel | quote }}
+  {{- if .Values.config.prometheusUrl }}
+  PROMETHEUS_URL: {{ .Values.config.prometheusUrl | quote }}
+  {{- end }}
+  {{- if .Values.config.alertmanagerUrl }}
+  ALERTMANAGER_URL: {{ .Values.config.alertmanagerUrl | quote }}
+  {{- end }}
+  {{- if .Values.config.managedClusters }}
+  MANAGED_CLUSTERS: {{ .Values.config.managedClusters | join "," | quote }}
+  {{- end }}

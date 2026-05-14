@@ -1,0 +1,27 @@
+{{- if .Values.api.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "autosre.fullname" . }}-api
+  labels:
+    {{- include "autosre.api.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.api.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "autosre.api.selectorLabels" . | nindent 6 }}
+{{- end }}
+---
+{{- if .Values.ui.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "autosre.fullname" . }}-ui
+  labels:
+    {{- include "autosre.ui.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.ui.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "autosre.ui.selectorLabels" . | nindent 6 }}
+{{- end }}

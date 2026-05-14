@@ -1,0 +1,107 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "autosre"
+version = "2.0.0"
+description = "Automated Site Reliability Engineering with LLM-powered incident investigation"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+authors = [
+    { name = "Sri Sainath Adusumilli", email = "sri@autosre.dev" }
+]
+maintainers = [
+    { name = "AutoSRE Contributors" }
+]
+keywords = ["sre", "llm", "incident-response", "automation", "devops", "observability", "prometheus", "kubernetes"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Monitoring",
+    "Topic :: System :: Systems Administration",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "tiktoken>=0.5",
+    "PyYAML>=6.0",
+    "typer>=0.9.0",
+    "rich>=13.0",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+]
+
+[project.urls]
+Homepage = "https://github.com/autosre-ai/autosre"
+Documentation = "https://autosre-ai.github.io/autosre"
+Repository = "https://github.com/autosre-ai/autosre.git"
+Issues = "https://github.com/autosre-ai/autosre/issues"
+Changelog = "https://github.com/autosre-ai/autosre/blob/main/CHANGELOG.md"
+
+[project.scripts]
+autosre = "autosre.cli.main:cli"
+
+[project.optional-dependencies]
+openai = ["openai>=1.0"]
+anthropic = ["anthropic>=0.18"]
+ollama = ["ollama>=0.1"]
+server = [
+    "fastapi>=0.109",
+    "uvicorn[standard]>=0.27",
+]
+all = [
+    "openai>=1.0",
+    "anthropic>=0.18",
+    "ollama>=0.1",
+    "fastapi>=0.109",
+    "uvicorn[standard]>=0.27",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "pytest-cov>=4.0",
+    "ruff>=0.1",
+    "mypy>=1.5",
+    "aiosqlite>=0.19",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/autosre"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=7.1.0",
+    "pytest-mock>=3.15.1",
+]

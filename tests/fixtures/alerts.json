@@ -1,0 +1,155 @@
+[
+  {
+    "id": "alert-1",
+    "name": "HighCPU",
+    "severity": "critical",
+    "status": "firing",
+    "service": "payment-service",
+    "namespace": "production",
+    "description": "CPU usage above 90% for 10 minutes",
+    "started_at": "2024-01-15T10:00:00Z",
+    "labels": {
+      "alertname": "HighCPU",
+      "service": "payment-service",
+      "severity": "critical",
+      "pod": "payment-service-abc123"
+    },
+    "annotations": {
+      "summary": "High CPU usage detected",
+      "runbook_url": "https://runbooks.example.com/high-cpu"
+    }
+  },
+  {
+    "id": "alert-2",
+    "name": "PodCrash",
+    "severity": "warning",
+    "status": "firing",
+    "service": "api-gateway",
+    "namespace": "production",
+    "description": "Pod restarting frequently",
+    "started_at": "2024-01-15T10:05:00Z",
+    "labels": {
+      "alertname": "PodCrash",
+      "service": "api-gateway",
+      "severity": "warning",
+      "pod": "api-gateway-xyz789"
+    },
+    "annotations": {
+      "summary": "Pod crash looping",
+      "description": "Pod has restarted 5 times in the last hour"
+    }
+  },
+  {
+    "id": "alert-3",
+    "name": "HighErrorRate",
+    "severity": "critical",
+    "status": "firing",
+    "service": "checkout-service",
+    "namespace": "production",
+    "source": "prometheus",
+    "description": "Error rate above 5% for 10 minutes",
+    "started_at": "2024-01-15T09:30:00Z",
+    "labels": {
+      "alertname": "HighErrorRate",
+      "service": "checkout-service",
+      "severity": "critical"
+    },
+    "annotations": {
+      "summary": "High error rate in checkout service",
+      "runbook_url": "https://runbooks.example.com/high-error-rate"
+    }
+  },
+  {
+    "id": "alert-4",
+    "name": "HighLatency",
+    "severity": "high",
+    "status": "resolved",
+    "service": "recommendation-service",
+    "namespace": "staging",
+    "description": "P99 latency above 1 second",
+    "started_at": "2024-01-15T08:00:00Z",
+    "ended_at": "2024-01-15T08:45:00Z",
+    "labels": {
+      "alertname": "HighLatency",
+      "service": "recommendation-service",
+      "severity": "high"
+    },
+    "annotations": {
+      "summary": "High latency detected",
+      "description": "P99 latency has exceeded threshold"
+    }
+  },
+  {
+    "id": "alert-5",
+    "name": "DiskSpaceLow",
+    "severity": "medium",
+    "status": "acknowledged",
+    "service": "database",
+    "namespace": "production",
+    "description": "Disk space below 20%",
+    "started_at": "2024-01-15T07:00:00Z",
+    "acknowledged_at": "2024-01-15T07:30:00Z",
+    "acknowledged_by": "oncall@example.com",
+    "labels": {
+      "alertname": "DiskSpaceLow",
+      "service": "database",
+      "severity": "medium",
+      "node": "db-node-1"
+    }
+  },
+  {
+    "id": "alert-6",
+    "name": "MemoryLeak",
+    "severity": "high",
+    "status": "firing",
+    "service": "user-service",
+    "namespace": "production",
+    "description": "Memory usage continuously increasing",
+    "started_at": "2024-01-15T11:00:00Z",
+    "labels": {
+      "alertname": "MemoryLeak",
+      "service": "user-service",
+      "severity": "high",
+      "container": "main"
+    },
+    "annotations": {
+      "summary": "Potential memory leak detected",
+      "description": "Memory usage has increased by 50% in the last hour"
+    }
+  },
+  {
+    "id": "alert-7",
+    "name": "ServiceDown",
+    "severity": "critical",
+    "status": "firing",
+    "service": "auth-service",
+    "namespace": "production",
+    "description": "Service health check failing",
+    "started_at": "2024-01-15T11:30:00Z",
+    "labels": {
+      "alertname": "ServiceDown",
+      "service": "auth-service",
+      "severity": "critical"
+    },
+    "annotations": {
+      "summary": "Auth service is down",
+      "impact": "Users cannot login"
+    }
+  },
+  {
+    "id": "alert-8",
+    "name": "ConnectionPoolExhausted",
+    "severity": "high",
+    "status": "firing",
+    "service": "order-service",
+    "namespace": "production",
+    "description": "Database connection pool at capacity",
+    "started_at": "2024-01-15T10:45:00Z",
+    "labels": {
+      "alertname": "ConnectionPoolExhausted",
+      "service": "order-service",
+      "severity": "high",
+      "database": "postgres-primary"
+    }
+  }
+]

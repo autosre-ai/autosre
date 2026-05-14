@@ -1,0 +1,73 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# AutoSRE V2 — Web UI (React/Next.js)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+FROM node:20-bookworm-slim AS base
+WORKDIR /app
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dependencies stage
+# ─────────────────────────────────────────────────────────────────────────────
+FROM base AS deps
+
+COPY ui/package.json ui/package-lock.json* ui/pnpm-lock.yaml* ./
+
+# Install dependencies (support both npm and pnpm)
+RUN if [ -f pnpm-lock.yaml ]; then \
+      npm install -g pnpm && pnpm install --frozen-lockfile; \
+    else \
+      npm ci; \
+    fi
+
+# Install platform-specific native binaries for multi-platform builds
+ARG TARGETARCH
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+      npm install @next/swc-linux-x64-gnu lightningcss-linux-x64-gnu @tailwindcss/oxide-linux-x64-gnu --no-save 2>/dev/null || true; \
+    elif [ "$TARGETARCH" = "arm64" ]; then \
+      npm install @next/swc-linux-arm64-gnu lightningcss-linux-arm64-gnu @tailwindcss/oxide-linux-arm64-gnu --no-save 2>/dev/null || true; \
+    fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Build stage
+# ─────────────────────────────────────────────────────────────────────────────
+FROM base AS build
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY ui/ .
+
+ENV NEXT_TELEMETRY_DISABLED=1
+
+RUN npm run build
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Production stage
+# ─────────────────────────────────────────────────────────────────────────────
+FROM node:20-bookworm-slim AS production
+
+WORKDIR /app
+
+# Security: Install patches, remove npm/corepack (not needed at runtime)
+RUN apt-get update && apt-get upgrade -y && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
+
+# Create non-root user
+RUN useradd -m -u 1000 -s /bin/bash autosre
+
+ENV NODE_ENV=production \
+    PORT=3000 \
+    NEXT_TELEMETRY_DISABLED=1
+
+# Copy Next.js standalone output
+COPY --from=build --chown=autosre:autosre /app/.next/standalone ./
+COPY --from=build --chown=autosre:autosre /app/.next/static ./.next/static
+COPY --from=build --chown=autosre:autosre /app/public ./public 2>/dev/null || true
+
+USER autosre
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:3000/api/health', r => process.exit(r.statusCode === 200 ? 0 : 1))" || exit 1
+
+CMD ["node", "server.js"]

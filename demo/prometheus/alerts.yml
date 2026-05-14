@@ -1,0 +1,121 @@
+# Alert rules for AutoSRE demo
+groups:
+  - name: demo-app-alerts
+    rules:
+      # High error rate
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{job="demo-app", status=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="demo-app"}[5m]))
+          ) > 0.05
+        for: 1m
+        labels:
+          severity: critical
+          service: demo-app
+          team: platform
+        annotations:
+          summary: "High error rate on demo-app"
+          description: "Error rate is {{ $value | humanizePercentage }} (>5%)"
+          runbook_url: "https://runbooks.example.com/high-error-rate"
+
+      # High latency
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(http_request_duration_seconds_bucket{job="demo-app"}[5m])) by (le)
+          ) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+          service: demo-app
+          team: platform
+        annotations:
+          summary: "High latency on demo-app"
+          description: "P95 latency is {{ $value | humanizeDuration }}"
+
+      # Low request rate (service might be down)
+      - alert: LowRequestRate
+        expr: |
+          sum(rate(http_requests_total{job="demo-app"}[5m])) < 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: demo-app
+          team: platform
+        annotations:
+          summary: "Low request rate on demo-app"
+          description: "Request rate is {{ $value | humanize }} req/s"
+
+      # Service unavailable
+      - alert: ServiceUnavailable
+        expr: up{job="demo-app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: demo-app
+          team: platform
+        annotations:
+          summary: "Demo-app is unavailable"
+          description: "The demo-app service is not responding to scrapes"
+
+  - name: resource-alerts
+    rules:
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: |
+          (
+            process_resident_memory_bytes{job="demo-app"}
+            / 
+            (1024 * 1024 * 1024)
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: demo-app
+          team: platform
+        annotations:
+          summary: "High memory usage on demo-app"
+          description: "Memory usage is {{ $value | humanize }}GB"
+
+      # Goroutine leak (if Go app)
+      - alert: GoroutineLeak
+        expr: go_goroutines{job="demo-app"} > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: demo-app
+          team: platform
+        annotations:
+          summary: "Possible goroutine leak in demo-app"
+          description: "Goroutine count is {{ $value }}"
+
+  - name: autosre-alerts
+    rules:
+      # AutoSRE API down
+      - alert: AutoSREAPIDown
+        expr: up{job="autosre-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: autosre
+          team: platform
+        annotations:
+          summary: "AutoSRE API is down"
+          description: "The AutoSRE API service is not responding"
+
+      # High investigation latency
+      - alert: HighInvestigationLatency
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(autosre_investigation_duration_seconds_bucket[5m])) by (le)
+          ) > 300
+        for: 10m
+        labels:
+          severity: warning
+          service: autosre
+          team: platform
+        annotations:
+          summary: "AutoSRE investigations are slow"
+          description: "P95 investigation time is {{ $value | humanizeDuration }}"

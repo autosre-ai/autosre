@@ -1,0 +1,48 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# AutoSRE V2 — Kubernetes Namespace
+# ═══════════════════════════════════════════════════════════════════════════════
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: autosre
+  labels:
+    app.kubernetes.io/name: autosre
+    app.kubernetes.io/part-of: autosre
+    app.kubernetes.io/managed-by: kubectl
+---
+# Resource quota for the namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: autosre-quota
+  namespace: autosre
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+    persistentvolumeclaims: "10"
+    pods: "50"
+---
+# Limit range for containers
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: autosre-limits
+  namespace: autosre
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      max:
+        cpu: 4
+        memory: 8Gi
+      min:
+        cpu: 50m
+        memory: 64Mi

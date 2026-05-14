@@ -1,0 +1,35 @@
+{{- if and .Values.api.enabled .Values.podDisruptionBudget.api.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "autosre.fullname" . }}-api
+  labels:
+    {{- include "autosre.api.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.podDisruptionBudget.api.minAvailable }}
+  minAvailable: {{ .Values.podDisruptionBudget.api.minAvailable }}
+  {{- else if .Values.podDisruptionBudget.api.maxUnavailable }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.api.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "autosre.api.selectorLabels" . | nindent 6 }}
+{{- end }}
+---
+{{- if and .Values.ui.enabled .Values.podDisruptionBudget.ui.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "autosre.fullname" . }}-ui
+  labels:
+    {{- include "autosre.ui.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.podDisruptionBudget.ui.minAvailable }}
+  minAvailable: {{ .Values.podDisruptionBudget.ui.minAvailable }}
+  {{- else if .Values.podDisruptionBudget.ui.maxUnavailable }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.ui.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "autosre.ui.selectorLabels" . | nindent 6 }}
+{{- end }}

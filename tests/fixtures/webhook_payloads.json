@@ -1,0 +1,353 @@
+{
+  "alertmanager": {
+    "firing_single": {
+      "version": "4",
+      "groupKey": "{alertname=\"HighErrorRate\"}",
+      "truncatedAlerts": 0,
+      "status": "firing",
+      "receiver": "autosre",
+      "groupLabels": {
+        "alertname": "HighErrorRate"
+      },
+      "commonLabels": {
+        "alertname": "HighErrorRate",
+        "service": "payment-service",
+        "severity": "critical"
+      },
+      "commonAnnotations": {
+        "summary": "High error rate in payment service"
+      },
+      "externalURL": "http://alertmanager:9093",
+      "alerts": [
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "HighErrorRate",
+            "service": "payment-service",
+            "severity": "critical",
+            "namespace": "production",
+            "pod": "payment-service-abc123"
+          },
+          "annotations": {
+            "summary": "High error rate detected",
+            "description": "Error rate is above 5% for 10 minutes",
+            "runbook_url": "https://runbooks.example.com/high-error-rate"
+          },
+          "startsAt": "2024-01-15T10:00:00Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://prometheus:9090/graph?q=rate(http_errors_total)",
+          "fingerprint": "fp-high-error-rate-001"
+        }
+      ]
+    },
+    "firing_multiple": {
+      "version": "4",
+      "groupKey": "{alertname=\"MultipleAlerts\"}",
+      "truncatedAlerts": 0,
+      "status": "firing",
+      "receiver": "autosre",
+      "groupLabels": {
+        "alertname": "MultipleAlerts"
+      },
+      "commonLabels": {
+        "alertname": "MultipleAlerts",
+        "severity": "high"
+      },
+      "commonAnnotations": {
+        "summary": "Multiple alerts firing"
+      },
+      "externalURL": "http://alertmanager:9093",
+      "alerts": [
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "HighCPU",
+            "service": "api-gateway",
+            "severity": "high",
+            "pod": "api-gateway-xyz"
+          },
+          "annotations": {
+            "summary": "High CPU usage"
+          },
+          "startsAt": "2024-01-15T10:00:00Z",
+          "fingerprint": "fp-high-cpu-001"
+        },
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "HighMemory",
+            "service": "api-gateway",
+            "severity": "high",
+            "pod": "api-gateway-xyz"
+          },
+          "annotations": {
+            "summary": "High memory usage"
+          },
+          "startsAt": "2024-01-15T10:05:00Z",
+          "fingerprint": "fp-high-memory-001"
+        },
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "HighLatency",
+            "service": "api-gateway",
+            "severity": "medium",
+            "pod": "api-gateway-xyz"
+          },
+          "annotations": {
+            "summary": "High latency detected"
+          },
+          "startsAt": "2024-01-15T10:03:00Z",
+          "fingerprint": "fp-high-latency-001"
+        }
+      ]
+    },
+    "resolved": {
+      "version": "4",
+      "groupKey": "{alertname=\"ResolvedAlert\"}",
+      "truncatedAlerts": 0,
+      "status": "resolved",
+      "receiver": "autosre",
+      "groupLabels": {},
+      "commonLabels": {
+        "alertname": "ResolvedAlert"
+      },
+      "commonAnnotations": {},
+      "externalURL": "http://alertmanager:9093",
+      "alerts": [
+        {
+          "status": "resolved",
+          "labels": {
+            "alertname": "ResolvedAlert",
+            "service": "user-service",
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "Issue resolved"
+          },
+          "startsAt": "2024-01-15T09:00:00Z",
+          "endsAt": "2024-01-15T10:00:00Z",
+          "fingerprint": "fp-resolved-001"
+        }
+      ]
+    }
+  },
+  "pagerduty": {
+    "triggered": {
+      "messages": [
+        {
+          "event": "incident.triggered",
+          "incident": {
+            "id": "P12345",
+            "incident_number": 12345,
+            "title": "High Latency Alert",
+            "status": "triggered",
+            "urgency": "high",
+            "created_at": "2024-01-15T10:00:00Z",
+            "service": {
+              "id": "PSERVICE1",
+              "name": "checkout-service",
+              "summary": "Checkout Service"
+            },
+            "description": "P99 latency above 1 second",
+            "html_url": "https://pagerduty.com/incidents/P12345",
+            "assignees": [
+              {
+                "id": "PUSER1",
+                "type": "user_reference",
+                "summary": "oncall@example.com"
+              }
+            ],
+            "teams": [],
+            "escalation_policy": {
+              "id": "PPOLICY1",
+              "type": "escalation_policy_reference",
+              "summary": "Default"
+            }
+          },
+          "log_entries": [
+            {
+              "type": "trigger",
+              "created_at": "2024-01-15T10:00:00Z"
+            }
+          ]
+        }
+      ]
+    },
+    "acknowledged": {
+      "messages": [
+        {
+          "event": "incident.acknowledged",
+          "incident": {
+            "id": "P12345",
+            "incident_number": 12345,
+            "title": "High Latency Alert",
+            "status": "acknowledged",
+            "urgency": "high",
+            "created_at": "2024-01-15T10:00:00Z",
+            "service": {
+              "id": "PSERVICE1",
+              "name": "checkout-service"
+            },
+            "html_url": "https://pagerduty.com/incidents/P12345"
+          },
+          "log_entries": [
+            {
+              "type": "acknowledge",
+              "created_at": "2024-01-15T10:05:00Z"
+            }
+          ]
+        }
+      ]
+    },
+    "resolved": {
+      "messages": [
+        {
+          "event": "incident.resolved",
+          "incident": {
+            "id": "P12345",
+            "incident_number": 12345,
+            "title": "High Latency Alert",
+            "status": "resolved",
+            "urgency": "high",
+            "created_at": "2024-01-15T10:00:00Z",
+            "resolved_at": "2024-01-15T10:30:00Z",
+            "service": {
+              "id": "PSERVICE1",
+              "name": "checkout-service"
+            },
+            "html_url": "https://pagerduty.com/incidents/P12345"
+          },
+          "log_entries": [
+            {
+              "type": "resolve",
+              "created_at": "2024-01-15T10:30:00Z"
+            }
+          ]
+        }
+      ]
+    },
+    "low_urgency": {
+      "messages": [
+        {
+          "event": "incident.triggered",
+          "incident": {
+            "id": "P67890",
+            "incident_number": 67890,
+            "title": "Low Priority Warning",
+            "status": "triggered",
+            "urgency": "low",
+            "created_at": "2024-01-15T11:00:00Z",
+            "service": {
+              "id": "PSERVICE2",
+              "name": "monitoring-service"
+            },
+            "description": "Non-critical monitoring alert",
+            "html_url": "https://pagerduty.com/incidents/P67890"
+          }
+        }
+      ]
+    }
+  },
+  "generic": {
+    "standard": {
+      "name": "HighErrorRate",
+      "severity": "high",
+      "status": "firing",
+      "description": "Error rate above threshold",
+      "service": "payment-service",
+      "namespace": "production",
+      "cluster": "prod-cluster",
+      "instance": "payment-service-1",
+      "labels": {
+        "team": "payments",
+        "tier": "1",
+        "environment": "production"
+      },
+      "annotations": {
+        "runbook": "https://runbooks.example.com/high-error-rate",
+        "dashboard": "https://grafana.example.com/d/payments"
+      },
+      "source": "custom",
+      "raw_data": {
+        "current_error_rate": 0.08,
+        "threshold": 0.05
+      }
+    },
+    "minimal": {
+      "name": "MinimalAlert"
+    },
+    "resolved": {
+      "name": "ResolvedAlert",
+      "severity": "warning",
+      "status": "resolved",
+      "description": "Previously firing alert is now resolved",
+      "service": "api-service",
+      "namespace": "production"
+    },
+    "critical": {
+      "name": "CriticalSystemDown",
+      "severity": "critical",
+      "status": "firing",
+      "description": "Critical system component is down",
+      "service": "auth-service",
+      "namespace": "production",
+      "labels": {
+        "team": "platform",
+        "tier": "0",
+        "component": "authentication"
+      }
+    }
+  },
+  "batch": {
+    "mixed_severities": [
+      {
+        "name": "CriticalAlert",
+        "severity": "critical",
+        "status": "firing",
+        "service": "service-1"
+      },
+      {
+        "name": "HighAlert",
+        "severity": "high",
+        "status": "firing",
+        "service": "service-2"
+      },
+      {
+        "name": "MediumAlert",
+        "severity": "medium",
+        "status": "firing",
+        "service": "service-3"
+      },
+      {
+        "name": "LowAlert",
+        "severity": "low",
+        "status": "firing",
+        "service": "service-4"
+      },
+      {
+        "name": "InfoAlert",
+        "severity": "info",
+        "status": "firing",
+        "service": "service-5"
+      }
+    ],
+    "mixed_status": [
+      {
+        "name": "FiringAlert1",
+        "status": "firing",
+        "service": "service-a"
+      },
+      {
+        "name": "ResolvedAlert1",
+        "status": "resolved",
+        "service": "service-b"
+      },
+      {
+        "name": "FiringAlert2",
+        "status": "firing",
+        "service": "service-c"
+      }
+    ]
+  }
+}

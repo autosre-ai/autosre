@@ -1,0 +1,41 @@
+# Prometheus configuration for AutoSRE demo
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'autosre-demo'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Load alert rules
+rule_files:
+  - "alerts.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # AutoSRE API metrics
+  - job_name: 'autosre-api'
+    static_configs:
+      - targets: ['autosre-api:8000']
+    metrics_path: '/metrics'
+
+  # Demo application
+  - job_name: 'demo-app'
+    static_configs:
+      - targets: ['demo-app:8081']
+    metrics_path: '/metrics'
+
+  # Alertmanager metrics
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alertmanager:9093']
