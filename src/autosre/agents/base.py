@@ -24,7 +24,7 @@ import logging
 
 from pydantic import BaseModel, Field, PrivateAttr
 
-from autosre.models.investigation import (
+from autosre.core.investigation import (
     AgentState,
     Finding,
     Hypothesis,
