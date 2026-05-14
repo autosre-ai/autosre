@@ -1,0 +1,79 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+.Python
+.venv
+venv
+ENV
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+dist
+build
+*.egg
+
+# Node
+node_modules
+.npm
+.next
+out
+.turbo
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Local dev
+.env
+.env.local
+*.local
+*.local.yaml
+
+# Coverage
+coverage
+htmlcov
+.coverage
+*.cover
+
+# Docs
+docs/_build
+site
+
+# Test artifacts
+test-results
+playwright-report
+junit.xml
+
+# Misc
+*.log
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
+tmp
+temp
+data
+logs
+backups
+
+# Build logs
+BUILD*.md
+ITERATION*.md
+PLAN*.md
+REVIEW*.md
+SPEC*.md
+TASKS*.md
+VISION.md
+SKILL*.md
+
+# Dev files
+demo.py
+*.md~

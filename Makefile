@@ -254,6 +254,44 @@ docker-shell-ui: ## Shell into UI container
 	@$(DOCKER_COMPOSE) exec autosre-ui /bin/sh
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Demo Stack
+# ─────────────────────────────────────────────────────────────────────────────
+
+demo: ## Start the demo stack (AutoSRE + Prometheus + Alertmanager + Demo App)
+	@echo "$(GREEN)🎮 Starting AutoSRE Demo Stack...$(NC)"
+	@$(DOCKER_COMPOSE) -f docker-compose.demo.yml up -d
+	@echo ""
+	@echo "$(GREEN)✅ Demo stack started:$(NC)"
+	@echo "   • AutoSRE API:   $(YELLOW)http://localhost:8000$(NC)"
+	@echo "   • Prometheus:    $(YELLOW)http://localhost:9090$(NC)"
+	@echo "   • Alertmanager:  $(YELLOW)http://localhost:9093$(NC)"
+	@echo "   • Demo App:      $(YELLOW)http://localhost:8080$(NC)"
+	@echo "   • Grafana:       $(YELLOW)http://localhost:3001$(NC) (admin/autosre)"
+	@echo "   • Ollama:        $(YELLOW)http://localhost:11434$(NC)"
+	@echo ""
+	@echo "$(CYAN)Trigger a test alert:$(NC)"
+	@echo "   curl -X POST http://localhost:8080/admin/failure?failure_type=error_spike"
+	@echo ""
+	@echo "   Run '$(YELLOW)make demo-logs$(NC)' to follow logs"
+
+demo-down: ## Stop the demo stack
+	@echo "$(YELLOW)🛑 Stopping demo stack...$(NC)"
+	@$(DOCKER_COMPOSE) -f docker-compose.demo.yml down
+	@echo "$(GREEN)✅ Stopped$(NC)"
+
+demo-logs: ## Follow demo stack logs
+	@$(DOCKER_COMPOSE) -f docker-compose.demo.yml logs -f
+
+demo-clean: ## Clean demo stack (including volumes)
+	@echo "$(RED)🗑️  Cleaning demo stack...$(NC)"
+	@$(DOCKER_COMPOSE) -f docker-compose.demo.yml down -v --remove-orphans
+	@echo "$(GREEN)✅ Cleaned$(NC)"
+
+demo-trigger-alert: ## Trigger a test alert in the demo app
+	@echo "$(CYAN)🚨 Triggering error spike alert...$(NC)"
+	@curl -X POST "http://localhost:8080/admin/failure?failure_type=error_spike&duration_seconds=120" 2>/dev/null || echo "Demo app not running. Start with 'make demo'"
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Build
 # ─────────────────────────────────────────────────────────────────────────────
 
