@@ -49,7 +49,7 @@ dependencies = [
     
     # LLM - Required for investigations
     "anthropic>=0.18.0",
-    "openai>=1.10.0",
+    "openai>=2.37.0",
     "litellm>=1.50.0",
     
     # LangGraph orchestration
