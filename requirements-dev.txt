@@ -21,7 +21,7 @@ types-requests>=2.31
 
 # Documentation
 mkdocs>=1.5
-mkdocs-material>=9.5
+mkdocs-material>=9.7.6
 mkdocstrings[python]>=0.24
 
 # Development tools
