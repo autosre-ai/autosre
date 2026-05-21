@@ -3,7 +3,7 @@
 # ==============================================================================
 
 # Stage 1: Build dependencies
-FROM python:3.11-slim AS builder
+FROM python:3.14-slim AS builder
 
 WORKDIR /build
 
@@ -21,7 +21,7 @@ COPY opensre_core/__init__.py opensre_core/
 RUN pip wheel --no-cache-dir --wheel-dir /wheels -e ".[all]"
 
 # Stage 2: Runtime image
-FROM python:3.11-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 # Security: Run as non-root
 RUN groupadd -r opensre && useradd -r -g opensre opensre
