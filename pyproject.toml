@@ -65,7 +65,7 @@ dependencies = [
     
     # Observability
     "prometheus-client>=0.25.0",
-    "datadog-api-client>=2.20.0",
+    "datadog-api-client>=2.55.0",
     
     # Database
     "neo4j>=5.14.0",
