@@ -1,0 +1,11 @@
+# Knowledge Graph Service Dependencies
+# Production requirements for AutoSRE KG service
+
+# Neo4j async driver
+neo4j>=5.20.0,<6.0.0
+
+# Pydantic for data models
+pydantic>=2.7.0,<3.0.0
+
+# Python-dotenv for local development
+python-dotenv>=1.0.0,<2.0.0

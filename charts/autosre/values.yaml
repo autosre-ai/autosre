@@ -1,0 +1,677 @@
+# AutoSRE Helm Chart Values
+# Default values for autosre deployment
+
+# -- Global settings
+global:
+  # -- Image pull secrets for private registries
+  imagePullSecrets: []
+  # -- Storage class for persistent volumes
+  storageClass: ""
+
+# -- Common labels to add to all resources
+commonLabels: {}
+
+# -- Common annotations to add to all resources
+commonAnnotations: {}
+
+# =============================================================================
+# Agent Configuration
+# =============================================================================
+agent:
+  # -- Enable the agent component
+  enabled: true
+  
+  # -- Number of agent replicas
+  replicaCount: 2
+  
+  image:
+    # -- Agent image repository
+    repository: autosre/agent
+    # -- Agent image pull policy
+    pullPolicy: IfNotPresent
+    # -- Agent image tag (defaults to Chart appVersion)
+    tag: ""
+  
+  # -- Resource limits and requests
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  
+  # -- Pod security context
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+  
+  # -- Container security context
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  
+  # -- Node selector
+  nodeSelector: {}
+  
+  # -- Tolerations
+  tolerations: []
+  
+  # -- Affinity rules
+  affinity: {}
+  
+  # -- Pod disruption budget
+  pdb:
+    enabled: true
+    minAvailable: 1
+    # maxUnavailable: 1
+  
+  # -- Horizontal pod autoscaler
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  
+  # -- Additional environment variables
+  extraEnv: []
+  
+  # -- Additional volume mounts
+  extraVolumeMounts: []
+  
+  # -- Additional volumes
+  extraVolumes: []
+  
+  # -- Liveness probe configuration
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  
+  # -- Readiness probe configuration
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+    successThreshold: 1
+
+# =============================================================================
+# API Configuration
+# =============================================================================
+api:
+  # -- Enable the API component
+  enabled: true
+  
+  # -- Number of API replicas
+  replicaCount: 3
+  
+  image:
+    # -- API image repository
+    repository: autosre/api
+    # -- API image pull policy
+    pullPolicy: IfNotPresent
+    # -- API image tag (defaults to Chart appVersion)
+    tag: ""
+  
+  # -- Service port
+  port: 8080
+  
+  # -- Resource limits and requests
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+  
+  # -- Pod security context
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+  
+  # -- Container security context
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  
+  # -- Node selector
+  nodeSelector: {}
+  
+  # -- Tolerations
+  tolerations: []
+  
+  # -- Affinity rules
+  affinity: {}
+  
+  # -- Pod disruption budget
+  pdb:
+    enabled: true
+    minAvailable: 2
+    # maxUnavailable: 1
+  
+  # -- Horizontal pod autoscaler
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  
+  # -- Additional environment variables
+  extraEnv: []
+  
+  # -- Additional volume mounts
+  extraVolumeMounts: []
+  
+  # -- Additional volumes
+  extraVolumes: []
+  
+  # -- Liveness probe configuration
+  livenessProbe:
+    enabled: true
+    httpGet:
+      path: /health/live
+      port: http
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  
+  # -- Readiness probe configuration
+  readinessProbe:
+    enabled: true
+    httpGet:
+      path: /health/ready
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+    successThreshold: 1
+
+# =============================================================================
+# Web Configuration
+# =============================================================================
+web:
+  # -- Enable the web component
+  enabled: true
+  
+  # -- Number of web replicas
+  replicaCount: 2
+  
+  image:
+    # -- Web image repository
+    repository: autosre/web
+    # -- Web image pull policy
+    pullPolicy: IfNotPresent
+    # -- Web image tag (defaults to Chart appVersion)
+    tag: ""
+  
+  # -- Service port
+  port: 3000
+  
+  # -- Resource limits and requests
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  # -- Pod security context
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+  
+  # -- Container security context
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  
+  # -- Node selector
+  nodeSelector: {}
+  
+  # -- Tolerations
+  tolerations: []
+  
+  # -- Affinity rules
+  affinity: {}
+  
+  # -- Pod disruption budget
+  pdb:
+    enabled: true
+    minAvailable: 1
+    # maxUnavailable: 1
+  
+  # -- Horizontal pod autoscaler
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  
+  # -- Additional environment variables
+  extraEnv: []
+  
+  # -- Additional volume mounts
+  extraVolumeMounts: []
+  
+  # -- Additional volumes
+  extraVolumes: []
+  
+  # -- Liveness probe configuration
+  livenessProbe:
+    enabled: true
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  
+  # -- Readiness probe configuration
+  readinessProbe:
+    enabled: true
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+    successThreshold: 1
+
+# =============================================================================
+# Service Configuration
+# =============================================================================
+service:
+  agent:
+    # -- Agent service type
+    type: ClusterIP
+    # -- Agent service port
+    port: 8081
+  
+  api:
+    # -- API service type
+    type: ClusterIP
+    # -- API service port
+    port: 8080
+    # -- API service annotations
+    annotations: {}
+  
+  web:
+    # -- Web service type
+    type: ClusterIP
+    # -- Web service port
+    port: 80
+    # -- Web service annotations
+    annotations: {}
+
+# =============================================================================
+# Ingress Configuration
+# =============================================================================
+ingress:
+  # -- Enable ingress
+  enabled: false
+  
+  # -- Ingress class name
+  className: nginx
+  
+  # -- Ingress annotations
+  annotations: {}
+    # kubernetes.io/tls-acme: "true"
+    # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  
+  # -- Ingress hosts configuration
+  hosts:
+    - host: autosre.local
+      paths:
+        - path: /api
+          pathType: Prefix
+          service: api
+        - path: /
+          pathType: Prefix
+          service: web
+  
+  # -- Ingress TLS configuration
+  tls: []
+  #  - secretName: autosre-tls
+  #    hosts:
+  #      - autosre.local
+
+# =============================================================================
+# Service Account & RBAC
+# =============================================================================
+serviceAccount:
+  # -- Create service account
+  create: true
+  
+  # -- Service account name (auto-generated if not set)
+  name: ""
+  
+  # -- Service account annotations
+  annotations: {}
+  
+  # -- Automount service account token
+  automountServiceAccountToken: true
+
+rbac:
+  # -- Create RBAC resources
+  create: true
+  
+  # -- Additional rules for the ClusterRole
+  rules: []
+  
+  # -- Create ClusterRole and ClusterRoleBinding (for cluster-wide access)
+  clusterWide: true
+
+# =============================================================================
+# Network Policies
+# =============================================================================
+networkPolicy:
+  # -- Enable network policies
+  enabled: true
+  
+  # -- Allow ingress from specified namespaces
+  ingressNamespaces:
+    - kube-system
+    - ingress-nginx
+  
+  # -- Allow egress to specified CIDRs
+  egressCIDRs:
+    - 0.0.0.0/0
+
+# =============================================================================
+# Configuration
+# =============================================================================
+config:
+  # -- Log level (debug, info, warn, error)
+  logLevel: info
+  
+  # -- Log format (json, text)
+  logFormat: json
+  
+  # -- Environment name
+  environment: production
+  
+  # -- Enable metrics endpoint
+  metricsEnabled: true
+  
+  # -- Metrics port
+  metricsPort: 9090
+  
+  # -- Enable tracing
+  tracingEnabled: false
+  
+  # -- Tracing endpoint
+  tracingEndpoint: ""
+  
+  # -- AI provider (openai, anthropic, azure)
+  aiProvider: openai
+  
+  # -- AI model
+  aiModel: gpt-4
+  
+  # -- Maximum concurrent investigations
+  maxConcurrentInvestigations: 10
+  
+  # -- Investigation timeout (seconds)
+  investigationTimeout: 3600
+  
+  # -- Enable Slack integration
+  slackEnabled: false
+  
+  # -- Enable PagerDuty integration
+  pagerdutyEnabled: false
+  
+  # -- Enable Prometheus integration
+  prometheusEnabled: true
+  
+  # -- Prometheus URL
+  prometheusUrl: "http://prometheus:9090"
+  
+  # -- Enable Grafana integration
+  grafanaEnabled: false
+  
+  # -- Grafana URL
+  grafanaUrl: ""
+  
+  # -- Enable Kubernetes integration
+  kubernetesEnabled: true
+
+# =============================================================================
+# Secrets
+# =============================================================================
+secrets:
+  # -- Create secrets (set to false if using external secrets)
+  create: true
+  
+  # -- Use existing secret name
+  existingSecret: ""
+  
+  # -- Database password
+  databasePassword: ""
+  
+  # -- Redis password
+  redisPassword: ""
+  
+  # -- Neo4j password
+  neo4jPassword: ""
+  
+  # -- OpenAI API key
+  openaiApiKey: ""
+  
+  # -- Anthropic API key
+  anthropicApiKey: ""
+  
+  # -- Azure OpenAI API key
+  azureOpenaiApiKey: ""
+  
+  # -- Azure OpenAI endpoint
+  azureOpenaiEndpoint: ""
+  
+  # -- Slack bot token
+  slackBotToken: ""
+  
+  # -- Slack signing secret
+  slackSigningSecret: ""
+  
+  # -- PagerDuty API key
+  pagerdutyApiKey: ""
+  
+  # -- JWT secret key
+  jwtSecretKey: ""
+  
+  # -- Encryption key (32 bytes, base64 encoded)
+  encryptionKey: ""
+
+# =============================================================================
+# PostgreSQL Configuration (Bitnami subchart)
+# =============================================================================
+postgresql:
+  # -- Enable PostgreSQL subchart
+  enabled: true
+  
+  auth:
+    # -- PostgreSQL username
+    username: autosre
+    # -- PostgreSQL database name
+    database: autosre
+    # -- Use existing secret for password
+    existingSecret: ""
+  
+  primary:
+    # -- PostgreSQL persistence configuration
+    persistence:
+      enabled: true
+      size: 20Gi
+    
+    # -- Resource limits
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 250m
+        memory: 512Mi
+
+# =============================================================================
+# Neo4j Configuration (Neo4j subchart)
+# =============================================================================
+neo4j:
+  # -- Enable Neo4j subchart
+  enabled: true
+  
+  # -- Neo4j edition (community or enterprise)
+  neo4j:
+    edition: community
+    name: autosre-neo4j
+  
+  # -- Volumes configuration
+  volumes:
+    data:
+      mode: defaultStorageClass
+      defaultStorageClass:
+        requests:
+          storage: 20Gi
+  
+  # -- Resource limits
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+    requests:
+      cpu: 500m
+      memory: 2Gi
+
+# =============================================================================
+# Redis Configuration (Bitnami subchart)
+# =============================================================================
+redis:
+  # -- Enable Redis subchart
+  enabled: true
+  
+  # -- Redis architecture (standalone or replication)
+  architecture: standalone
+  
+  auth:
+    # -- Enable Redis authentication
+    enabled: true
+    # -- Use existing secret for password
+    existingSecret: ""
+  
+  master:
+    # -- Redis persistence configuration
+    persistence:
+      enabled: true
+      size: 8Gi
+    
+    # -- Resource limits
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+# =============================================================================
+# External Database Configuration (when postgresql.enabled=false)
+# =============================================================================
+externalDatabase:
+  # -- External database host
+  host: ""
+  # -- External database port
+  port: 5432
+  # -- External database name
+  database: autosre
+  # -- External database username
+  username: autosre
+  # -- Use existing secret for password
+  existingSecret: ""
+  # -- Key in existing secret containing password
+  existingSecretKey: password
+
+# =============================================================================
+# External Redis Configuration (when redis.enabled=false)
+# =============================================================================
+externalRedis:
+  # -- External Redis host
+  host: ""
+  # -- External Redis port
+  port: 6379
+  # -- Use existing secret for password
+  existingSecret: ""
+  # -- Key in existing secret containing password
+  existingSecretKey: password
+
+# =============================================================================
+# External Neo4j Configuration (when neo4j.enabled=false)
+# =============================================================================
+externalNeo4j:
+  # -- External Neo4j URI
+  uri: ""
+  # -- External Neo4j username
+  username: neo4j
+  # -- Use existing secret for password
+  existingSecret: ""
+  # -- Key in existing secret containing password
+  existingSecretKey: password
+
+# =============================================================================
+# Pod Monitors (for Prometheus Operator)
+# =============================================================================
+podMonitor:
+  # -- Enable PodMonitor for Prometheus Operator
+  enabled: false
+  
+  # -- PodMonitor namespace (defaults to release namespace)
+  namespace: ""
+  
+  # -- Additional labels for PodMonitor
+  labels: {}
+  
+  # -- Scrape interval
+  interval: 30s
+  
+  # -- Scrape timeout
+  scrapeTimeout: 10s
+
+# =============================================================================
+# Extra Resources
+# =============================================================================
+extraDeploy: []
+# - apiVersion: v1
+#   kind: ConfigMap
+#   metadata:
+#     name: extra-config
+#   data:
+#     key: value

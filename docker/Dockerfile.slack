@@ -1,0 +1,41 @@
+# ==============================================================================
+# AutoSRE Slack Bot - Production Dockerfile
+# ==============================================================================
+
+FROM python:3.12-slim AS builder
+
+WORKDIR /build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+COPY pyproject.toml uv.lock ./
+
+RUN uv venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN uv pip install --no-cache . slack-bolt
+
+FROM python:3.12-slim AS production
+
+RUN groupadd -r slack && useradd -r -g slack -d /home/slack -s /sbin/nologin slack
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY src/integrations/slack/ ./slack/
+
+RUN chown -R slack:slack /app
+USER slack
+
+CMD ["python", "-m", "slack.bot"]

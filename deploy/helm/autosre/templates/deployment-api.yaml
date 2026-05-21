@@ -1,0 +1,154 @@
+{{- if .Values.api.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "autosre.fullname" . }}-api
+  labels:
+    {{- include "autosre.api.labels" . | nindent 4 }}
+  annotations:
+    {{- include "autosre.annotations" . | nindent 4 }}
+spec:
+  {{- if not .Values.api.autoscaling.enabled }}
+  replicas: {{ .Values.api.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "autosre.api.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.api.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "autosre.api.labels" . | nindent 8 }}
+        {{- with .Values.api.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "autosre.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.api.podSecurityContext | nindent 8 }}
+      containers:
+        - name: api
+          image: {{ include "autosre.api.image" . }}
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.api.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.service.port }}
+              protocol: TCP
+          env:
+            # Database connections
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "autosre.secretName" . }}
+                  key: DATABASE_URL
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "autosre.secretName" . }}
+                  key: REDIS_URL
+            # Service connections
+            - name: AGENT_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "autosre.fullname" . }}-config
+                  key: AGENT_URL
+            - name: LITELLM_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "autosre.fullname" . }}-config
+                  key: LITELLM_URL
+            # API configuration
+            - name: API_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "autosre.fullname" . }}-config
+                  key: API_HOST
+            - name: API_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "autosre.fullname" . }}-config
+                  key: API_PORT
+            - name: API_WORKERS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "autosre.fullname" . }}-config
+                  key: API_WORKERS
+            - name: API_LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "autosre.fullname" . }}-config
+                  key: API_LOG_LEVEL
+            # Security
+            - name: API_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "autosre.secretName" . }}
+                  key: API_SECRET_KEY
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "autosre.secretName" . }}
+                  key: JWT_SECRET_KEY
+            - name: JWT_ALGORITHM
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "autosre.fullname" . }}-config
+                  key: JWT_ALGORITHM
+            - name: JWT_EXPIRATION_HOURS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "autosre.fullname" . }}-config
+                  key: JWT_EXPIRATION_HOURS
+            # CORS
+            - name: CORS_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "autosre.fullname" . }}-config
+                  key: CORS_ORIGINS
+            {{- with .Values.api.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.api.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.api.readinessProbe | nindent 12 }}
+          startupProbe:
+            {{- toYaml .Values.api.startupProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- with .Values.api.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- with .Values.api.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.api.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.api.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

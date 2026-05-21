@@ -1,0 +1,102 @@
+---
+name: log-analysis
+description: Partition-first, sampling-based log analysis for efficient error pattern detection
+category: observability
+enabled: true
+required_integrations: []  # Works with any logging backend
+version: "1.0.0"
+---
+
+actions:
+  - name: get_log_statistics
+    description: Get log volume, error rate, and top patterns
+    parameters:
+      - name: service
+        type: string
+        required: true
+        description: Service name to query
+      - name: time_range
+        type: string
+        required: false
+        default: "1h"
+        description: Time range (e.g., 15m, 1h, 24h)
+      - name: backend
+        type: string
+        required: false
+        description: Log backend (elasticsearch, splunk, loki, coralogix)
+
+  - name: sample_logs
+    description: Get representative sample of logs (50-100 max)
+    parameters:
+      - name: service
+        type: string
+        required: true
+      - name: level
+        type: string
+        required: false
+        default: "ERROR"
+      - name: sample_size
+        type: integer
+        required: false
+        default: 50
+      - name: time_range
+        type: string
+        required: false
+        default: "1h"
+
+  - name: search_logs_by_pattern
+    description: Search logs using regex or string pattern
+    parameters:
+      - name: pattern
+        type: string
+        required: true
+        description: Search pattern (regex supported)
+      - name: service
+        type: string
+        required: false
+      - name: time_range
+        type: string
+        required: false
+        default: "1h"
+
+  - name: extract_log_signatures
+    description: Cluster similar errors into unique patterns
+    parameters:
+      - name: service
+        type: string
+        required: true
+      - name: time_range
+        type: string
+        required: false
+        default: "1h"
+      - name: max_signatures
+        type: integer
+        required: false
+        default: 10
+
+  - name: get_logs_around_timestamp
+    description: Get logs around a specific timestamp for context
+    parameters:
+      - name: timestamp
+        type: string
+        required: true
+        description: ISO timestamp (e.g., 2024-01-15T10:32:45Z)
+      - name: service
+        type: string
+        required: false
+      - name: window
+        type: string
+        required: false
+        default: "5m"
+        description: Time window around timestamp
+
+  - name: trace_request
+    description: Follow a request across services using trace_id
+    parameters:
+      - name: trace_id
+        type: string
+        required: true
+      - name: time_range
+        type: string
+        required: false
+        default: "1h"

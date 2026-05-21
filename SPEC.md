@@ -1,166 +1,275 @@
-# AutoSRE - Specification Document
+# AutoSRE - Self-Improving AI SRE Agent
 
-**Version:** 1.0.0
-**Last Updated:** 2026-05-01
-**Status:** Production Ready (MVP)
+## Vision
+An open-source, self-improving AI SRE agent that learns from every incident, adapts to your infrastructure, and gets better over time - like Hermes for infrastructure operations.
 
-## Overview
+## Starting Point
+**OpenSRE** (Tracer-Cloud/opensre) - 5470 stars, Apache 2.0
+- 60+ integrations (Datadog, Grafana, AWS, GCP, Azure, K8s, etc.)
+- Multi-LLM support (Anthropic, OpenAI, Gemini, Copilot, Ollama)
+- Structured investigation workflow
+- FastAPI backend, CLI interface
 
-AutoSRE is an open-source AI-powered SRE (Site Reliability Engineering) automation toolkit. It provides both CLI and Web UI interfaces for incident response, runbook execution, health checks, and alerting.
+## What We're Building
 
-## Core Features
+### Core Differentiators from OpenSRE
 
-### 1. CLI Interface (`autosre`)
-- **init**: Initialize AutoSRE in a project directory
-- **status**: Show system health and configuration
-- **context**: Manage context store (services, ownership, changes)
-- **eval**: Run evaluation scenarios
-- **agent**: Run the AI SRE agent
-- **sandbox**: Manage Kubernetes sandbox environments
-- **feedback**: Collect and manage feedback
-- **web**: Start the web dashboard
+1. **Self-Improving Memory System** (like Hermes)
+   - Episodic memory: remembers past incidents and resolutions
+   - Procedural memory: learns investigation patterns that work
+   - Semantic memory: builds knowledge graph of your infrastructure
+   - Auto-generates runbooks from successful investigations
 
-### 2. Web Dashboard
-- Real-time system status
-- Evaluation scenario management
-- Context store browsing
-- Agent activity monitoring
-- Feedback submission
+2. **Skill System** (like Hermes skills)
+   - Skills are learnable procedures (YAML + scripts)
+   - Agent can create new skills from successful investigations
+   - Skills can be shared across organizations
+   - Version-controlled, auditable
 
-### 3. Context Store
-A centralized repository tracking:
-- **Services**: Names, namespaces, teams, dependencies
-- **Ownership**: Team mappings, on-call schedules
-- **Changes**: Deployments, config changes, PRs
-- **Alerts**: Active and historical alerts
-- **Runbooks**: Incident response procedures
+3. **Multi-Agent Architecture**
+   - Orchestrator agent: triages and delegates
+   - Investigation agents: specialized per domain (K8s, DB, Network)
+   - Remediation agents: can take action (with approval gates)
+   - Learning agent: analyzes outcomes and improves system
 
-### 4. AI Agent
-- **Observer**: Watches for alerts and anomalies
-- **Reasoner**: LLM-powered root cause analysis
-- **Actor**: Execute remediation with guardrails
+4. **True Vendor/Cloud Agnostic**
+   - No cloud-specific assumptions in core
+   - Plugin architecture for integrations
+   - Works on-prem, multi-cloud, hybrid
+   - Bring your own observability stack
 
-### 5. Integrations
-| Integration | Status | Purpose |
-|-------------|--------|---------|
-| Kubernetes | ✅ Ready | Service discovery, pod status, events |
-| Prometheus | ✅ Ready | Metrics, alerts, Alertmanager |
-| GitHub | ✅ Ready | Deployments, PRs, commits |
-| PagerDuty | ✅ Ready | Incident management |
-| Slack | ✅ Ready | Notifications, approvals |
+5. **Production-Ready Features**
+   - Web UI for investigation management
+   - Slack/Discord/Teams/Telegram integration
+   - PagerDuty/OpsGenie webhook receiver
+   - SSO/RBAC for enterprise
+   - Audit logging for compliance
 
-### 6. Evaluation Framework
-- 35+ built-in incident scenarios
-- Difficulty levels: Easy, Medium, Hard
-- Categories: CPU, Memory, Network, Database, Kubernetes
+## Architecture
 
-## Technical Stack
-
-### Backend
-- **Language**: Python 3.11+
-- **CLI Framework**: Click + Rich
-- **Web Framework**: FastAPI + Jinja2
-- **Async HTTP**: HTTPX
-- **Validation**: Pydantic v2
-- **Config**: pydantic-settings + python-dotenv
-
-### Frontend (Web UI)
-- **Framework**: HTMX (hypermedia-driven)
-- **Styling**: Tailwind CSS
-- **No heavy JS frameworks** - server-rendered HTML
-
-### Data Storage
-- SQLite for context store
-- JSON files for configuration
-- YAML for runbooks
-
-### LLM Support
-- Ollama (local, default)
-- OpenAI (cloud)
-- Anthropic (cloud)
-- Azure OpenAI (enterprise)
-
-## Installation Methods
-
-### PyPI (Recommended)
-```bash
-pip install autosre
-# With extras
-pip install autosre[all]  # Full installation
-pip install autosre[llm]  # LLM providers
-pip install autosre[sandbox]  # Docker/Kind support
+```
+                                    ┌─────────────────┐
+                                    │   Slack/PD/     │
+                                    │   Telegram      │
+                                    └────────┬────────┘
+                                             │
+┌─────────────────────────────────────────────────────────────────────┐
+│                         AutoSRE Gateway                              │
+│  (Webhook receiver, rate limiting, auth, routing)                   │
+└────────┬────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                      Orchestrator Agent                              │
+│  - Triage incoming alerts                                           │
+│  - Load relevant skills and context                                 │
+│  - Delegate to specialized agents                                   │
+│  - Synthesize final report                                          │
+└────────┬────────────────────────────────────────────────────────────┘
+         │
+         ├──────────────┬──────────────┬──────────────┐
+         ▼              ▼              ▼              ▼
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│ K8s Agent   │  │ DB Agent    │  │ AWS Agent   │  │ Custom      │
+│             │  │             │  │             │  │ Agents      │
+│ - Pod logs  │  │ - Slow      │  │ - CloudWatch│  │             │
+│ - Events    │  │   queries   │  │ - EC2 status│  │ - Plugin    │
+│ - Resources │  │ - Locks     │  │ - Lambda    │  │   system    │
+│ - Helm      │  │ - Replica   │  │ - S3        │  │             │
+└──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘
+       │                │                │                │
+       └────────────────┴────────────────┴────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Memory System                                 │
+│                                                                      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │
+│  │ Episodic     │  │ Procedural   │  │ Semantic     │              │
+│  │ Memory       │  │ Memory       │  │ Memory       │              │
+│  │              │  │              │  │              │              │
+│  │ Past         │  │ Skills &     │  │ Infra        │              │
+│  │ incidents    │  │ runbooks     │  │ topology     │              │
+│  │ (SQLite/PG)  │  │ (YAML+Git)   │  │ (Neo4j)      │              │
+│  └──────────────┘  └──────────────┘  └──────────────┘              │
+└─────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                      Learning Agent                                  │
+│  - Analyzes successful investigations                               │
+│  - Extracts patterns into skills                                    │
+│  - Updates runbooks                                                 │
+│  - Suggests infrastructure improvements                             │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-### From Source
-```bash
-git clone https://github.com/opensre/autosre.git
-cd autosre
-pip install -e ".[all,dev]"
+## Project Structure
+
+```
+autosre/
+├── README.md
+├── LICENSE                    # Apache 2.0
+├── pyproject.toml
+├── Dockerfile
+├── docker-compose.yml
+├── Makefile
+│
+├── autosre/                   # Core Python package
+│   ├── __init__.py
+│   ├── cli/                   # CLI interface
+│   │   ├── __init__.py
+│   │   ├── main.py
+│   │   ├── investigate.py
+│   │   └── onboard.py
+│   │
+│   ├── gateway/               # Webhook gateway
+│   │   ├── __init__.py
+│   │   ├── server.py
+│   │   └── routes/
+│   │       ├── pagerduty.py
+│   │       ├── opsgenie.py
+│   │       ├── datadog.py
+│   │       └── generic.py
+│   │
+│   ├── agents/                # Multi-agent system
+│   │   ├── __init__.py
+│   │   ├── base.py
+│   │   ├── orchestrator.py
+│   │   ├── investigator.py
+│   │   ├── remediator.py
+│   │   └── learner.py
+│   │
+│   ├── memory/                # Self-improving memory
+│   │   ├── __init__.py
+│   │   ├── episodic.py       # Past incidents
+│   │   ├── procedural.py     # Skills & runbooks
+│   │   └── semantic.py       # Knowledge graph
+│   │
+│   ├── skills/                # Built-in skills
+│   │   ├── kubernetes/
+│   │   ├── databases/
+│   │   ├── aws/
+│   │   ├── gcp/
+│   │   ├── azure/
+│   │   └── observability/
+│   │
+│   ├── integrations/          # Platform integrations (from OpenSRE)
+│   │   ├── __init__.py
+│   │   ├── registry.py
+│   │   ├── datadog/
+│   │   ├── grafana/
+│   │   ├── prometheus/
+│   │   ├── cloudwatch/
+│   │   ├── kubernetes/
+│   │   └── ...
+│   │
+│   ├── tools/                 # Agent tools
+│   │   ├── __init__.py
+│   │   ├── registry.py
+│   │   └── ... (from OpenSRE)
+│   │
+│   ├── llm/                   # LLM providers
+│   │   ├── __init__.py
+│   │   ├── provider.py
+│   │   ├── anthropic.py
+│   │   ├── openai.py
+│   │   ├── gemini.py
+│   │   └── ollama.py
+│   │
+│   ├── delivery/              # Alert delivery
+│   │   ├── __init__.py
+│   │   ├── slack.py
+│   │   ├── discord.py
+│   │   ├── telegram.py
+│   │   └── pagerduty.py
+│   │
+│   └── web/                   # Web UI API
+│       ├── __init__.py
+│       ├── app.py
+│       └── routes/
+│
+├── web/                       # Web UI (Next.js)
+│   ├── package.json
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── page.tsx
+│   │   │   ├── investigations/
+│   │   │   ├── skills/
+│   │   │   ├── memory/
+│   │   │   └── settings/
+│   │   └── components/
+│   └── ...
+│
+├── tests/
+│   ├── unit/
+│   ├── integration/
+│   └── e2e/
+│
+├── docs/
+│   ├── quickstart.md
+│   ├── architecture.md
+│   ├── integrations.md
+│   └── skills.md
+│
+├── charts/                    # Helm chart
+│   └── autosre/
+│
+└── examples/
+    ├── alerts/
+    └── skills/
 ```
 
-### Docker
-```bash
-docker pull opensre/autosre:latest
-docker run -p 8080:8080 opensre/autosre web start
-```
+## Phase 1 - MVP (Launch Tomorrow)
 
-## Demo Mode
+### What's included:
+1. **CLI that works** (`autosre investigate`, `autosre onboard`)
+2. **Core integrations** (Datadog, Grafana, Prometheus, K8s, AWS)
+3. **Single agent** investigation flow
+4. **Basic memory** (SQLite episodic)
+5. **Slack/Telegram** delivery
+6. **Docker Compose** deployment
+7. **README** with quickstart
 
-For demonstration without real infrastructure:
+### What's NOT in MVP:
+- Web UI (CLI only)
+- Multi-agent system (single agent)
+- Skill learning (manual skills only)
+- Neo4j knowledge graph (SQLite only)
+- SSO/RBAC
 
-```bash
-# Initialize with demo data
-autosre init --demo
+## Phase 2 - Self-Improvement (Week 2)
 
-# Run evaluation scenarios
-autosre eval run --scenario high_cpu
+1. Skill extraction from investigations
+2. Memory-based context loading
+3. Runbook generation
+4. Investigation pattern learning
 
-# Start web UI with mock data
-autosre web start --demo
-```
+## Phase 3 - Production (Week 3-4)
 
-## API Endpoints (Web)
+1. Web UI
+2. Multi-agent architecture
+3. Neo4j integration
+4. Enterprise features
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Dashboard |
-| `/health` | GET | Health check |
-| `/api/docs` | GET | OpenAPI docs |
-| `/evals` | GET | Evaluation page |
-| `/evals/run` | POST | Run a scenario |
-| `/context` | GET | Context store |
-| `/agent` | GET | Agent status |
-| `/feedback` | GET/POST | Feedback form |
+## Technical Decisions
 
-## Security Features
+| Decision | Choice | Why |
+|----------|--------|-----|
+| Language | Python 3.12+ | OpenSRE base, LLM ecosystem |
+| Framework | FastAPI | OpenSRE base, async, fast |
+| CLI | Click + Rich | OpenSRE base, great DX |
+| DB | SQLite -> Postgres | Start simple, scale later |
+| LLM | Multi-provider | Copilot default (free), fall back to others |
+| Deployment | Docker Compose | Simple, portable |
+| License | Apache 2.0 | Commercial-friendly |
 
-- **Guardrails**: Approval workflows for risky actions
-- **Sanitization**: PII removal from logs
-- **Audit Logging**: All actions tracked
-- **RBAC**: Role-based access (API keys)
+## Success Criteria for MVP
 
-## Success Criteria
-
-1. ✅ CLI installs via `pip install autosre`
-2. ✅ Web UI accessible at `http://localhost:8080`
-3. ✅ Demo mode works without external dependencies
-4. ✅ 35+ evaluation scenarios runnable
-5. ✅ All 842 unit tests passing
-6. ✅ Documentation complete
-7. ⏳ Test coverage >80%
-8. ⏳ E2E browser tests for Web UI
-
-## Non-Goals (v1.0)
-
-- Multi-tenant SaaS deployment
-- Production incident management (this is a toolkit, not a platform)
-- Real-time collaboration features
-- Native mobile apps
-
-## Future Roadmap (v1.1+)
-
-- [ ] Datadog integration
-- [ ] Grafana Loki integration
-- [ ] OpsGenie integration
-- [ ] Multi-cluster support
-- [ ] Custom scenario builder UI
+1. [ ] `autosre onboard` sets up in < 5 minutes
+2. [ ] `autosre investigate "pod crashlooping"` produces useful RCA
+3. [ ] Works with Datadog OR Grafana OR Prometheus
+4. [ ] Sends summary to Slack/Telegram
+5. [ ] README is clear and complete
+6. [ ] Docker Compose works out of the box
+7. [ ] GitHub repo is public and star-worthy

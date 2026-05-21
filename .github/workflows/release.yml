@@ -8,10 +8,76 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  release:
+  build-and-push:
+    name: Build and Push Container
     runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      version: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,prefix=
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  helm-release:
+    name: Publish Helm Chart
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    permissions:
+      contents: write
+      packages: write
+
     steps:
       - uses: actions/checkout@v6
         with:
@@ -19,45 +85,71 @@ jobs:
 
       - name: Set up Python
         uses: actions/setup-python@v6
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Update chart version
+        run: |
+          VERSION=${{ needs.build-and-push.outputs.version }}
+          sed -i "s/^version:.*/version: ${VERSION}/" charts/autosre/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: ${VERSION}/" charts/autosre/Chart.yaml
+
+      - name: Package Helm chart
+        run: |
+          helm package charts/autosre -d .helm-packages
+
+      - name: Login to GHCR for Helm
+        run: |
+          echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Push Helm chart to GHCR
+        run: |
+          helm push .helm-packages/*.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+
+  github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-and-push, helm-release]
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
         with:
-          python-version: '3.11'
-
-      - name: Install build tools
-        run: pip install build twine
-
-      - name: Build package
-        run: python -m build
+          fetch-depth: 0
 
       - name: Generate changelog
         id: changelog
-        run: |
-          # Simple changelog from git log
-          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
-          git log $(git describe --tags --abbrev=0 HEAD^)..HEAD --pretty=format:"- %s" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+        uses: orhun/git-cliff-action@v3
+        with:
+          config: cliff.toml
+          args: --latest --strip header
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           body: |
-            ## What's Changed
-            ${{ steps.changelog.outputs.CHANGELOG }}
-            
-            ## Installation
-            ```bash
-            pip install opensre==${{ github.ref_name }}
-            ```
-            
-            Or use Docker:
-            ```bash
-            docker pull ghcr.io/srisainath/opensre:${{ github.ref_name }}
-            ```
-          files: dist/*
-          generate_release_notes: true
+            ## Docker Image
 
-      - name: Publish to PyPI
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: twine upload dist/* --skip-existing
-        continue-on-error: true  # Don't fail if PyPI not configured
+            ```bash
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.version }}
+            ```
+
+            ## Helm Chart
+
+            ```bash
+            helm install autosre oci://ghcr.io/${{ github.repository_owner }}/charts/autosre --version ${{ needs.build-and-push.outputs.version }}
+            ```
+
+            ## Changes
+
+            ${{ steps.changelog.outputs.content }}
+          draft: false
+          prerelease: ${{ contains(github.ref, '-') }}
+          generate_release_notes: true

@@ -1,0 +1,31 @@
+apiVersion: v2
+name: autosre
+description: AI SRE Agent for automated incident investigation
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - sre
+  - incident-response
+  - ai
+  - automation
+  - observability
+home: https://autosre.io
+sources:
+  - https://github.com/autosre/autosre
+maintainers:
+  - name: AutoSRE Team
+    email: team@autosre.io
+dependencies:
+  - name: postgresql
+    version: "~13"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+  - name: neo4j
+    version: "~5"
+    repository: "https://helm.neo4j.com/neo4j"
+    condition: neo4j.enabled
+  - name: redis
+    version: "~18"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled

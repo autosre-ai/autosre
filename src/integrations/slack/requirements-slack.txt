@@ -1,0 +1,23 @@
+# Slack Bot Dependencies
+#
+# Core dependencies for the AutoSRE Slack integration
+
+# Slack SDK
+slack-bolt>=1.18.0
+slack-sdk>=3.26.0
+
+# HTTP client with SSE support
+httpx>=0.27.0
+httpx-sse>=0.4.0
+
+# Structured logging
+structlog>=24.1.0
+
+# Async support
+asyncio>=3.4.3
+
+# Configuration
+python-dotenv>=1.0.0
+
+# Optional: Metrics/monitoring
+prometheus-client>=0.20.0

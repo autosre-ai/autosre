@@ -1,0 +1,148 @@
+# Toil Tracking Configuration
+# AutoSRE - SRE Toil Management
+
+# Budget Settings
+budget:
+  # Maximum acceptable toil ratio (SRE standard: 50%)
+  toil_cap: 0.50
+  
+  # Warning threshold (start taking action)
+  warning_threshold: 0.40
+  
+  # Alert channels when budget exceeded
+  alert_channels:
+    - slack:#sre-alerts
+    - pagerduty:sre-toil-budget
+  
+  # Review cadence
+  review_cadence: weekly
+
+# Team Configuration
+teams:
+  - name: platform-sre
+    size: 5
+    hours_per_week: 40
+    target_toil_ratio: 0.30  # More aggressive than default
+    
+  - name: product-sre
+    size: 3
+    hours_per_week: 40
+    target_toil_ratio: 0.40
+
+# Toil Categories with Automation Effort Estimates
+categories:
+  incident_response:
+    description: "Responding to and remediating incidents"
+    default_automation_hours: 40
+    automation_potential: medium
+    
+  manual_scaling:
+    description: "Manually scaling services up or down"
+    default_automation_hours: 16
+    automation_potential: high
+    
+  deployment:
+    description: "Manual deployment and rollback tasks"
+    default_automation_hours: 24
+    automation_potential: high
+    
+  monitoring:
+    description: "Manual monitoring and alert triage"
+    default_automation_hours: 8
+    automation_potential: high
+    
+  access_requests:
+    description: "Processing access and permission requests"
+    default_automation_hours: 16
+    automation_potential: high
+    
+  maintenance:
+    description: "Routine maintenance tasks"
+    default_automation_hours: 20
+    automation_potential: medium
+    
+  on_call:
+    description: "On-call overhead and handoffs"
+    default_automation_hours: 32
+    automation_potential: low
+    
+  data_tasks:
+    description: "Data cleanup, migration, backfills"
+    default_automation_hours: 12
+    automation_potential: medium
+
+# Automation Maturity Targets
+maturity:
+  # Default target for all services
+  default_target_level: 4  # Ships with automation
+  
+  # Service-specific targets
+  services:
+    legacy-monolith:
+      target_level: 3  # Generic shared scripts
+      notes: "Legacy system, limit investment"
+      
+    api-gateway:
+      target_level: 5  # Self-healing
+      notes: "Critical path, needs autonomous operation"
+      
+    payment-service:
+      target_level: 5  # Self-healing
+      notes: "Revenue critical"
+
+# ROI Thresholds
+roi:
+  # Minimum ROI to approve automation investment
+  minimum_payback_months: 6
+  
+  # Priority thresholds
+  high_priority_score: 0.7
+  medium_priority_score: 0.4
+  
+  # Cost assumptions
+  operator_hourly_cost: 75.0
+  downtime_cost_per_minute: 100.0
+  error_cost_default: 1000.0
+
+# Dashboard Settings
+dashboard:
+  # Data retention
+  retention_days: 365
+  
+  # Trend calculation
+  trend_weeks: 12
+  
+  # Export format
+  export_format: json
+  
+  # Refresh interval (for live dashboards)
+  refresh_minutes: 15
+
+# Reporting
+reporting:
+  # Weekly summary
+  weekly_summary:
+    enabled: true
+    recipients:
+      - sre-team@company.com
+      - engineering-leads@company.com
+    day: monday
+    time: "09:00"
+  
+  # Monthly executive summary
+  monthly_executive:
+    enabled: true
+    recipients:
+      - vp-engineering@company.com
+      - cto@company.com
+    day: 1  # First of month
+    time: "08:00"
+
+# Key Principles (for reference)
+principles:
+  - "Toil should never exceed 50% of team capacity"
+  - "If a human needs to touch during normal ops, you have a bug"
+  - "Automation is a force multiplier, not a panacea"
+  - "Best systems need neither automation NOR manual operation"
+  - "Time savings is the least important benefit of automation"
+  - "Consistency, extensibility, and decoupling matter more"

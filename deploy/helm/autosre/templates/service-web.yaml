@@ -1,0 +1,22 @@
+{{- if .Values.web.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "autosre.fullname" . }}-web
+  labels:
+    {{- include "autosre.web.labels" . | nindent 4 }}
+  annotations:
+    {{- include "autosre.annotations" . | nindent 4 }}
+    {{- with .Values.web.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  type: {{ .Values.web.service.type }}
+  ports:
+    - port: {{ .Values.web.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "autosre.web.selectorLabels" . | nindent 4 }}
+{{- end }}

@@ -1,0 +1,228 @@
+---
+name: infrastructure
+description: Kubernetes and cloud infrastructure debugging methodology
+category: infrastructure
+enabled: true
+required_integrations: []  # Works with any K8s cluster
+version: "1.0.0"
+---
+
+actions:
+  # Pod operations
+  - name: list_pods
+    description: List pods in a namespace with status
+    parameters:
+      - name: namespace
+        type: string
+        required: false
+        default: "default"
+      - name: labels
+        type: string
+        required: false
+        description: Label selector (e.g., app=nginx)
+      - name: all_namespaces
+        type: boolean
+        required: false
+        default: false
+
+  - name: describe_pod
+    description: Get detailed pod information including events
+    parameters:
+      - name: pod
+        type: string
+        required: true
+      - name: namespace
+        type: string
+        required: false
+        default: "default"
+
+  - name: get_pod_logs
+    description: Fetch logs from a pod container
+    parameters:
+      - name: pod
+        type: string
+        required: true
+      - name: namespace
+        type: string
+        required: false
+        default: "default"
+      - name: container
+        type: string
+        required: false
+        description: Container name for multi-container pods
+      - name: previous
+        type: boolean
+        required: false
+        default: false
+        description: Get logs from previous container instance
+      - name: tail
+        type: integer
+        required: false
+        default: 100
+
+  - name: get_events
+    description: Get cluster events
+    parameters:
+      - name: namespace
+        type: string
+        required: false
+        default: "default"
+      - name: resource
+        type: string
+        required: false
+        description: Filter by resource name
+      - name: minutes
+        type: integer
+        required: false
+        default: 15
+        description: Time window in minutes
+
+  # Deployment operations
+  - name: list_deployments
+    description: List deployments with replica status
+    parameters:
+      - name: namespace
+        type: string
+        required: false
+        default: "default"
+
+  - name: describe_deployment
+    description: Get detailed deployment information
+    parameters:
+      - name: deployment
+        type: string
+        required: true
+      - name: namespace
+        type: string
+        required: false
+        default: "default"
+
+  - name: get_rollout_status
+    description: Get deployment rollout status and history
+    parameters:
+      - name: deployment
+        type: string
+        required: true
+      - name: namespace
+        type: string
+        required: false
+        default: "default"
+
+  # Service operations
+  - name: list_services
+    description: List services with endpoints
+    parameters:
+      - name: namespace
+        type: string
+        required: false
+        default: "default"
+
+  - name: get_endpoints
+    description: Get service endpoints
+    parameters:
+      - name: service
+        type: string
+        required: true
+      - name: namespace
+        type: string
+        required: false
+        default: "default"
+
+  # Resource usage
+  - name: get_resource_usage
+    description: Get CPU/memory usage for pods or nodes
+    parameters:
+      - name: resource_type
+        type: string
+        required: true
+        description: Resource type (pods, nodes)
+      - name: namespace
+        type: string
+        required: false
+        default: "default"
+      - name: name
+        type: string
+        required: false
+        description: Specific resource name
+
+  # Node operations
+  - name: list_nodes
+    description: List cluster nodes with conditions
+    parameters: []
+
+  - name: describe_node
+    description: Get detailed node information
+    parameters:
+      - name: node
+        type: string
+        required: true
+
+  # Namespace operations
+  - name: list_namespaces
+    description: List all namespaces
+    parameters: []
+
+  # Exec (requires approval)
+  - name: exec_command
+    description: Execute command in a pod (requires approval)
+    parameters:
+      - name: pod
+        type: string
+        required: true
+      - name: command
+        type: array
+        items:
+          type: string
+        required: true
+      - name: namespace
+        type: string
+        required: false
+        default: "default"
+      - name: container
+        type: string
+        required: false
+    requires_approval: true
+
+  # Write operations (require approval)
+  - name: restart_pod
+    description: Delete a pod to trigger restart (requires approval)
+    parameters:
+      - name: pod
+        type: string
+        required: true
+      - name: namespace
+        type: string
+        required: false
+        default: "default"
+    requires_approval: true
+
+  - name: scale_deployment
+    description: Scale deployment replicas (requires approval)
+    parameters:
+      - name: deployment
+        type: string
+        required: true
+      - name: replicas
+        type: integer
+        required: true
+      - name: namespace
+        type: string
+        required: false
+        default: "default"
+    requires_approval: true
+
+  - name: rollback_deployment
+    description: Rollback deployment to previous revision (requires approval)
+    parameters:
+      - name: deployment
+        type: string
+        required: true
+      - name: namespace
+        type: string
+        required: false
+        default: "default"
+      - name: revision
+        type: integer
+        required: false
+        description: Specific revision to rollback to
+    requires_approval: true

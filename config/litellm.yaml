@@ -1,0 +1,67 @@
+# ==============================================================================
+# LiteLLM Configuration - Multi-Provider LLM Proxy
+# ==============================================================================
+# 
+# This configuration routes all LLM requests through a unified API
+# Set the appropriate API keys in your environment
+#
+# ==============================================================================
+
+model_list:
+  # Claude models (recommended for SRE tasks)
+  - model_name: claude-sonnet
+    litellm_params:
+      model: anthropic/claude-sonnet-4-20250514
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: claude-haiku
+    litellm_params:
+      model: anthropic/claude-haiku-4-5-20251001
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: claude-opus
+    litellm_params:
+      model: anthropic/claude-opus-4-20250514
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  # OpenAI models (fallback)
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+  # OpenRouter (multi-provider)
+  - model_name: openrouter-claude
+    litellm_params:
+      model: openrouter/anthropic/claude-sonnet-4
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # Google Gemini
+  - model_name: gemini-pro
+    litellm_params:
+      model: gemini/gemini-2.0-flash
+      api_key: os.environ/GOOGLE_API_KEY
+
+# Default model for investigations
+general_settings:
+  master_key: sk-autosre
+  database_connection_pool_limit: 100
+  
+litellm_settings:
+  drop_params: true
+  set_verbose: false
+  max_budget: 100
+  budget_duration: 1d
+
+# Router settings for load balancing
+router_settings:
+  routing_strategy: least-busy
+  num_retries: 3
+  timeout: 600
+  allowed_fails: 3
+  cooldown_time: 60

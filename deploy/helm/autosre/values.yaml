@@ -1,0 +1,747 @@
+# =============================================================================
+# AutoSRE Helm Chart - Default Values
+# =============================================================================
+# This file contains all configurable options for the AutoSRE deployment.
+# Override these values using --set flags or a custom values file.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Global Configuration
+# -----------------------------------------------------------------------------
+global:
+  # -- Image pull secrets for private registries
+  imagePullSecrets: []
+  #  - name: my-registry-secret
+
+  # -- Storage class for persistent volumes (leave empty for cluster default)
+  storageClass: ""
+
+  # -- Domain for all services (used in ingress)
+  domain: "autosre.local"
+
+  # -- Environment name (used in labels and naming)
+  environment: "production"
+
+# -----------------------------------------------------------------------------
+# Common Labels and Annotations
+# -----------------------------------------------------------------------------
+commonLabels: {}
+  # team: platform
+  # cost-center: engineering
+
+commonAnnotations: {}
+  # prometheus.io/scrape: "true"
+
+# -----------------------------------------------------------------------------
+# SRE Agent Configuration
+# -----------------------------------------------------------------------------
+agent:
+  # -- Enable the SRE Agent deployment
+  enabled: true
+
+  # -- Number of replicas (consider HPA for auto-scaling)
+  replicaCount: 2
+
+  image:
+    # -- Container registry
+    repository: autosre/sre-agent
+    # -- Image pull policy
+    pullPolicy: IfNotPresent
+    # -- Image tag (defaults to Chart appVersion)
+    tag: ""
+
+  # -- Pod annotations
+  podAnnotations: {}
+    # prometheus.io/scrape: "true"
+    # prometheus.io/port: "8080"
+
+  # -- Pod labels
+  podLabels: {}
+
+  # -- Pod security context
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+
+  # -- Container security context
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+  # -- Service configuration
+  service:
+    type: ClusterIP
+    port: 8080
+    # -- Annotations for the service (e.g., for cloud load balancers)
+    annotations: {}
+
+  # -- Resource limits and requests
+  resources:
+    limits:
+      cpu: "4"
+      memory: 4Gi
+    requests:
+      cpu: "1"
+      memory: 1Gi
+
+  # -- Liveness probe configuration
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    timeoutSeconds: 15
+    failureThreshold: 3
+    successThreshold: 1
+
+  # -- Readiness probe configuration
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 10
+    failureThreshold: 3
+    successThreshold: 1
+
+  # -- Startup probe configuration (for slow-starting containers)
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 10
+    failureThreshold: 30
+    successThreshold: 1
+
+  # -- Horizontal Pod Autoscaler configuration
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+    # -- Custom metrics for scaling (optional)
+    customMetrics: []
+    #  - type: Pods
+    #    pods:
+    #      metric:
+    #        name: agent_queue_length
+    #      target:
+    #        type: AverageValue
+    #        averageValue: "100"
+
+  # -- Node selector
+  nodeSelector: {}
+    # node-type: compute
+
+  # -- Tolerations
+  tolerations: []
+    # - key: "dedicated"
+    #   operator: "Equal"
+    #   value: "ai-workloads"
+    #   effect: "NoSchedule"
+
+  # -- Affinity rules
+  affinity: {}
+    # podAntiAffinity:
+    #   requiredDuringSchedulingIgnoredDuringExecution:
+    #     - labelSelector:
+    #         matchLabels:
+    #           app.kubernetes.io/component: agent
+    #       topologyKey: kubernetes.io/hostname
+
+  # -- Extra environment variables
+  extraEnv: []
+    # - name: EXTRA_VAR
+    #   value: "some-value"
+
+  # -- Extra volume mounts
+  extraVolumeMounts: []
+    # - name: config
+    #   mountPath: /app/config
+
+  # -- Extra volumes
+  extraVolumes: []
+    # - name: config
+    #   configMap:
+    #     name: agent-config
+
+  # -- Agent-specific configuration
+  config:
+    # -- Log level (DEBUG, INFO, WARNING, ERROR)
+    logLevel: INFO
+    # -- Request timeout in seconds
+    timeout: 300
+    # -- Maximum retry attempts
+    maxRetries: 3
+    # -- Default LLM model
+    defaultModel: "gpt-4o"
+
+# -----------------------------------------------------------------------------
+# API Gateway Configuration
+# -----------------------------------------------------------------------------
+api:
+  # -- Enable the API Gateway deployment
+  enabled: true
+
+  # -- Number of replicas
+  replicaCount: 2
+
+  image:
+    repository: autosre/api-gateway
+    pullPolicy: IfNotPresent
+    tag: ""
+
+  podAnnotations: {}
+  podLabels: {}
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+  service:
+    type: ClusterIP
+    port: 8000
+    annotations: {}
+
+  resources:
+    limits:
+      cpu: "2"
+      memory: 1Gi
+    requests:
+      cpu: "500m"
+      memory: 256Mi
+
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    timeoutSeconds: 10
+    failureThreshold: 3
+    successThreshold: 1
+
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 10
+    failureThreshold: 3
+    successThreshold: 1
+
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 30
+    successThreshold: 1
+
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+    customMetrics: []
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  extraEnv: []
+  extraVolumeMounts: []
+  extraVolumes: []
+
+  # -- API-specific configuration
+  config:
+    # -- Number of Uvicorn workers
+    workers: 4
+    # -- Log level
+    logLevel: info
+    # -- JWT expiration in hours
+    jwtExpirationHours: 24
+    # -- CORS allowed origins (comma-separated)
+    corsOrigins: "https://autosre.local"
+
+# -----------------------------------------------------------------------------
+# Web UI Configuration
+# -----------------------------------------------------------------------------
+web:
+  # -- Enable the Web UI deployment
+  enabled: true
+
+  # -- Number of replicas
+  replicaCount: 2
+
+  image:
+    repository: autosre/web-ui
+    pullPolicy: IfNotPresent
+    tag: ""
+
+  podAnnotations: {}
+  podLabels: {}
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false  # Next.js needs writable fs for cache
+    capabilities:
+      drop:
+        - ALL
+
+  service:
+    type: ClusterIP
+    port: 3000
+    annotations: {}
+
+  resources:
+    limits:
+      cpu: "1"
+      memory: 512Mi
+    requests:
+      cpu: "250m"
+      memory: 128Mi
+
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    timeoutSeconds: 10
+    failureThreshold: 3
+    successThreshold: 1
+
+  readinessProbe:
+    httpGet:
+      path: /api/health
+      port: http
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 10
+    failureThreshold: 3
+    successThreshold: 1
+
+  startupProbe:
+    httpGet:
+      path: /api/health
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 5
+    failureThreshold: 30
+    successThreshold: 1
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  extraEnv: []
+  extraVolumeMounts: []
+  extraVolumes: []
+
+  # -- Web-specific configuration
+  config:
+    # -- Public API URL (for client-side requests)
+    publicApiUrl: "https://api.autosre.local"
+
+# -----------------------------------------------------------------------------
+# LiteLLM Configuration (Config Service)
+# -----------------------------------------------------------------------------
+config:
+  # -- Enable LiteLLM deployment
+  enabled: true
+
+  # -- Number of replicas
+  replicaCount: 1
+
+  image:
+    repository: ghcr.io/berriai/litellm
+    pullPolicy: IfNotPresent
+    tag: "main-latest"
+
+  podAnnotations: {}
+  podLabels: {}
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false  # LiteLLM needs writable fs
+    capabilities:
+      drop:
+        - ALL
+
+  service:
+    type: ClusterIP
+    port: 4000
+    annotations: {}
+
+  resources:
+    limits:
+      cpu: "1"
+      memory: 1Gi
+    requests:
+      cpu: "250m"
+      memory: 256Mi
+
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    timeoutSeconds: 10
+    failureThreshold: 3
+    successThreshold: 1
+
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 10
+    failureThreshold: 3
+    successThreshold: 1
+
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 10
+    failureThreshold: 30
+    successThreshold: 1
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  extraEnv: []
+  extraVolumeMounts: []
+  extraVolumes: []
+
+  # -- LiteLLM configuration (will be mounted as config.yaml)
+  configYaml: |
+    model_list:
+      - model_name: gpt-4o
+        litellm_params:
+          model: openai/gpt-4o
+          api_key: os.environ/OPENAI_API_KEY
+      - model_name: claude-3-sonnet
+        litellm_params:
+          model: anthropic/claude-3-sonnet-20240229
+          api_key: os.environ/ANTHROPIC_API_KEY
+    litellm_settings:
+      drop_params: true
+      cache: true
+      cache_params:
+        type: redis
+        host: ${REDIS_HOST}
+        port: ${REDIS_PORT}
+        password: ${REDIS_PASSWORD}
+
+# -----------------------------------------------------------------------------
+# Ingress Configuration
+# -----------------------------------------------------------------------------
+ingress:
+  # -- Enable ingress
+  enabled: true
+
+  # -- Ingress class name
+  className: nginx
+
+  # -- Ingress annotations
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+
+  # -- TLS configuration
+  tls:
+    enabled: true
+    # -- Secret name for TLS certificates (auto-generated if using cert-manager)
+    secretName: autosre-tls
+
+  # -- Hosts configuration
+  hosts:
+    # -- Web UI host
+    web: "autosre.local"
+    # -- API host
+    api: "api.autosre.local"
+
+# -----------------------------------------------------------------------------
+# Service Account Configuration
+# -----------------------------------------------------------------------------
+serviceAccount:
+  # -- Create service account
+  create: true
+  # -- Service account name (generated if not specified)
+  name: ""
+  # -- Service account annotations
+  annotations: {}
+    # eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/autosre
+  # -- Automount API credentials
+  automountServiceAccountToken: false
+
+# -- RBAC configuration
+rbac:
+  # -- Create RBAC resources
+  create: true
+  # -- Extra rules to add to the Role
+  rules: []
+    # - apiGroups: [""]
+    #   resources: ["pods"]
+    #   verbs: ["get", "list", "watch"]
+
+# -----------------------------------------------------------------------------
+# Pod Disruption Budget Configuration
+# -----------------------------------------------------------------------------
+podDisruptionBudget:
+  # -- Enable PDB
+  enabled: true
+  # -- Minimum available pods (can be number or percentage)
+  minAvailable: 1
+  # -- Maximum unavailable pods (alternative to minAvailable)
+  # maxUnavailable: 1
+
+# -----------------------------------------------------------------------------
+# Network Policy Configuration
+# -----------------------------------------------------------------------------
+networkPolicy:
+  # -- Enable network policies
+  enabled: true
+  # -- Allow ingress from specific namespaces
+  ingressNamespaces:
+    - ingress-nginx
+    - monitoring
+  # -- Additional ingress rules
+  extraIngressRules: []
+  # -- Additional egress rules
+  extraEgressRules: []
+
+# -----------------------------------------------------------------------------
+# Secrets Configuration
+# -----------------------------------------------------------------------------
+secrets:
+  # -- Create secrets (set to false if using external secrets manager)
+  create: true
+
+  # -- Use existing secret name (if secrets.create is false)
+  existingSecret: ""
+
+  # -- Database credentials
+  database:
+    # -- PostgreSQL username
+    user: autosre
+    # -- PostgreSQL password (required)
+    password: ""
+    # -- PostgreSQL database name
+    name: autosre
+
+  # -- Neo4j credentials
+  neo4j:
+    user: neo4j
+    password: ""
+
+  # -- Redis password
+  redis:
+    password: ""
+
+  # -- LiteLLM master key
+  litellm:
+    masterKey: ""
+    saltKey: ""
+
+  # -- API security keys
+  api:
+    secretKey: ""
+    jwtSecretKey: ""
+
+  # -- NextAuth secret for Web UI
+  nextauth:
+    secret: ""
+
+  # -- LLM API keys
+  llm:
+    openaiApiKey: ""
+    anthropicApiKey: ""
+    azureApiKey: ""
+    azureApiBase: ""
+
+# -----------------------------------------------------------------------------
+# External Dependencies Configuration
+# -----------------------------------------------------------------------------
+# Use these when not deploying dependencies as sub-charts
+
+externalPostgresql:
+  # -- Use external PostgreSQL
+  enabled: false
+  # -- External PostgreSQL host
+  host: ""
+  # -- External PostgreSQL port
+  port: 5432
+  # -- Existing secret for credentials
+  existingSecret: ""
+  # -- Secret key for username
+  userKey: "username"
+  # -- Secret key for password
+  passwordKey: "password"
+
+externalRedis:
+  # -- Use external Redis
+  enabled: false
+  # -- External Redis host
+  host: ""
+  # -- External Redis port
+  port: 6379
+  # -- Existing secret for password
+  existingSecret: ""
+  # -- Secret key for password
+  passwordKey: "password"
+
+externalNeo4j:
+  # -- Use external Neo4j
+  enabled: false
+  # -- External Neo4j URI (bolt://host:port)
+  uri: ""
+  # -- Existing secret for credentials
+  existingSecret: ""
+  # -- Secret key for username
+  userKey: "username"
+  # -- Secret key for password
+  passwordKey: "password"
+
+# -----------------------------------------------------------------------------
+# Sub-chart Overrides
+# -----------------------------------------------------------------------------
+# PostgreSQL sub-chart configuration
+# See: https://github.com/bitnami/charts/tree/main/bitnami/postgresql
+postgresql:
+  enabled: true
+  auth:
+    username: autosre
+    database: autosre
+    # -- Password set from secrets.database.password
+    existingSecret: ""
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+    resources:
+      limits:
+        cpu: "2"
+        memory: 2Gi
+      requests:
+        cpu: "500m"
+        memory: 512Mi
+
+# Redis sub-chart configuration
+# See: https://github.com/bitnami/charts/tree/main/bitnami/redis
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    # -- Password set from secrets.redis.password
+    existingSecret: ""
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+    resources:
+      limits:
+        cpu: "1"
+        memory: 512Mi
+      requests:
+        cpu: "100m"
+        memory: 64Mi
+  replica:
+    replicaCount: 0  # Standalone mode
+
+# Neo4j sub-chart configuration
+# See: https://neo4j.com/docs/operations-manual/current/kubernetes/
+neo4j:
+  enabled: true
+  neo4j:
+    name: autosre-neo4j
+    # -- Password set from secrets.neo4j.password
+    passwordFromSecret: ""
+    edition: community
+  volumes:
+    data:
+      mode: defaultStorageClass
+      defaultStorageClass:
+        requests:
+          storage: 10Gi
+  resources:
+    cpu: "2"
+    memory: 2Gi
+
+# -----------------------------------------------------------------------------
+# Monitoring Configuration
+# -----------------------------------------------------------------------------
+monitoring:
+  # -- Enable Prometheus ServiceMonitor
+  serviceMonitor:
+    enabled: false
+    # -- ServiceMonitor namespace (defaults to release namespace)
+    namespace: ""
+    # -- Scrape interval
+    interval: 30s
+    # -- Additional labels for ServiceMonitor
+    labels: {}
+
+  # -- Enable Prometheus PodMonitor
+  podMonitor:
+    enabled: false
+
+  # -- Grafana dashboard ConfigMap
+  grafanaDashboard:
+    enabled: false
+    # -- Dashboard namespace
+    namespace: monitoring
+    # -- Dashboard labels
+    labels:
+      grafana_dashboard: "1"

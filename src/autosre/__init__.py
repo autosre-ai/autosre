@@ -36,6 +36,39 @@ from autosre.agents import (
 from autosre.llm import LLMRouter
 from autosre.reporters import TerminalReporter
 
+# On-call and Postmortem (v2.1)
+from autosre.alerts.quality import (
+    AlertQualityValidator,
+    AlertQualityResult,
+    REQUIRED_ALERT_FIELDS,
+)
+from autosre.oncall.load import (
+    OnCallLoadTracker,
+    ShiftStatus,
+    LoadStatus,
+    MAX_INCIDENTS_PER_SHIFT,
+    SHIFT_HOURS,
+)
+from autosre.postmortem.generator import (
+    PostmortemGenerator,
+    PostmortemDraft,
+    ActionItem,
+    ActionPriority,
+    AIPerformanceReview,
+)
+from autosre.postmortem.policy import (
+    PostmortemPolicy,
+    PostmortemTrigger,
+    TriggerType,
+    PolicyConfig,
+    load_policy_from_yaml,
+)
+from autosre.utils.deliberate import (
+    DeliberateReasoner,
+    DeliberationRecord,
+    PAUSE_CHECKLIST_PROMPT,
+)
+
 # Foundation (v1) exports - maintained for compatibility
 from autosre.foundation.context_store import ContextStore
 from autosre.foundation.models import Service, Ownership, ChangeEvent
@@ -75,6 +108,28 @@ __all__ = [
     "IncidentReport",
     "LLMRouter",
     "TerminalReporter",
+    # On-call & Postmortem (v2.1)
+    "AlertQualityValidator",
+    "AlertQualityResult",
+    "REQUIRED_ALERT_FIELDS",
+    "OnCallLoadTracker",
+    "ShiftStatus",
+    "LoadStatus",
+    "MAX_INCIDENTS_PER_SHIFT",
+    "SHIFT_HOURS",
+    "PostmortemGenerator",
+    "PostmortemDraft",
+    "ActionItem",
+    "ActionPriority",
+    "AIPerformanceReview",
+    "PostmortemPolicy",
+    "PostmortemTrigger",
+    "TriggerType",
+    "PolicyConfig",
+    "load_policy_from_yaml",
+    "DeliberateReasoner",
+    "DeliberationRecord",
+    "PAUSE_CHECKLIST_PROMPT",
     # Foundation (v1)
     "ContextStore",
     "Service",

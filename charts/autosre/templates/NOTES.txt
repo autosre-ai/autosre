@@ -1,0 +1,105 @@
+{{/*
+NOTES.txt - Helm chart post-installation notes
+*/}}
+
+🚀 AutoSRE has been deployed successfully!
+
+{{- if .Values.ingress.enabled }}
+
+📡 Access AutoSRE:
+{{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  {{- if eq .service "web" }}
+  - Web UI: http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+  {{- if eq .service "api" }}
+  - API: http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- else }}
+
+📡 Access AutoSRE:
+
+Get the application URLs by running:
+
+{{- if .Values.web.enabled }}
+
+# Web UI
+kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "autosre.web.fullname" . }} 3000:{{ .Values.service.web.port }}
+# Then visit: http://localhost:3000
+{{- end }}
+
+{{- if .Values.api.enabled }}
+
+# API
+kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "autosre.api.fullname" . }} 8080:{{ .Values.service.api.port }}
+# Then visit: http://localhost:8080/api/v1/version
+{{- end }}
+
+{{- end }}
+
+⚙️  Configuration:
+
+{{- if .Values.postgresql.enabled }}
+  - PostgreSQL: {{ include "autosre.postgresql.host" . }}:{{ include "autosre.postgresql.port" . }}
+{{- else }}
+  - PostgreSQL: {{ .Values.externalDatabase.host }}:{{ .Values.externalDatabase.port }} (external)
+{{- end }}
+
+{{- if .Values.redis.enabled }}
+  - Redis: {{ include "autosre.redis.host" . }}:{{ include "autosre.redis.port" . }}
+{{- else }}
+  - Redis: {{ .Values.externalRedis.host }}:{{ .Values.externalRedis.port }} (external)
+{{- end }}
+
+{{- if .Values.neo4j.enabled }}
+  - Neo4j: {{ include "autosre.neo4j.uri" . }}
+{{- else }}
+  - Neo4j: {{ .Values.externalNeo4j.uri }} (external)
+{{- end }}
+
+  - AI Provider: {{ .Values.config.aiProvider }} ({{ .Values.config.aiModel }})
+
+🔌 Integrations:
+  - Prometheus: {{ if .Values.config.prometheusEnabled }}✅ Enabled ({{ .Values.config.prometheusUrl }}){{ else }}❌ Disabled{{ end }}
+  - Grafana: {{ if .Values.config.grafanaEnabled }}✅ Enabled ({{ .Values.config.grafanaUrl }}){{ else }}❌ Disabled{{ end }}
+  - Slack: {{ if .Values.config.slackEnabled }}✅ Enabled{{ else }}❌ Disabled{{ end }}
+  - PagerDuty: {{ if .Values.config.pagerdutyEnabled }}✅ Enabled{{ else }}❌ Disabled{{ end }}
+  - Kubernetes: {{ if .Values.config.kubernetesEnabled }}✅ Enabled{{ else }}❌ Disabled{{ end }}
+
+📊 Monitoring:
+{{- if .Values.config.metricsEnabled }}
+  Metrics are available on port {{ .Values.config.metricsPort }}
+  
+  To scrape metrics with Prometheus:
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "autosre.api.fullname" . }} 9090:{{ .Values.config.metricsPort }}
+{{- else }}
+  Metrics are disabled
+{{- end }}
+
+🧪 Run Tests:
+  helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+📚 Documentation:
+  https://docs.autosre.io
+
+⚠️  Important Notes:
+
+{{- if .Values.secrets.create }}
+1. Secrets are auto-generated. For production, consider using external secrets management.
+   View generated secrets: kubectl get secret {{ include "autosre.secretName" . }} -n {{ .Release.Namespace }} -o yaml
+{{- end }}
+
+{{- if not .Values.ingress.enabled }}
+2. Ingress is disabled. Enable it for external access:
+   --set ingress.enabled=true --set ingress.hosts[0].host=autosre.example.com
+{{- end }}
+
+{{- if not .Values.agent.autoscaling.enabled }}
+3. Agent autoscaling is disabled. Enable for production:
+   --set agent.autoscaling.enabled=true
+{{- end }}
+
+Thank you for using AutoSRE! 🎉

@@ -1,6 +1,23 @@
-"""AutoSRE Subagents — Domain-specific investigation agents."""
+"""AutoSRE Subagents — Domain-specific investigation agents with ReAct loop."""
 
-from .base import BaseSubagent, SubagentConfig, MockSubagent, run_subagents_parallel
+from .base import (
+    BaseSubagent,
+    SubagentConfig,
+    MockSubagent,
+    run_subagents_parallel,
+)
+from .react import (
+    Tool,
+    ToolCall,
+    ToolResult,
+    ReactConfig,
+    ReactDecision,
+    Message,
+    react_loop,
+    create_tool,
+    hash_tool_call,
+    trim_old_messages,
+)
 from .kubernetes import KubernetesSubagent, create_kubernetes_subagent
 from .metrics import MetricsSubagent, create_metrics_subagent
 from .logs import LogsSubagent, create_logs_subagent
@@ -11,6 +28,17 @@ __all__ = [
     "SubagentConfig",
     "MockSubagent",
     "run_subagents_parallel",
+    # ReAct loop
+    "Tool",
+    "ToolCall",
+    "ToolResult",
+    "ReactConfig",
+    "ReactDecision",
+    "Message",
+    "react_loop",
+    "create_tool",
+    "hash_tool_call",
+    "trim_old_messages",
     # Kubernetes
     "KubernetesSubagent",
     "create_kubernetes_subagent",

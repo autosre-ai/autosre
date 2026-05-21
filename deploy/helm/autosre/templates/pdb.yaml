@@ -1,0 +1,89 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+{{/* PDB for Agent */}}
+{{- if .Values.agent.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "autosre.fullname" . }}-agent
+  labels:
+    {{- include "autosre.agent.labels" . | nindent 4 }}
+  annotations:
+    {{- include "autosre.annotations" . | nindent 4 }}
+spec:
+  {{- if .Values.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- end }}
+  {{- if .Values.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "autosre.agent.selectorLabels" . | nindent 6 }}
+{{- end }}
+---
+{{/* PDB for API */}}
+{{- if .Values.api.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "autosre.fullname" . }}-api
+  labels:
+    {{- include "autosre.api.labels" . | nindent 4 }}
+  annotations:
+    {{- include "autosre.annotations" . | nindent 4 }}
+spec:
+  {{- if .Values.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- end }}
+  {{- if .Values.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "autosre.api.selectorLabels" . | nindent 6 }}
+{{- end }}
+---
+{{/* PDB for Web */}}
+{{- if .Values.web.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "autosre.fullname" . }}-web
+  labels:
+    {{- include "autosre.web.labels" . | nindent 4 }}
+  annotations:
+    {{- include "autosre.annotations" . | nindent 4 }}
+spec:
+  {{- if .Values.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- end }}
+  {{- if .Values.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "autosre.web.selectorLabels" . | nindent 6 }}
+{{- end }}
+---
+{{/* PDB for Config */}}
+{{- if .Values.config.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "autosre.fullname" . }}-config
+  labels:
+    {{- include "autosre.config.labels" . | nindent 4 }}
+  annotations:
+    {{- include "autosre.annotations" . | nindent 4 }}
+spec:
+  {{- if .Values.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- end }}
+  {{- if .Values.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "autosre.config.selectorLabels" . | nindent 6 }}
+{{- end }}
+{{- end }}

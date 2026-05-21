@@ -1,57 +1,48 @@
+# Minimal .dockerignore for AutoSRE
+# =============================================================================
+
 # Git
 .git
 .gitignore
 
-# Python
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-.Python
-venv/
-env/
-.venv/
-*.egg-info/
-dist/
-build/
-.eggs/
+# Docker
+docker-compose*.yml
+Dockerfile*
+.docker
+
+# Documentation
+*.md
+docs/
 
 # IDE
-.vscode/
-.idea/
+.idea
+.vscode
 *.swp
-*.swo
 
-# Testing
-.pytest_cache/
+# Environment
+.env*
+!.env.example
+
+# Test artifacts
+.pytest_cache
 .coverage
-htmlcov/
-.tox/
+htmlcov
+coverage
+__pycache__
+*.pyc
 
-# Docs
-docs/
-*.md
-!README.md
+# Node
+node_modules
+.next
+out
+coverage
 
-# Dev files
-.env
-.env.local
-*.log
-tests/
-examples/
+# Local data
+data
+logs
+backups
+volumes
 
 # OS
 .DS_Store
 Thumbs.db
-
-# UI source (use pre-built)
-ui/node_modules/
-ui/src/
-
-# Data/logs
-data/
-logs/
-test_output/
-
-# Lock files
-uv.lock

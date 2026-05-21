@@ -1,0 +1,28 @@
+{{- if .Values.api.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "autosre.api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "autosre.api.labels" . | nindent 4 }}
+  {{- with .Values.service.api.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.api.type }}
+  ports:
+    - port: {{ .Values.service.api.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+    {{- if .Values.config.metricsEnabled }}
+    - port: {{ .Values.config.metricsPort }}
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+    {{- end }}
+  selector:
+    {{- include "autosre.api.selectorLabels" . | nindent 4 }}
+{{- end }}

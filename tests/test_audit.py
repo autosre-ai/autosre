@@ -17,9 +17,9 @@ from autosre.security.audit import (
 
 
 @pytest.fixture
-def audit_logger(temp_dir):
+def audit_logger(tmp_path):
     """Create an audit logger with temp directory."""
-    log_dir = os.path.join(temp_dir, "audit")
+    log_dir = os.path.join(tmp_path, "audit")
     return AuditLogger(log_dir=log_dir)
 
 

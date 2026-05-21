@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "autosre.configMapName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "autosre.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  # Application settings
+  ENVIRONMENT: {{ .Values.config.environment | quote }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  LOG_FORMAT: {{ .Values.config.logFormat | quote }}
+  
+  # Metrics and tracing
+  METRICS_ENABLED: {{ .Values.config.metricsEnabled | quote }}
+  METRICS_PORT: {{ .Values.config.metricsPort | quote }}
+  TRACING_ENABLED: {{ .Values.config.tracingEnabled | quote }}
+  {{- if .Values.config.tracingEndpoint }}
+  TRACING_ENDPOINT: {{ .Values.config.tracingEndpoint | quote }}
+  {{- end }}
+  
+  # AI configuration
+  AI_PROVIDER: {{ .Values.config.aiProvider | quote }}
+  AI_MODEL: {{ .Values.config.aiModel | quote }}
+  
+  # Investigation settings
+  MAX_CONCURRENT_INVESTIGATIONS: {{ .Values.config.maxConcurrentInvestigations | quote }}
+  INVESTIGATION_TIMEOUT: {{ .Values.config.investigationTimeout | quote }}
+  
+  # Integration flags
+  SLACK_ENABLED: {{ .Values.config.slackEnabled | quote }}
+  PAGERDUTY_ENABLED: {{ .Values.config.pagerdutyEnabled | quote }}
+  PROMETHEUS_ENABLED: {{ .Values.config.prometheusEnabled | quote }}
+  GRAFANA_ENABLED: {{ .Values.config.grafanaEnabled | quote }}
+  KUBERNETES_ENABLED: {{ .Values.config.kubernetesEnabled | quote }}
+  
+  # Integration URLs
+  {{- if .Values.config.prometheusEnabled }}
+  PROMETHEUS_URL: {{ .Values.config.prometheusUrl | quote }}
+  {{- end }}
+  {{- if .Values.config.grafanaEnabled }}
+  GRAFANA_URL: {{ .Values.config.grafanaUrl | quote }}
+  {{- end }}
+  
+  # Service discovery
+  AGENT_SERVICE_URL: "http://{{ include "autosre.agent.fullname" . }}:{{ .Values.service.agent.port }}"
+  API_SERVICE_URL: "http://{{ include "autosre.api.fullname" . }}:{{ .Values.service.api.port }}"

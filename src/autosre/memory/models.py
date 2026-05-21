@@ -13,10 +13,16 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _generate_id() -> str:
+    """Generate a unique episode ID."""
+    from uuid import uuid4
+    return str(uuid4())[:12]
+
+
 class Episode(BaseModel):
     """Represents a single incident investigation episode."""
     
-    id: str
+    id: str = Field(default_factory=_generate_id)
     created_at: datetime = Field(default_factory=_utc_now)
     alert_type: str
     service_name: Optional[str] = None
@@ -60,7 +66,7 @@ class Episode(BaseModel):
 class Strategy(BaseModel):
     """Represents a learned strategy for handling specific alert types."""
     
-    id: str
+    id: str = Field(default_factory=_generate_id)
     alert_type: str
     service_name: str = "*"
     strategy_text: str

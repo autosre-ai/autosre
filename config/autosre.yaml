@@ -1,0 +1,289 @@
+# AutoSRE Configuration Schema
+# This file defines the core operational parameters for AI-driven SRE operations.
+
+# =============================================================================
+# INVESTIGATION SETTINGS
+# Controls how AutoSRE approaches incident investigation
+# =============================================================================
+investigation:
+  phases:
+    # Require triage before mitigation attempts
+    # This ensures proper understanding before action
+    triage_required: true
+    
+    # Maximum time to spend on mitigation before escalating
+    mitigation_timeout_minutes: 15
+    
+    # Minimum data points required before drawing conclusions
+    minimum_evidence_threshold: 3
+    
+    # Enable parallel hypothesis testing
+    parallel_hypothesis_testing: true
+    
+    # Maximum concurrent hypotheses to evaluate
+    max_concurrent_hypotheses: 5
+
+# =============================================================================
+# AI SAFETY SETTINGS
+# Critical guardrails for AI-driven operations
+# =============================================================================
+ai_safety:
+  # Minimum confidence threshold for automated actions (0.0 - 1.0)
+  confidence_threshold: 0.7
+  
+  # Actions requiring explicit human approval
+  require_human_approval_for:
+    - destructive_actions      # Deleting resources, terminating instances
+    - high_blast_radius        # Changes affecting >50% of service capacity
+    - production_data_access   # Accessing production databases
+    - security_changes         # Firewall rules, IAM policies
+    - cost_impacting           # Actions with significant cost implications
+  
+  # Hypothesis format requirements
+  hypothesis_format:
+    # Require explicit confidence scores in all hypotheses
+    require_confidence_score: true
+    
+    # Require supporting evidence for conclusions
+    require_evidence: true
+    
+    # Require falsifiability criteria
+    require_falsifiable_criteria: true
+  
+  # AI accuracy error budget (internal SLOs)
+  error_budget:
+    # Target accuracy for high-severity incident classification
+    high_severity_accuracy: 0.80
+    
+    # Rate of safe (non-harmful) autonomous actions
+    safe_action_rate: 0.99
+    
+    # Target for correct root cause identification
+    root_cause_accuracy: 0.75
+    
+    # Window for calculating error budget (days)
+    calculation_window_days: 30
+  
+  # Telemetry settings for AI performance monitoring
+  telemetry:
+    # Enable AI decision tracking
+    enabled: true
+    
+    # Track confidence vs outcome correlation
+    track_confidence_correlation: true
+    
+    # Track human override frequency
+    track_human_overrides: true
+    
+    # Export metrics to Prometheus
+    prometheus_export: true
+    
+    # Metrics prefix for AI telemetry
+    metrics_prefix: "autosre_ai"
+
+# =============================================================================
+# SLO CONFIGURATION
+# Service Level Objective settings for SLO-driven operations
+# =============================================================================
+slo:
+  # Default availability target (99.9%)
+  default_target: 0.999
+  
+  # Alert when error budget remaining falls below this threshold
+  error_budget_warning_threshold: 0.20
+  
+  # Block deployments when error budget is exhausted
+  block_deploy_when_exhausted: true
+  
+  # Error budget policies
+  error_budget_policies:
+    # Percentage remaining that triggers deployment freeze
+    freeze_threshold: 0.10
+    
+    # Percentage remaining that triggers reduced deployment velocity
+    caution_threshold: 0.30
+    
+    # Actions when budget is exhausted
+    exhausted_actions:
+      - block_deployments
+      - notify_oncall
+      - create_incident
+  
+  # SLO calculation settings
+  calculation:
+    # Rolling window for SLO calculation
+    window_days: 30
+    
+    # Exclude planned maintenance windows
+    exclude_maintenance: true
+    
+    # Good events threshold (request success rate)
+    good_event_threshold: 0.95
+
+# =============================================================================
+# POSTMORTEM CONFIGURATION
+# Automated postmortem generation and tracking
+# =============================================================================
+postmortem:
+  # Conditions that trigger postmortem creation
+  triggers:
+    - user_visible_degradation     # Any user-facing impact
+    - data_loss                    # Any data loss, regardless of amount
+    - security_incident            # Security-related incidents
+    - resolution_time_minutes: 30  # Long-running incidents
+    - repeat_incident              # Recurring similar incidents
+    - error_budget_impact: 0.05    # >5% error budget consumed
+  
+  # Automatically generate postmortem documents
+  auto_generate: true
+  
+  # Template settings
+  template:
+    # Include timeline of events
+    include_timeline: true
+    
+    # Include metrics snapshots
+    include_metrics: true
+    
+    # Include AI decision audit trail
+    include_ai_decisions: true
+    
+    # Include action items section
+    include_action_items: true
+    
+    # Require blameless language
+    blameless_language: true
+  
+  # Follow-up tracking
+  follow_up:
+    # Track action item completion
+    track_action_items: true
+    
+    # Reminder for incomplete items (days)
+    reminder_days: 7
+    
+    # Escalate unresolved items after (days)
+    escalation_days: 14
+
+# =============================================================================
+# TOIL TRACKING
+# Automation of repetitive manual work
+# =============================================================================
+toil:
+  # Maximum percentage of time that should be spent on toil
+  budget_percentage: 50
+  
+  # Automatically track and categorize toil
+  track_automatically: true
+  
+  # Categories of work considered toil
+  categories:
+    - manual_remediation      # Hand-fixing issues that should be automated
+    - repetitive_investigation # Same investigation patterns repeatedly
+    - ticket_management       # Manual ticket routing and updates
+    - capacity_management     # Manual scaling decisions
+    - deployment_babysitting  # Watching deployments manually
+  
+  # Automation recommendations
+  automation:
+    # Suggest automation after N occurrences of same manual task
+    suggestion_threshold: 3
+    
+    # Priority ranking for automation candidates
+    prioritize_by:
+      - frequency           # How often it occurs
+      - time_spent          # Total time consumed
+      - error_prone         # Manual error frequency
+      - impact              # Blast radius if done wrong
+  
+  # Reporting
+  reporting:
+    # Generate weekly toil reports
+    weekly_report: true
+    
+    # Track toil reduction over time
+    track_reduction: true
+    
+    # Alert when toil budget exceeded
+    alert_on_budget_exceeded: true
+
+# =============================================================================
+# GOLDEN SIGNALS MONITORING
+# Four golden signals as primary health indicators
+# =============================================================================
+golden_signals:
+  # Latency settings
+  latency:
+    # Percentiles to track
+    percentiles: [50, 90, 95, 99]
+    
+    # Default SLO targets (milliseconds)
+    targets:
+      p50: 100
+      p90: 250
+      p95: 500
+      p99: 1000
+  
+  # Traffic settings  
+  traffic:
+    # Baseline calculation window
+    baseline_window_hours: 168  # 1 week
+    
+    # Anomaly detection sensitivity (standard deviations)
+    anomaly_sensitivity: 2.5
+  
+  # Errors settings
+  errors:
+    # Error rate threshold for alerting
+    threshold_percentage: 1.0
+    
+    # Include these status codes as errors
+    error_codes: [500, 502, 503, 504]
+  
+  # Saturation settings
+  saturation:
+    # Resource utilization warning threshold
+    warning_threshold: 0.70
+    
+    # Resource utilization critical threshold
+    critical_threshold: 0.90
+    
+    # Resources to monitor
+    resources:
+      - cpu
+      - memory
+      - disk
+      - network_bandwidth
+      - connection_pool
+
+# =============================================================================
+# CASCADING FAILURE DETECTION
+# Identify and prevent cascading failures
+# =============================================================================
+cascading_failure:
+  # Enable cascading failure analysis
+  enabled: true
+  
+  # Dependency mapping
+  dependencies:
+    # Auto-discover dependencies from traces
+    auto_discover: true
+    
+    # Manual dependency definitions file
+    definitions_file: "config/dependencies.yaml"
+  
+  # Circuit breaker recommendations
+  circuit_breaker:
+    # Recommend circuit breaker when failure propagates
+    recommend_on_propagation: true
+    
+    # Default timeout for circuit breaker (seconds)
+    default_timeout: 30
+  
+  # Bulkhead patterns
+  bulkhead:
+    # Recommend isolation when blast radius is high
+    recommend_on_high_blast_radius: true
+    
+    # Blast radius threshold for recommendations
+    blast_radius_threshold: 0.30

@@ -8,6 +8,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+- **SRE Best Practices Implementation (v0.2.0)**
+  - **AI Safety Features**
+    - Hypothesis-driven investigation format (statement, confidence, evidence, falsifiable criteria)
+    - Confidence scoring on all AI decisions (0.0-1.0 scale)
+    - Human-in-the-loop approval for destructive actions and high blast radius changes
+    - AI error budgets: 80% high-severity accuracy target, 99% safe action rate
+    - Full AI telemetry with Prometheus metrics export
+    - Confidence calibration tracking and reporting
+  
+  - **SLO-Driven Operations**
+    - Error budget calculation and tracking
+    - Multi-window burn rate alerting (1h, 6h, 24h, 7d)
+    - Deployment gating based on error budget status
+    - Configurable budget policies (freeze, caution, normal thresholds)
+    - SLI metric collection from Prometheus
+  
+  - **Investigation Phases**
+    - Four-phase investigation model: TRIAGE → MITIGATE → DIAGNOSE → RESOLVE
+    - Mandatory triage phase (understand before acting)
+    - Configurable phase timeouts and transition criteria
+    - Parallel hypothesis testing during diagnosis
+    - Timeline recording for postmortems
+  
+  - **Postmortem Automation**
+    - Auto-triggered postmortems (user impact, data loss, resolution time, repeat incidents)
+    - Auto-generated content (timeline, metrics, AI decision audit trail)
+    - Action item tracking with reminders and escalation
+    - Blameless language enforcement and suggestions
+    - Confluence and Jira integration
+  
+  - **Toil Tracking**
+    - 50% toil budget enforcement
+    - Automatic activity classification
+    - Automation opportunity recommendations
+    - Weekly toil reports
+  
+  - **Golden Signals Monitoring**
+    - Four golden signals implementation (latency, traffic, errors, saturation)
+    - Configurable SLO targets per signal
+    - Anomaly detection for traffic patterns
+  
+  - **Cascading Failure Detection**
+    - Dependency graph analysis from traces
+    - Blast radius calculation
+    - Circuit breaker and bulkhead recommendations
+    - Cascade detection during incidents
+
+- **New Configuration Schema** (`config/autosre.yaml`)
+  - Comprehensive YAML configuration for all new features
+  - Investigation phase settings
+  - AI safety thresholds and policies
+  - SLO targets and error budget policies
+  - Postmortem triggers and templates
+  - Toil tracking categories and budgets
+
+- **New Documentation**
+  - `docs/skills/golden_signals.md` - Four golden signals usage
+  - `docs/skills/cascading_failure.md` - Cascading failure analysis
+  - `docs/skills/error_budget.md` - Error budget tracking
+  - `docs/skills/ai_safety.md` - AI safety features
+  - `docs/architecture/sre-learnings.md` - Architecture overview
+  - `docs/operations/investigation_phases.md` - Investigation workflow
+  - `docs/operations/ai_telemetry.md` - AI monitoring guide
+  - `docs/operations/postmortem_workflow.md` - Postmortem process
+
 - **Testing & Coverage Sprint (50 Iterations)**
   - Total: **668 tests, 37% coverage** (up from 281 tests / 21%)
   - Ownership management tests (18)

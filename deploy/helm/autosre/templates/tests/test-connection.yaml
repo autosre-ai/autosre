@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "autosre.fullname" . }}-test-connection"
+  labels:
+    {{- include "autosre.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  containers:
+    {{- if .Values.api.enabled }}
+    - name: test-api
+      image: busybox:latest
+      command: ['sh', '-c']
+      args:
+        - |
+          echo "Testing API connection..."
+          wget -qO- --timeout=5 http://{{ include "autosre.fullname" . }}-api:{{ .Values.api.service.port }}/health && echo "API health check passed!" || exit 1
+    {{- end }}
+    {{- if .Values.agent.enabled }}
+    - name: test-agent
+      image: busybox:latest
+      command: ['sh', '-c']
+      args:
+        - |
+          echo "Testing Agent connection..."
+          wget -qO- --timeout=5 http://{{ include "autosre.fullname" . }}-agent:{{ .Values.agent.service.port }}/health && echo "Agent health check passed!" || exit 1
+    {{- end }}
+    {{- if .Values.web.enabled }}
+    - name: test-web
+      image: busybox:latest
+      command: ['sh', '-c']
+      args:
+        - |
+          echo "Testing Web UI connection..."
+          wget -qO- --timeout=5 http://{{ include "autosre.fullname" . }}-web:{{ .Values.web.service.port }}/api/health && echo "Web UI health check passed!" || exit 1
+    {{- end }}
+    {{- if .Values.config.enabled }}
+    - name: test-config
+      image: busybox:latest
+      command: ['sh', '-c']
+      args:
+        - |
+          echo "Testing LiteLLM (config) connection..."
+          wget -qO- --timeout=5 http://{{ include "autosre.fullname" . }}-config:{{ .Values.config.service.port }}/health && echo "LiteLLM health check passed!" || exit 1
+    {{- end }}
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    seccompProfile:
+      type: RuntimeDefault

@@ -1,0 +1,61 @@
+# AutoSRE Postmortem Policy Configuration
+# 
+# This file defines when postmortems are automatically required
+# and how they should be tracked.
+#
+# Key principles:
+# - Blameless: Focus on systems, not people
+# - Actionable: Every postmortem produces improvements
+# - Tracked: Completion rate is monitored
+
+# Trigger conditions - postmortem is required when ANY enabled trigger fires
+triggers:
+  - type: user_visible_degradation
+    description: "Any incident with user-visible impact"
+    enabled: true
+    
+  - type: data_loss
+    description: "Any incident involving data loss or corruption"
+    enabled: true
+    
+  - type: on_call_intervention
+    description: "Any incident requiring manual on-call intervention"
+    enabled: true
+    
+  - type: long_resolution
+    description: "Resolution time exceeded 30 minutes"
+    threshold: 30  # minutes
+    enabled: true
+    
+  - type: monitoring_failure
+    description: "Monitoring or alerting failed to detect issue timely"
+    enabled: true
+    
+  - type: security_incident
+    description: "Any security-related incident"
+    enabled: true
+    
+  - type: revenue_impact
+    description: "Incident caused measurable revenue loss"
+    enabled: false  # Enable if revenue tracking is configured
+
+# Thresholds
+resolution_time_threshold_minutes: 30
+
+# Due date for postmortem completion (business days after incident)
+default_due_days: 5
+
+# Requirements
+require_action_items: true
+require_ai_review: true
+
+# Automation
+auto_create_ticket: true
+
+# Notifications
+notify_on_trigger: true
+notification_channel: null  # Set to Slack channel, email, etc.
+
+# Completion tracking targets
+# completion_target_percentage: 95
+# max_overdue_days: 10

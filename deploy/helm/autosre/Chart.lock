@@ -1,0 +1,12 @@
+dependencies:
+- name: postgresql
+  repository: https://charts.bitnami.com/bitnami
+  version: 14.3.3
+- name: redis
+  repository: https://charts.bitnami.com/bitnami
+  version: 18.19.4
+- name: neo4j
+  repository: https://helm.neo4j.com/neo4j
+  version: 5.26.25
+digest: sha256:b8f304c85ec5e280741c3e8b0903956cf58c81e9c3ace87192318ef50ab5f1d0
+generated: "2026-05-05T01:31:08.603269+05:30"

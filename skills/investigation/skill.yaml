@@ -1,0 +1,13 @@
+---
+name: investigation
+description: Systematic incident investigation framework for evidence-based root cause analysis
+category: methodology
+enabled: true
+required_integrations: []
+version: "1.0.0"
+---
+
+actions: []
+
+# No executable actions - this is a methodology skill
+# It provides guidance and structure for investigations

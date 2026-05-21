@@ -1,0 +1,264 @@
+"""
+Pydantic models for the AutoSRE episodic memory system.
+
+This module defines the core data structures for storing and retrieving
+investigation episodes, learned strategies, and key findings.
+"""
+
+from datetime import datetime
+from enum import Enum
+from typing import Any, Optional
+from uuid import UUID, uuid4
+
+from pydantic import BaseModel, Field
+
+
+class Severity(str, Enum):
+    """Alert severity levels."""
+    
+    CRITICAL = "critical"
+    WARNING = "warning"
+    INFO = "info"
+
+
+class AlertType(str, Enum):
+    """Common alert type classifications."""
+    
+    HIGH_LATENCY = "high_latency"
+    HTTP_500 = "http_500"
+    HTTP_503 = "http_503"
+    OUT_OF_MEMORY = "out_of_memory"
+    CPU_ISSUE = "cpu_issue"
+    SERVICE_DOWN = "service_down"
+    CRASH = "crash"
+    TIMEOUT = "timeout"
+    CONNECTION_FAILURE = "connection_failure"
+    DISK_PRESSURE = "disk_pressure"
+    MEMORY_ISSUE = "memory_issue"
+    ERROR = "error"
+    UNKNOWN = "unknown"
+
+
+class KeyFinding(BaseModel):
+    """
+    A key finding from an investigation step.
+    
+    Captures the skill/tool used, the query made, and the significant finding.
+    """
+    
+    skill: str = Field(..., description="Skill or tool that produced this finding")
+    query: str = Field(..., description="Query or command executed", max_length=500)
+    finding: str = Field(..., description="The significant output or discovery", max_length=2000)
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "skill": "prometheus",
+                "query": "rate(http_requests_total{status=~'5..'}[5m])",
+                "finding": "Error rate spiked to 45% starting at 14:32 UTC"
+            }
+        }
+
+
+class Episode(BaseModel):
+    """
+    An investigation episode record.
+    
+    Represents a complete incident investigation, including the alert context,
+    tools used, findings, resolution status, and effectiveness metrics.
+    """
+    
+    id: UUID = Field(default_factory=uuid4, description="Unique episode identifier")
+    agent_run_id: Optional[str] = Field(None, description="ID of the agent run that created this episode")
+    org_id: str = Field(default="default", description="Organization/tenant ID")
+    team_node_id: Optional[str] = Field(None, description="Team or node identifier")
+    
+    # Alert context
+    alert_type: str = Field(default="unknown", description="Classified alert type")
+    alert_description: str = Field(..., description="Original alert or investigation prompt", max_length=2000)
+    severity: Severity = Field(default=Severity.INFO, description="Alert severity")
+    services: list[str] = Field(default_factory=list, description="Affected services")
+    
+    # Investigation details
+    agents_used: list[str] = Field(default_factory=list, description="Agent types used")
+    skills_used: list[str] = Field(default_factory=list, description="Skills/tools invoked")
+    key_findings: list[KeyFinding] = Field(default_factory=list, description="Significant findings")
+    
+    # Outcome
+    resolved: bool = Field(default=False, description="Whether the issue was resolved")
+    root_cause: Optional[str] = Field(None, description="Identified root cause", max_length=2000)
+    summary: Optional[str] = Field(None, description="Investigation summary", max_length=2000)
+    remediation_steps: list[str] = Field(default_factory=list, description="Steps taken to remediate")
+    
+    # Metrics
+    effectiveness_score: float = Field(default=0.0, ge=0.0, le=1.0, description="How effective the investigation was")
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Confidence in the root cause")
+    duration_seconds: Optional[float] = Field(None, ge=0.0, description="Investigation duration")
+    
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Embedding for similarity search (stored separately in practice)
+    embedding: Optional[list[float]] = Field(None, exclude=True, description="Vector embedding for similarity search")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "id": "550e8400-e29b-41d4-a716-446655440000",
+                "alert_type": "high_latency",
+                "alert_description": "API response time exceeded 2s threshold",
+                "severity": "warning",
+                "services": ["api-gateway", "user-service"],
+                "skills_used": ["prometheus", "logs", "kubernetes"],
+                "resolved": True,
+                "root_cause": "Connection pool exhaustion due to slow downstream service",
+                "effectiveness_score": 0.85,
+                "confidence": 0.9
+            }
+        }
+
+
+class Strategy(BaseModel):
+    """
+    A learned investigation strategy for a specific alert type.
+    
+    Generated by analyzing multiple past episodes and synthesizing
+    common patterns, effective approaches, and anti-patterns.
+    """
+    
+    id: UUID = Field(default_factory=uuid4, description="Unique strategy identifier")
+    org_id: str = Field(default="default", description="Organization/tenant ID")
+    team_node_id: Optional[str] = Field(None, description="Team or node identifier")
+    
+    # Scope
+    alert_type: str = Field(..., description="Alert type this strategy applies to")
+    service_name: str = Field(default="*", description="Service name or '*' for all")
+    
+    # Strategy content
+    strategy_text: str = Field(..., description="Full strategy text in markdown format", max_length=10000)
+    common_root_causes: list[str] = Field(default_factory=list, description="Commonly seen root causes")
+    recommended_steps: list[str] = Field(default_factory=list, description="Ordered investigation steps")
+    key_skills: list[str] = Field(default_factory=list, description="Most effective skills/tools")
+    anti_patterns: list[str] = Field(default_factory=list, description="Approaches to avoid")
+    
+    # Source metadata
+    source_episode_ids: list[UUID] = Field(default_factory=list, description="Episodes used to generate this strategy")
+    episode_count: int = Field(default=0, ge=0, description="Number of episodes analyzed")
+    
+    # Metrics
+    success_rate: float = Field(default=0.0, ge=0.0, le=1.0, description="Resolution rate of source episodes")
+    avg_resolution_time: Optional[float] = Field(None, ge=0.0, description="Average resolution time in seconds")
+    
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    expires_at: Optional[datetime] = Field(None, description="When this strategy should be regenerated")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "alert_type": "high_latency",
+                "service_name": "api-gateway",
+                "strategy_text": "## Common Root Causes\n- Connection pool exhaustion\n...",
+                "common_root_causes": ["Connection pool exhaustion", "Downstream service degradation"],
+                "recommended_steps": ["Check Prometheus latency metrics", "Review recent deployments"],
+                "episode_count": 5,
+                "success_rate": 0.8
+            }
+        }
+
+
+class MemorySearchResult(BaseModel):
+    """
+    Result from a memory similarity search.
+    
+    Wraps an episode with similarity score and relevance metadata.
+    """
+    
+    episode: Episode = Field(..., description="The matched episode")
+    similarity_score: float = Field(..., ge=0.0, le=1.0, description="Cosine similarity score")
+    match_reasons: list[str] = Field(default_factory=list, description="Why this episode matched")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "episode": {"id": "...", "alert_type": "high_latency"},
+                "similarity_score": 0.92,
+                "match_reasons": ["Same alert type", "Same service", "Similar symptoms"]
+            }
+        }
+
+
+class MemoryStats(BaseModel):
+    """Statistics about the memory system."""
+    
+    total_episodes: int = Field(default=0, ge=0)
+    resolved_episodes: int = Field(default=0, ge=0)
+    unresolved_episodes: int = Field(default=0, ge=0)
+    strategies_count: int = Field(default=0, ge=0)
+    
+    # Breakdown by alert type
+    episodes_by_alert_type: dict[str, int] = Field(default_factory=dict)
+    
+    # Effectiveness metrics
+    avg_effectiveness_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    avg_resolution_time_seconds: Optional[float] = Field(None, ge=0.0)
+    
+    # Time range
+    oldest_episode: Optional[datetime] = None
+    newest_episode: Optional[datetime] = None
+
+
+class EpisodeCreate(BaseModel):
+    """Schema for creating a new episode."""
+    
+    agent_run_id: Optional[str] = None
+    org_id: str = "default"
+    team_node_id: Optional[str] = None
+    
+    alert_type: str = "unknown"
+    alert_description: str
+    severity: Severity = Severity.INFO
+    services: list[str] = Field(default_factory=list)
+    
+    agents_used: list[str] = Field(default_factory=list)
+    skills_used: list[str] = Field(default_factory=list)
+    key_findings: list[dict[str, Any]] = Field(default_factory=list)
+    
+    resolved: bool = False
+    root_cause: Optional[str] = None
+    summary: Optional[str] = None
+    remediation_steps: list[str] = Field(default_factory=list)
+    
+    effectiveness_score: float = 0.0
+    confidence: float = 0.0
+    duration_seconds: Optional[float] = None
+
+
+class EpisodeUpdate(BaseModel):
+    """Schema for updating an existing episode."""
+    
+    resolved: Optional[bool] = None
+    root_cause: Optional[str] = None
+    summary: Optional[str] = None
+    effectiveness_score: Optional[float] = None
+    confidence: Optional[float] = None
+    skills_used: Optional[list[str]] = None
+    key_findings: Optional[list[dict[str, Any]]] = None
+    remediation_steps: Optional[list[str]] = None
+
+
+class StrategyCreate(BaseModel):
+    """Schema for creating a new strategy."""
+    
+    org_id: str = "default"
+    team_node_id: Optional[str] = None
+    
+    alert_type: str
+    service_name: str = "*"
+    strategy_text: str
+    
+    source_episode_ids: list[UUID] = Field(default_factory=list)
+    episode_count: int = 0

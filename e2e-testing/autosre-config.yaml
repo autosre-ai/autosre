@@ -1,0 +1,78 @@
+# AutoSRE E2E Testing Configuration
+# For use with Kind cluster: kind-autosre-e2e
+
+prometheus:
+  url: http://localhost:30090
+  # Timeout for Prometheus queries
+  timeout_seconds: 30
+  # Retry configuration
+  retry:
+    max_attempts: 3
+    backoff_seconds: 2
+
+kubernetes:
+  context: kind-autosre-e2e
+  namespace: bookstore
+  # Additional namespaces to monitor
+  watch_namespaces:
+    - bookstore
+    - kube-system
+  # Resource collection settings
+  resources:
+    collect_logs: true
+    log_tail_lines: 100
+    collect_events: true
+    event_age_minutes: 60
+
+investigation:
+  phases:
+    triage_required: true
+    # Phase timeout in seconds
+    timeout_seconds: 300
+  ai_safety:
+    confidence_threshold: 0.7
+    # Require human approval for actions above this severity
+    human_approval_threshold: 0.9
+    # Maximum automated actions per investigation
+    max_automated_actions: 5
+  # Evidence collection settings
+  evidence:
+    collect_metrics: true
+    collect_logs: true
+    collect_traces: false
+    metrics_window_minutes: 15
+
+slo:
+  services:
+    bookstore-api:
+      availability: 0.99
+      latency_p99_ms: 500
+      error_rate_threshold: 0.01
+    bookstore-db:
+      availability: 0.999
+      latency_p99_ms: 100
+    bookstore-cache:
+      availability: 0.99
+      latency_p99_ms: 50
+
+# Alerting thresholds for E2E tests
+alerting:
+  error_rate:
+    warning: 0.01
+    critical: 0.05
+  latency_p99:
+    warning: 400
+    critical: 500
+  memory_usage:
+    warning: 0.80
+    critical: 0.90
+  cpu_usage:
+    warning: 0.70
+    critical: 0.85
+
+# Output settings
+output:
+  format: json
+  include_evidence: true
+  include_recommendations: true
+  include_confidence_scores: true

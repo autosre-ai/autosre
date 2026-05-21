@@ -1,0 +1,59 @@
+{{- if .Values.agent.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "autosre.agent.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "autosre.agent.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.agent.pdb.minAvailable }}
+  minAvailable: {{ .Values.agent.pdb.minAvailable }}
+  {{- end }}
+  {{- if .Values.agent.pdb.maxUnavailable }}
+  maxUnavailable: {{ .Values.agent.pdb.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "autosre.agent.selectorLabels" . | nindent 6 }}
+{{- end }}
+---
+{{- if .Values.api.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "autosre.api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "autosre.api.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.api.pdb.minAvailable }}
+  minAvailable: {{ .Values.api.pdb.minAvailable }}
+  {{- end }}
+  {{- if .Values.api.pdb.maxUnavailable }}
+  maxUnavailable: {{ .Values.api.pdb.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "autosre.api.selectorLabels" . | nindent 6 }}
+{{- end }}
+---
+{{- if .Values.web.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "autosre.web.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "autosre.web.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.web.pdb.minAvailable }}
+  minAvailable: {{ .Values.web.pdb.minAvailable }}
+  {{- end }}
+  {{- if .Values.web.pdb.maxUnavailable }}
+  maxUnavailable: {{ .Values.web.pdb.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "autosre.web.selectorLabels" . | nindent 6 }}
+{{- end }}

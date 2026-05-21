@@ -1,0 +1,151 @@
+{{- if .Values.config.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "autosre.fullname" . }}-config
+  labels:
+    {{- include "autosre.config.labels" . | nindent 4 }}
+  annotations:
+    {{- include "autosre.annotations" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.config.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "autosre.config.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.config.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "autosre.config.labels" . | nindent 8 }}
+        {{- with .Values.config.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "autosre.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.config.podSecurityContext | nindent 8 }}
+      containers:
+        - name: litellm
+          image: {{ include "autosre.config.image" . }}
+          imagePullPolicy: {{ .Values.config.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.config.securityContext | nindent 12 }}
+          args:
+            - "--config"
+            - "/app/config.yaml"
+            - "--port"
+            - "{{ .Values.config.service.port }}"
+          ports:
+            - name: http
+              containerPort: {{ .Values.config.service.port }}
+              protocol: TCP
+          env:
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "autosre.secretName" . }}
+                  key: LITELLM_MASTER_KEY
+            - name: LITELLM_SALT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "autosre.secretName" . }}
+                  key: LITELLM_SALT_KEY
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "autosre.secretName" . }}
+                  key: DATABASE_URL
+            - name: REDIS_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "autosre.secretName" . }}
+                  key: REDIS_HOST
+            - name: REDIS_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "autosre.secretName" . }}
+                  key: REDIS_PORT
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "autosre.secretName" . }}
+                  key: REDIS_PASSWORD
+            {{- if .Values.secrets.llm.openaiApiKey }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "autosre.secretName" . }}
+                  key: OPENAI_API_KEY
+            {{- end }}
+            {{- if .Values.secrets.llm.anthropicApiKey }}
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "autosre.secretName" . }}
+                  key: ANTHROPIC_API_KEY
+            {{- end }}
+            {{- if .Values.secrets.llm.azureApiKey }}
+            - name: AZURE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "autosre.secretName" . }}
+                  key: AZURE_API_KEY
+            {{- end }}
+            {{- if .Values.secrets.llm.azureApiBase }}
+            - name: AZURE_API_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "autosre.secretName" . }}
+                  key: AZURE_API_BASE
+            {{- end }}
+            {{- with .Values.config.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.config.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.config.readinessProbe | nindent 12 }}
+          startupProbe:
+            {{- toYaml .Values.config.startupProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.config.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+            - name: tmp
+              mountPath: /tmp
+            {{- with .Values.config.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "autosre.fullname" . }}-litellm
+        - name: tmp
+          emptyDir: {}
+        {{- with .Values.config.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.config.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.config.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.config.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

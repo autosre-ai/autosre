@@ -1,0 +1,47 @@
+apiVersion: v2
+name: autosre
+description: AutoSRE - AI-powered Site Reliability Engineering platform
+
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+
+home: https://github.com/yourusername/autosre
+icon: https://raw.githubusercontent.com/yourusername/autosre/main/docs/logo.png
+
+maintainers:
+  - name: AutoSRE Team
+    email: team@autosre.io
+
+keywords:
+  - sre
+  - ai
+  - automation
+  - kubernetes
+  - infrastructure
+
+dependencies:
+  # PostgreSQL - Primary relational database
+  - name: postgresql
+    version: "14.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+    alias: postgresql
+
+  # Redis - Caching and pub/sub
+  - name: redis
+    version: "18.x.x"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+    alias: redis
+
+  # Neo4j - Graph database (community chart)
+  - name: neo4j
+    version: "5.x.x"
+    repository: https://helm.neo4j.com/neo4j
+    condition: neo4j.enabled
+    alias: neo4j
+
+annotations:
+  category: AI/ML
+  licenses: MIT

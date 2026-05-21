@@ -1,5 +1,41 @@
 # AutoSRE Code Owners
-# These users will be requested for review when someone opens a pull request
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
 
-# Default owners for everything in the repo
-* @autosre-ai @srisainath3456
+# Default owners for everything
+* @autosre-maintainers
+
+# Core platform
+/autosre/ @autosre-maintainers
+/autosre/core/ @autosre-core-team
+/autosre/api/ @autosre-api-team
+
+# Agents and AI components
+/autosre/agents/ @autosre-ai-team
+/autosre/llm/ @autosre-ai-team
+
+# Infrastructure
+/charts/ @autosre-platform-team
+/deploy/ @autosre-platform-team
+/terraform/ @autosre-platform-team
+
+# CI/CD and tooling
+/.github/ @autosre-platform-team
+/Dockerfile @autosre-platform-team
+/docker-compose*.yml @autosre-platform-team
+
+# Documentation
+/docs/ @autosre-maintainers
+/mkdocs.yml @autosre-maintainers
+/*.md @autosre-maintainers
+
+# Tests
+/tests/ @autosre-maintainers
+
+# Security-sensitive files
+/autosre/auth/ @autosre-security-team
+/autosre/security/ @autosre-security-team
+/.github/workflows/security.yml @autosre-security-team
+
+# Configuration files (require senior review)
+/pyproject.toml @autosre-maintainers
+/uv.lock @autosre-maintainers

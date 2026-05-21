@@ -1,382 +1,183 @@
-# AutoSRE
+# AutoSRE Docker Infrastructure
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+Production-ready Docker configuration for the AutoSRE platform.
 
-**Open-source AI SRE agent** for incident investigation, root cause analysis, and auto-remediation.
+## 🚀 New in v0.2.0: SRE Best Practices
 
-Built **foundation-first**: context awareness before AI reasoning, for reliable and accurate incident response.
+AutoSRE now implements core SRE principles from Google's SRE book:
 
-<p align="center">
-  <img src="docs/images/autosre-demo.gif" alt="AutoSRE Demo" width="700">
-</p>
+### AI Safety Features
+- **Hypothesis-driven investigation**: All AI reasoning follows structured format with evidence and falsifiable criteria
+- **Confidence scoring**: Every AI decision includes explicit confidence (0.0-1.0)
+- **Human-in-the-loop**: Critical actions require human approval
+- **AI error budgets**: Track AI accuracy with internal SLOs (80% high-severity accuracy, 99% safe action rate)
+- **Telemetry**: Full decision audit trail for calibration and improvement
 
----
+### SLO-Driven Operations
+- **Error budget tracking**: Know exactly how much unreliability you can afford
+- **Multi-window burn rates**: 1h, 6h, 24h, 7d burn rate calculations
+- **Deployment gating**: Automatically block deploys when error budget exhausted
+- **Budget policies**: Configurable thresholds for freeze, caution, and normal operation
 
-## 🚀 Quick Start
+### Investigation Phases
+- **Triage-first approach**: Understand scope and impact before acting
+- **Structured phases**: TRIAGE → MITIGATE → DIAGNOSE → RESOLVE
+- **Phase discipline**: Prevents jumping to conclusions or missing scope
 
-Get running in 5 minutes:
+### Postmortem Automation
+- **Auto-triggered**: User impact, data loss, long resolution time, repeat incidents
+- **Auto-generated content**: Timeline, metrics snapshots, AI decision audit
+- **Action item tracking**: Reminders and escalation for incomplete items
+- **Blameless enforcement**: Automated scanning for blame language
 
-```bash
-# Install
-pip install autosre
+### Toil Tracking
+- **50% budget**: Track toil vs. project work
+- **Auto-classification**: Identify repetitive manual work
+- **Automation recommendations**: Suggest automation after N occurrences
 
-# Initialize in your project
-autosre init
-
-# Start a local sandbox (optional, requires Docker)
-autosre sandbox start
-
-# Sync context from Kubernetes
-autosre context sync --kubernetes
-
-# Run the agent
-autosre agent run
-```
-
----
-
-## ✨ Features
-
-### 🔍 **Context-Aware Analysis**
-- Correlates alerts with recent deployments, config changes, and dependencies
-- Maintains service topology and ownership mappings
-- Tracks historical incidents for pattern recognition
-
-### 🤖 **Intelligent Root Cause Analysis**
-- Multi-LLM support (Ollama, OpenAI, Anthropic, Azure)
-- Structured reasoning with confidence scores
-- Learns from feedback to improve over time
-
-### 📖 **Runbook Integration**
-- Matches alerts to relevant runbooks
-- Step-by-step execution guidance
-- Automated execution with guardrails
-
-### 🛡️ **Safe Remediation**
-- Approval workflows for risky actions
-- Auto-approve low-risk operations
-- Audit logging for compliance
-
-### 🧪 **Built-in Evaluation**
-- 25+ synthetic incident scenarios
-- Measure accuracy before production
-- Track improvements over time
+📚 **Documentation**: See `docs/` for detailed guides on each feature.
 
 ---
 
-## 📦 Installation
-
-### From PyPI (Recommended)
+## Quick Start
 
 ```bash
-pip install autosre
+# Initial setup
+make setup
 
-# With LLM support
-pip install autosre[llm]
+# Edit .env with your configuration
+vim .env
 
-# With sandbox support
-pip install autosre[sandbox]
+# Start all services
+make dev
 
-# Everything
-pip install autosre[all]
+# View logs
+make logs
 ```
 
-### From Source
+## Services
 
-```bash
-git clone https://github.com/opensre/autosre.git
-cd autosre
-pip install -e ".[all,dev]"
-```
+| Service | Port | Description |
+|---------|------|-------------|
+| web-ui | 3000 | Next.js web interface |
+| api-gateway | 8000 | FastAPI REST API |
+| litellm | 4000 | LLM proxy |
+| sre-agent | 8080 (internal) | AI agent service |
+| postgres | 5432 | PostgreSQL database |
+| neo4j | 7474, 7687 | Graph database |
+| redis | 6379 | Cache & pub/sub |
 
-### Requirements
-
-- **Python 3.11+**
-- **Docker** (for sandbox environments)
-- **kubectl** (for Kubernetes integration)
-- **kind** (for local sandbox clusters)
-
----
-
-## ⚙️ Configuration
-
-Create a `.env` file or set environment variables:
-
-```bash
-# Copy the example
-cp .env.example .env
-```
-
-### Essential Settings
-
-```bash
-# LLM Provider (ollama is default, runs locally)
-OPENSRE_LLM_PROVIDER=ollama
-OPENSRE_OLLAMA_HOST=http://localhost:11434
-OPENSRE_OLLAMA_MODEL=llama3.1:8b
-
-# Or use OpenAI
-# OPENSRE_LLM_PROVIDER=openai
-# OPENSRE_OPENAI_API_KEY=sk-...
-# OPENSRE_OPENAI_MODEL=gpt-4o-mini
-
-# Infrastructure
-OPENSRE_PROMETHEUS_URL=http://localhost:9090
-OPENSRE_K8S_NAMESPACES=default,production
-```
-
-See [Configuration Guide](docs/CONFIGURATION.md) for all options.
-
----
-
-## 📖 Usage
-
-### Initialize AutoSRE
-
-```bash
-autosre init
-```
-
-Creates:
-- `.autosre/` - Configuration and databases
-- `runbooks/` - Runbook YAML files
-- `.env.example` - Configuration template
-
-### Check Status
-
-```bash
-autosre status
-```
-
-Shows:
-- Configuration status
-- Context store summary
-- LLM provider health
-- Connected integrations
-
-### Manage Context
-
-```bash
-# View context summary
-autosre context show
-
-# View specific data
-autosre context show --services
-autosre context show --changes
-autosre context show --alerts
-autosre context show --runbooks
-
-# Sync from external sources
-autosre context sync --kubernetes
-autosre context sync --prometheus
-autosre context sync --all
-
-# Add items manually
-autosre context add service --name api --namespace prod --team platform
-autosre context add runbook --file runbooks/high-cpu.yaml
-```
-
-### Run Evaluations
-
-```bash
-# List available scenarios
-autosre eval list
-
-# Run a scenario
-autosre eval run --scenario high_cpu
-
-# View results
-autosre eval report
-
-# Create custom scenario
-autosre eval create --template
-```
-
-### Manage Sandbox
-
-```bash
-# Create local Kind cluster
-autosre sandbox start
-
-# Check status
-autosre sandbox status
-
-# Inject chaos for testing
-autosre sandbox inject cpu-hog
-autosre sandbox inject pod-kill --target frontend
-
-# Tear down
-autosre sandbox stop
-```
-
-### Run the Agent
-
-```bash
-# Watch mode (continuous)
-autosre agent run
-
-# Single analysis
-autosre agent analyze --alert alert.json
-autosre agent analyze --service frontend
-
-# View configuration
-autosre agent config
-
-# View history
-autosre agent history
-```
-
-### Submit Feedback
-
-```bash
-# Mark analysis as correct
-autosre feedback submit -i INC-123 --correct
-
-# Mark as incorrect with correction
-autosre feedback submit -i INC-123 --incorrect --actual-cause "DNS timeout"
-
-# View feedback stats
-autosre feedback report
-```
-
----
-
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        AutoSRE Agent                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
-│  │  Observer   │  │  Reasoner   │  │   Actor     │         │
-│  │             │  │             │  │             │         │
-│  │ • Alerts    │  │ • LLM       │  │ • Execute   │         │
-│  │ • Metrics   │  │ • Context   │  │ • Verify    │         │
-│  │ • Logs      │  │ • Runbooks  │  │ • Rollback  │         │
-│  └─────────────┘  └─────────────┘  └─────────────┘         │
-│         │                │                │                 │
-│         └────────────────┼────────────────┘                 │
-│                          │                                  │
-│  ┌───────────────────────┴───────────────────────┐         │
-│  │              Context Store                     │         │
-│  │  • Services & Dependencies                     │         │
-│  │  • Ownership & On-call                         │         │
-│  │  • Changes & Deployments                       │         │
-│  │  • Runbooks & Playbooks                        │         │
-│  │  • Alerts & Incidents                          │         │
-│  └───────────────────────────────────────────────┘         │
-│                          │                                  │
-├──────────────────────────┼──────────────────────────────────┤
-│                          │                                  │
-│  ┌──────────┐  ┌─────────┴─────────┐  ┌─────────────┐      │
-│  │Kubernetes│  │    Prometheus     │  │   GitHub    │      │
-│  └──────────┘  └───────────────────┘  └─────────────┘      │
-│                                                             │
+│                      External Network                        │
+│  ┌──────────┐    ┌─────────────┐                            │
+│  │  Web UI  │───▶│ API Gateway │                            │
+│  │  :3000   │    │    :8000    │                            │
+│  └──────────┘    └──────┬──────┘                            │
+└─────────────────────────┼───────────────────────────────────┘
+                          │
+┌─────────────────────────┼───────────────────────────────────┐
+│                         │        Internal Network           │
+│  ┌──────────────────────▼──────────────────────┐            │
+│  │              SRE Agent :8080                 │            │
+│  └────┬─────────────────┬─────────────────┬────┘            │
+│       │                 │                 │                  │
+│  ┌────▼────┐      ┌────▼────┐      ┌────▼────┐             │
+│  │ LiteLLM │      │PostgreSQL│      │  Neo4j  │             │
+│  │  :4000  │      │  :5432   │      │  :7687  │             │
+│  └────┬────┘      └─────────┘      └─────────┘             │
+│       │                                                      │
+│  ┌────▼────┐                                                │
+│  │  Redis  │                                                │
+│  │  :6379  │                                                │
+│  └─────────┘                                                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Foundation-First Philosophy:**
-1. **Context Store** - Single source of truth for all infrastructure state
-2. **Connectors** - Sync from Kubernetes, Prometheus, GitHub, etc.
-3. **Observer** - Watch for alerts and anomalies
-4. **Reasoner** - LLM-powered root cause analysis with rich context
-5. **Actor** - Execute remediation with guardrails
+## Commands
 
-See [Architecture Guide](docs/ARCHITECTURE.md) for details.
+### Development
+- `make dev` - Start all services
+- `make stop` - Stop all services
+- `make restart` - Restart all services
+- `make logs` - View all logs
+- `make status` - Service status
+- `make health` - Health check
 
----
+### Building
+- `make build` - Build all images
+- `make build-no-cache` - Build without cache
 
-## 🧪 Evaluation Framework
+### Testing
+- `make test` - Run all tests
+- `make lint` - Run linters
+- `make format` - Format code
 
-AutoSRE includes 25+ synthetic incident scenarios for testing:
+### Database
+- `make db-shell` - PostgreSQL shell
+- `make redis-cli` - Redis CLI
+- `make neo4j-shell` - Neo4j Cypher shell
+- `make db-migrate` - Run migrations
 
-| Scenario | Difficulty | Description |
-|----------|------------|-------------|
-| `high_cpu` | Easy | CPU spike causing latency |
-| `memory_leak` | Medium | Gradual memory exhaustion |
-| `cascading_failure` | Hard | Multi-service outage |
-| `deployment_rollback` | Medium | Failed deployment |
-| `database_connection_pool_exhaustion` | Medium | DB connection issues |
+### Cleanup
+- `make clean` - Stop and remove containers
+- `make clean-volumes` - Remove all data (destructive)
+- `make backup` - Backup all volumes
 
-Run evaluations before production to ensure accuracy:
+## Configuration
 
+### Required Environment Variables
+
+Generate secrets:
 ```bash
-autosre eval run --scenario cascading_failure --verbose
+openssl rand -hex 32
 ```
 
----
-
-## 🔌 Integrations
-
-### Supported
-
-- **Kubernetes** - Service discovery, pod status, events
-- **Prometheus** - Metrics, alerts, Alertmanager
-- **GitHub** - Deployments, PRs, commits
-- **Slack** - Alert notifications, approval workflows
-- **PagerDuty** - Incident management
-
-### Coming Soon
-
-- Datadog
-- New Relic
-- Grafana Loki
-- OpsGenie
-- VictorOps
-
----
-
-## 📚 Documentation
-
-- [Getting Started](docs/getting-started.md)
-- [CLI Reference](docs/cli-reference.md)
-- [Configuration](docs/CONFIGURATION.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [API Reference](docs/api-reference.md)
-- [Contributing](CONTRIBUTING.md)
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-```bash
-# Setup development environment
-git clone https://github.com/opensre/autosre.git
-cd autosre
-pip install -e ".[all,dev]"
-
-# Run tests
-pytest
-
-# Run linting
-ruff check .
+Edit `.env`:
+```env
+POSTGRES_PASSWORD=<secure-password>
+NEO4J_PASSWORD=<secure-password>
+REDIS_PASSWORD=<secure-password>
+LITELLM_MASTER_KEY=<your-key>
+API_SECRET_KEY=<generated-hex>
+JWT_SECRET_KEY=<generated-hex>
+NEXTAUTH_SECRET=<generated-hex>
+OPENAI_API_KEY=<your-key>
+ANTHROPIC_API_KEY=<your-key>
 ```
 
----
+### LiteLLM Configuration
 
-## 📄 License
+Edit `config/litellm_config.yaml` to add/modify LLM models.
 
-MIT License - see [LICENSE](LICENSE) for details.
+## Production Deployment
 
----
+1. Set `ENVIRONMENT=production` in `.env`
+2. Use proper secrets management (not .env files)
+3. Set up reverse proxy (nginx/traefik)
+4. Enable SSL/TLS
+5. Set restrictive CORS origins
+6. Run `make backup` regularly
 
-## 🙏 Acknowledgments
+## Troubleshooting
 
-Built with:
-- [Click](https://click.palletsprojects.com/) - CLI framework
-- [Rich](https://rich.readthedocs.io/) - Beautiful terminal output
-- [Pydantic](https://pydantic.dev/) - Data validation
-- [HTTPX](https://www.python-httpx.org/) - HTTP client
+### Services not starting
+```bash
+make health
+make logs
+```
 
-Inspired by the SRE practices at Google, Netflix, and the broader DevOps community.
+### Database connection issues
+```bash
+make db-shell
+# Then: \conninfo
+```
 
----
-
-<p align="center">
-  <b>Built with ❤️ by the OpenSRE Community</b>
-</p>
+### Reset everything
+```bash
+make clean-all
+make setup
+make dev
+```

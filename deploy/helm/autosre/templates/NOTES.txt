@@ -1,0 +1,83 @@
+1. Get the application URLs:
+{{- if .Values.ingress.enabled }}
+
+  Web UI:   https://{{ .Values.ingress.hosts.web }}
+  API:      https://{{ .Values.ingress.hosts.api }}
+
+{{- else if .Values.web.enabled }}
+
+  Get the Web UI URL by running:
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "autosre.name" . }},app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=web" -o jsonpath="{.items[0].metadata.name}")
+  echo "Visit http://127.0.0.1:3000 to use your application"
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 3000:{{ .Values.web.service.port }}
+
+{{- end }}
+{{- if .Values.api.enabled }}
+
+  Get the API URL by running:
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "autosre.name" . }},app.kubernetes.io/instance={{ .Release.Name }},app.kubernetes.io/component=api" -o jsonpath="{.items[0].metadata.name}")
+  echo "API available at http://127.0.0.1:8000"
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8000:{{ .Values.api.service.port }}
+
+{{- end }}
+
+2. Check deployment status:
+
+  kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/instance={{ .Release.Name }}"
+
+3. View logs:
+
+  # Agent logs
+  kubectl logs -f --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "autosre.name" . }},app.kubernetes.io/component=agent"
+
+  # API logs
+  kubectl logs -f --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "autosre.name" . }},app.kubernetes.io/component=api"
+
+4. Important configuration notes:
+
+{{- if .Values.secrets.create }}
+  ⚠️  Secrets were created using values from your values file.
+     For production, consider using an external secrets manager like:
+     - HashiCorp Vault
+     - AWS Secrets Manager
+     - Azure Key Vault
+     - External Secrets Operator
+{{- end }}
+
+{{- if .Values.postgresql.enabled }}
+  📦 PostgreSQL is deployed as a sub-chart.
+     To connect: {{ .Release.Name }}-postgresql:5432
+{{- end }}
+
+{{- if .Values.redis.enabled }}
+  📦 Redis is deployed as a sub-chart.
+     To connect: {{ .Release.Name }}-redis-master:6379
+{{- end }}
+
+{{- if .Values.neo4j.enabled }}
+  📦 Neo4j is deployed as a sub-chart.
+     Bolt: bolt://{{ .Release.Name }}-neo4j:7687
+     HTTP: http://{{ .Release.Name }}-neo4j:7474
+{{- end }}
+
+{{- if .Values.agent.autoscaling.enabled }}
+  📈 HPA is enabled for the Agent service.
+     Min replicas: {{ .Values.agent.autoscaling.minReplicas }}
+     Max replicas: {{ .Values.agent.autoscaling.maxReplicas }}
+{{- end }}
+
+{{- if .Values.api.autoscaling.enabled }}
+  📈 HPA is enabled for the API service.
+     Min replicas: {{ .Values.api.autoscaling.minReplicas }}
+     Max replicas: {{ .Values.api.autoscaling.maxReplicas }}
+{{- end }}
+
+{{- if .Values.networkPolicy.enabled }}
+  🔒 Network policies are enabled.
+     Only allowed namespaces can reach the services:
+     {{- range .Values.networkPolicy.ingressNamespaces }}
+     - {{ . }}
+     {{- end }}
+{{- end }}
+
+For more information, visit: https://github.com/yourusername/autosre

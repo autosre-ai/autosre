@@ -1,0 +1,84 @@
+---
+name: traces
+description: Distributed tracing analysis for request flow debugging and latency investigation
+category: observability
+enabled: true
+required_integrations: []  # Works with Jaeger, Tempo, Zipkin, X-Ray
+version: "1.0.0"
+---
+
+actions:
+  - name: find_traces
+    description: Find traces by service, operation, time range, or error status
+    parameters:
+      - name: service
+        type: string
+        required: true
+        description: Service name
+      - name: operation
+        type: string
+        required: false
+        description: Operation/endpoint name
+      - name: time_range
+        type: string
+        required: false
+        default: "1h"
+      - name: status
+        type: string
+        required: false
+        description: Filter by status (error, ok)
+      - name: min_duration
+        type: string
+        required: false
+        description: Minimum duration (e.g., 1s, 500ms)
+      - name: limit
+        type: integer
+        required: false
+        default: 20
+
+  - name: get_trace
+    description: Get full trace details by trace ID
+    parameters:
+      - name: trace_id
+        type: string
+        required: true
+        description: Trace ID
+
+  - name: analyze_trace
+    description: Analyze a trace for bottlenecks and issues
+    parameters:
+      - name: trace_id
+        type: string
+        required: true
+
+  - name: compare_traces
+    description: Compare traces to find differences (slow vs fast)
+    parameters:
+      - name: trace_ids
+        type: array
+        items:
+          type: string
+        required: true
+        description: List of trace IDs to compare
+
+  - name: get_service_latency
+    description: Get latency contribution by service
+    parameters:
+      - name: service
+        type: string
+        required: true
+      - name: time_range
+        type: string
+        required: false
+        default: "1h"
+
+  - name: get_service_dependencies
+    description: Get service dependency graph from traces
+    parameters:
+      - name: service
+        type: string
+        required: true
+      - name: time_range
+        type: string
+        required: false
+        default: "1h"

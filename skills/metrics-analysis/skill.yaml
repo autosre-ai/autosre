@@ -1,0 +1,134 @@
+---
+name: metrics-analysis
+description: Statistical anomaly detection and SRE methodology for metrics-based investigation
+category: observability
+enabled: true
+required_integrations: []  # Works with Prometheus, Grafana, Datadog, etc.
+version: "1.0.0"
+---
+
+actions:
+  - name: query_metrics
+    description: Execute a PromQL query against Prometheus
+    parameters:
+      - name: query
+        type: string
+        required: true
+        description: PromQL query string
+      - name: start
+        type: string
+        required: false
+        description: Start time (ISO8601 or relative like -1h)
+      - name: end
+        type: string
+        required: false
+        default: "now"
+        description: End time
+      - name: step
+        type: string
+        required: false
+        default: "1m"
+        description: Query resolution
+
+  - name: get_red_metrics
+    description: Get RED method metrics (Rate, Errors, Duration) for a service
+    parameters:
+      - name: service
+        type: string
+        required: true
+        description: Service name
+      - name: time_range
+        type: string
+        required: false
+        default: "1h"
+
+  - name: get_use_metrics
+    description: Get USE method metrics (Utilization, Saturation, Errors) for resources
+    parameters:
+      - name: resource
+        type: string
+        required: true
+        description: Resource name (e.g., node name, pod name)
+      - name: time_range
+        type: string
+        required: false
+        default: "1h"
+
+  - name: detect_anomalies
+    description: Detect statistical anomalies in metrics
+    parameters:
+      - name: metric
+        type: string
+        required: true
+        description: Metric name to analyze
+      - name: service
+        type: string
+        required: false
+      - name: baseline_window
+        type: string
+        required: false
+        default: "7d"
+        description: Window for baseline calculation
+      - name: threshold_sigma
+        type: number
+        required: false
+        default: 2.0
+        description: Standard deviation threshold for anomaly
+
+  - name: find_change_points
+    description: Find timestamps where metric behavior changed significantly
+    parameters:
+      - name: metric
+        type: string
+        required: true
+      - name: time_range
+        type: string
+        required: false
+        default: "1h"
+      - name: sensitivity
+        type: string
+        required: false
+        default: "medium"
+        description: Detection sensitivity (low, medium, high)
+
+  - name: correlate_metrics
+    description: Find metrics that correlate with a given metric
+    parameters:
+      - name: metric
+        type: string
+        required: true
+        description: Reference metric to correlate against
+      - name: time_range
+        type: string
+        required: false
+        default: "1h"
+      - name: min_correlation
+        type: number
+        required: false
+        default: 0.8
+
+  - name: compare_to_baseline
+    description: Compare current metric values to historical baseline
+    parameters:
+      - name: metric
+        type: string
+        required: true
+      - name: compare_to
+        type: string
+        required: false
+        default: "yesterday"
+        description: Baseline period (yesterday, last_week, 7d_avg)
+      - name: service
+        type: string
+        required: false
+
+  - name: get_slo_status
+    description: Get SLO status and error budget consumption
+    parameters:
+      - name: service
+        type: string
+        required: true
+      - name: sli
+        type: string
+        required: false
+        description: SLI to check (availability, latency)
