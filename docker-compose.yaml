@@ -9,41 +9,41 @@ services:
   # ---------------------------------------------------------------------------
   # OpenSRE Core
   # ---------------------------------------------------------------------------
-  opensre:
+  autosre:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ghcr.io/srisainath/opensre:${OPENSRE_VERSION:-latest}
-    container_name: opensre
+    image: ghcr.io/autosre-ai/autosre:${AUTOSRE_VERSION:-latest}
+    container_name: autosre
     restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
       # LLM Configuration
-      - OPENSRE_LLM_PROVIDER=${OPENSRE_LLM_PROVIDER:-ollama}
-      - OPENSRE_OLLAMA_HOST=http://ollama:11434
-      - OPENSRE_OLLAMA_MODEL=${OPENSRE_OLLAMA_MODEL:-llama3.1:8b}
-      - OPENSRE_OPENAI_API_KEY=${OPENSRE_OPENAI_API_KEY:-}
-      - OPENSRE_ANTHROPIC_API_KEY=${OPENSRE_ANTHROPIC_API_KEY:-}
+      - AUTOSRE_LLM_PROVIDER=${AUTOSRE_LLM_PROVIDER:-ollama}
+      - AUTOSRE_OLLAMA_HOST=http://ollama:11434
+      - AUTOSRE_OLLAMA_MODEL=${AUTOSRE_OLLAMA_MODEL:-llama3.1:8b}
+      - AUTOSRE_OPENAI_API_KEY=${AUTOSRE_OPENAI_API_KEY:-}
+      - AUTOSRE_ANTHROPIC_API_KEY=${AUTOSRE_ANTHROPIC_API_KEY:-}
       
       # Infrastructure
-      - OPENSRE_PROMETHEUS_URL=${OPENSRE_PROMETHEUS_URL:-http://prometheus:9090}
+      - AUTOSRE_PROMETHEUS_URL=${AUTOSRE_PROMETHEUS_URL:-http://prometheus:9090}
       
       # Slack
-      - OPENSRE_SLACK_BOT_TOKEN=${OPENSRE_SLACK_BOT_TOKEN:-}
-      - OPENSRE_SLACK_APP_TOKEN=${OPENSRE_SLACK_APP_TOKEN:-}
-      - OPENSRE_SLACK_CHANNEL=${OPENSRE_SLACK_CHANNEL:-#incidents}
+      - AUTOSRE_SLACK_BOT_TOKEN=${AUTOSRE_SLACK_BOT_TOKEN:-}
+      - AUTOSRE_SLACK_APP_TOKEN=${AUTOSRE_SLACK_APP_TOKEN:-}
+      - AUTOSRE_SLACK_CHANNEL=${AUTOSRE_SLACK_CHANNEL:-#incidents}
       
       # Database
-      - OPENSRE_DATABASE_URL=sqlite:///data/opensre.db
+      - AUTOSRE_DATABASE_URL=sqlite:///data/autosre.db
       
       # Logging
-      - OPENSRE_LOG_LEVEL=${OPENSRE_LOG_LEVEL:-INFO}
+      - AUTOSRE_LOG_LEVEL=${AUTOSRE_LOG_LEVEL:-INFO}
     volumes:
       - ./config:/app/config:ro
       - ./runbooks:/app/runbooks:ro
       - ./agents:/app/agents:ro
-      - opensre_data:/app/data
+      - autosre_data:/app/data
       - ${HOME}/.kube/config:/app/.kube/config:ro
     depends_on:
       ollama:
@@ -55,7 +55,7 @@ services:
       retries: 3
       start_period: 10s
     networks:
-      - opensre-network
+      - autosre-network
 
   # ---------------------------------------------------------------------------
   # Ollama - Local LLM
@@ -75,7 +75,7 @@ services:
       retries: 5
       start_period: 30s
     networks:
-      - opensre-network
+      - autosre-network
     # Uncomment for GPU support
     # deploy:
     #   resources:
@@ -103,12 +103,12 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - opensre-network
+      - autosre-network
     profiles:
       - ha
 
 volumes:
-  opensre_data:
+  autosre_data:
     driver: local
   ollama_data:
     driver: local
@@ -116,5 +116,5 @@ volumes:
     driver: local
 
 networks:
-  opensre-network:
+  autosre-network:
     driver: bridge

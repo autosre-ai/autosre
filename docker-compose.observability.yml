@@ -6,11 +6,11 @@ version: '3.8'
 services:
   prometheus:
     image: prom/prometheus:v2.50.0
-    container_name: opensre-prometheus
+    container_name: autosre-prometheus
     ports:
       - "9091:9090"
     volumes:
-      - ./config/prometheus-opensre.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/prometheus-autosre.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -20,18 +20,18 @@ services:
       - '--web.enable-lifecycle'
     restart: unless-stopped
     networks:
-      - opensre-observability
+      - autosre-observability
 
   grafana:
     image: grafana/grafana:10.3.0
-    container_name: opensre-grafana
+    container_name: autosre-grafana
     ports:
       - "3001:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=opensre
+      - GF_SECURITY_ADMIN_PASSWORD=autosre
       - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/opensre.json
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/autosre.json
     volumes:
       - ./dashboards:/var/lib/grafana/dashboards:ro
       - ./config/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
@@ -41,12 +41,12 @@ services:
       - prometheus
     restart: unless-stopped
     networks:
-      - opensre-observability
+      - autosre-observability
 
 volumes:
   prometheus_data:
   grafana_data:
 
 networks:
-  opensre-observability:
+  autosre-observability:
     driver: bridge

@@ -9,11 +9,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/opensre/autosre/actions"><img src="https://img.shields.io/github/actions/workflow/status/opensre/autosre/ci.yml?style=flat-square&logo=github" alt="CI Status"></a>
+  <a href="https://github.com/autosre-ai/autosre/actions"><img src="https://img.shields.io/github/actions/workflow/status/autosre-ai/autosre/ci.yml?style=flat-square&logo=github" alt="CI Status"></a>
   <a href="https://pypi.org/project/autosre"><img src="https://img.shields.io/pypi/v/autosre?style=flat-square&logo=pypi&logoColor=white" alt="PyPI Version"></a>
   <a href="https://pypi.org/project/autosre"><img src="https://img.shields.io/pypi/pyversions/autosre?style=flat-square&logo=python&logoColor=white" alt="Python Versions"></a>
-  <a href="https://github.com/opensre/autosre/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License"></a>
-  <a href="https://github.com/opensre/autosre"><img src="https://img.shields.io/github/stars/opensre/autosre?style=flat-square&logo=github" alt="Stars"></a>
+  <a href="https://github.com/autosre-ai/autosre/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License"></a>
+  <a href="https://github.com/autosre-ai/autosre"><img src="https://img.shields.io/github/stars/autosre-ai/autosre?style=flat-square&logo=github" alt="Stars"></a>
 </p>
 
 <p align="center">
@@ -52,7 +52,7 @@ autosre investigate "checkout service 500 errors" --service checkout-service
 
 Or with Docker:
 ```bash
-docker run -it --rm -v ~/.autosre:/root/.autosre ghcr.io/opensre/autosre investigate "high latency on api-gateway"
+docker run -it --rm -v ~/.autosre:/root/.autosre ghcr.io/autosre-ai/autosre investigate "high latency on api-gateway"
 ```
 
 **That's it.** No Neo4j. No Postgres. No infrastructure. Just `pip install` and go.
@@ -214,7 +214,7 @@ For production deployments with persistent storage and multiple services, see th
 
 ```bash
 # Clone and setup
-git clone https://github.com/opensre/autosre.git
+git clone https://github.com/autosre-ai/autosre.git
 cd autosre
 make setup
 
@@ -249,7 +249,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ```bash
 # Development setup
-git clone https://github.com/opensre/autosre.git
+git clone https://github.com/autosre-ai/autosre.git
 cd autosre
 pip install -e ".[dev]"
 pytest  # Run the test suite
@@ -275,7 +275,7 @@ Apache 2.0 — See [LICENSE](LICENSE) for details.
 </p>
 
 <p align="center">
-  <a href="https://github.com/opensre/autosre">⭐ Star us on GitHub</a> •
-  <a href="https://discord.gg/opensre">💬 Join Discord</a> •
-  <a href="https://twitter.com/opensre">🐦 Follow on Twitter</a>
+  <a href="https://github.com/autosre-ai/autosre">⭐ Star us on GitHub</a> •
+  <a href="https://discord.gg/autosre">💬 Join Discord</a> •
+  <a href="https://twitter.com/autosre_ai">🐦 Follow on Twitter</a>
 </p>
