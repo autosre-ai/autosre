@@ -10,8 +10,8 @@
 
 <p align="center">
   <a href="https://github.com/autosre-ai/autosre/actions"><img src="https://img.shields.io/github/actions/workflow/status/autosre-ai/autosre/ci.yml?style=flat-square&logo=github" alt="CI Status"></a>
-  <a href="https://pypi.org/project/autosre"><img src="https://img.shields.io/pypi/v/autosre?style=flat-square&logo=pypi&logoColor=white" alt="PyPI Version"></a>
-  <a href="https://pypi.org/project/autosre"><img src="https://img.shields.io/pypi/pyversions/autosre?style=flat-square&logo=python&logoColor=white" alt="Python Versions"></a>
+  <a href="https://pypi.org/project/autosre-ai"><img src="https://img.shields.io/pypi/v/autosre-ai?style=flat-square&logo=pypi&logoColor=white" alt="PyPI Version"></a>
+  <a href="https://pypi.org/project/autosre-ai"><img src="https://img.shields.io/pypi/pyversions/autosre-ai?style=flat-square&logo=python&logoColor=white" alt="Python Versions"></a>
   <a href="https://github.com/autosre-ai/autosre/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square" alt="License"></a>
   <a href="https://github.com/autosre-ai/autosre"><img src="https://img.shields.io/github/stars/autosre-ai/autosre?style=flat-square&logo=github" alt="Stars"></a>
 </p>
@@ -41,7 +41,7 @@
 
 ```bash
 # Install
-pip install autosre
+pip install autosre-ai
 
 # Configure (interactive setup)
 autosre config init

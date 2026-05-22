@@ -3,14 +3,14 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "autosre"
+name = "autosre-ai"
 version = "0.2.0"
 description = "Open-source AI SRE agent - foundation-first incident investigation, root cause analysis, and auto-remediation"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [
-    { name = "OpenSRE Community" }
+    { name = "AutoSRE AI", email = "hello@autosre.ai" }
 ]
 keywords = [
     "sre", "devops", "kubernetes", "incident-response", "observability",
