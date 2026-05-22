@@ -22,6 +22,12 @@ class IncidentReport(BaseModel):
     recommendations: list[str] = []
     generated_at: datetime = Field(default_factory=datetime.utcnow)
     
+    def _format_recommendations(self) -> str:
+        """Format recommendations as markdown list."""
+        if not self.recommendations:
+            return "- No recommendations yet"
+        return "\n".join(f"- {r}" for r in self.recommendations)
+    
     def to_markdown(self) -> str:
         """Render the report as Markdown."""
         return f"""# {self.title}
@@ -44,7 +50,7 @@ class IncidentReport(BaseModel):
 {self.resolution if self.resolution else "Resolution pending"}
 
 ## Recommendations
-{"".join(f"- {r}\n" for r in self.recommendations) if self.recommendations else "- No recommendations yet"}
+{self._format_recommendations()}
 """
 
 
