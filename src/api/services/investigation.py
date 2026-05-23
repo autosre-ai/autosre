@@ -2,7 +2,7 @@
 
 import asyncio
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 import structlog
@@ -36,7 +36,7 @@ class InvestigationService:
     ) -> InvestigationResponse:
         """Create a new investigation from an alert."""
         investigation_id = f"inv-{uuid.uuid4().hex[:12]}"
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Calculate priority based on severity and context
         priority = self._calculate_priority(request.alert, request.priority_override)
@@ -154,8 +154,8 @@ class InvestigationService:
             return False
 
         investigation.state = InvestigationState.CANCELLED
-        investigation.updated_at = datetime.utcnow()
-        investigation.completed_at = datetime.utcnow()
+        investigation.updated_at = datetime.now(timezone.utc)
+        investigation.completed_at = datetime.now(timezone.utc)
 
         # Notify stream
         await self._emit_event(
@@ -257,8 +257,8 @@ class InvestigationService:
         try:
             # Transition to running
             investigation.state = InvestigationState.RUNNING
-            investigation.started_at = datetime.utcnow()
-            investigation.updated_at = datetime.utcnow()
+            investigation.started_at = datetime.now(timezone.utc)
+            investigation.updated_at = datetime.now(timezone.utc)
 
             await self._emit_event(
                 investigation_id,
@@ -281,10 +281,10 @@ class InvestigationService:
                     step_id=step_id,
                     action=action,
                     description=description,
-                    started_at=datetime.utcnow(),
+                    started_at=datetime.now(timezone.utc),
                 )
                 investigation.steps.append(step)
-                investigation.updated_at = datetime.utcnow()
+                investigation.updated_at = datetime.now(timezone.utc)
 
                 await self._emit_event(
                     investigation_id,
@@ -296,7 +296,7 @@ class InvestigationService:
                 await asyncio.sleep(1)
 
                 # Complete step
-                step.completed_at = datetime.utcnow()
+                step.completed_at = datetime.now(timezone.utc)
                 step.result = {"status": "success"}
 
                 await self._emit_event(
@@ -317,8 +317,8 @@ class InvestigationService:
 
             # Complete investigation
             investigation.state = InvestigationState.COMPLETED
-            investigation.completed_at = datetime.utcnow()
-            investigation.updated_at = datetime.utcnow()
+            investigation.completed_at = datetime.now(timezone.utc)
+            investigation.updated_at = datetime.now(timezone.utc)
             investigation.root_cause = "Recent deployment introduced regression"
             investigation.remediation = "Consider rollback or hotfix"
             investigation.confidence = 0.85
@@ -343,8 +343,8 @@ class InvestigationService:
 
         except Exception as e:
             investigation.state = InvestigationState.FAILED
-            investigation.completed_at = datetime.utcnow()
-            investigation.updated_at = datetime.utcnow()
+            investigation.completed_at = datetime.now(timezone.utc)
+            investigation.updated_at = datetime.now(timezone.utc)
 
             await self._emit_event(
                 investigation_id,

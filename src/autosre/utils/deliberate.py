@@ -6,7 +6,7 @@ Key principle: Slow down, cite evidence, consider alternatives.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 from enum import Enum
 
@@ -44,7 +44,7 @@ class DeliberationRecord:
     """Record of deliberation before taking action."""
     
     action_proposed: str
-    started_at: datetime = field(default_factory=datetime.utcnow)
+    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
     
     # PAUSE checklist responses
@@ -62,7 +62,7 @@ class DeliberationRecord:
     @property
     def deliberation_seconds(self) -> float:
         """Time spent deliberating."""
-        end = self.completed_at or datetime.utcnow()
+        end = self.completed_at or datetime.now(timezone.utc)
         return (end - self.started_at).total_seconds()
     
     @property
@@ -166,7 +166,7 @@ class DeliberateReasoner:
             source=source,
             data=data,
             confidence=confidence,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
         ))
         self._evidence_citations += 1
     
@@ -220,7 +220,7 @@ class DeliberateReasoner:
         Returns:
             Tuple of (can_proceed, warnings)
         """
-        record.completed_at = datetime.utcnow()
+        record.completed_at = datetime.now(timezone.utc)
         record.proceed = proceed
         record.proceed_reason = reason
         

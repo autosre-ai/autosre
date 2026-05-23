@@ -10,7 +10,7 @@ Key insight: Availability = successful_requests / total_requests
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from collections import defaultdict
 import logging
@@ -317,7 +317,7 @@ class AvailabilityCalculator:
         )
         
         # Add window info
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         window_duration = self._parse_window(window)
         result.window_end = now
         result.window_start = now - window_duration
@@ -404,7 +404,7 @@ class AvailabilityTracker:
     def record(self, service: str, availability: float) -> None:
         """Record an availability measurement."""
         history = self._history[service]
-        history.append((datetime.utcnow(), availability))
+        history.append((datetime.now(timezone.utc), availability))
         
         # Trim old entries
         if len(history) > self._max_history:
@@ -418,7 +418,7 @@ class AvailabilityTracker:
         
         Returns average, min, max, and trend direction.
         """
-        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
         history = [
             (ts, val) for ts, val in self._history.get(service, [])
             if ts >= cutoff

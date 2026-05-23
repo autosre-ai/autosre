@@ -6,7 +6,7 @@ Key principle: Focus on SYSTEMS, not people. What failed in the process?
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Any, Optional
 from enum import Enum
 
@@ -129,7 +129,7 @@ class PostmortemDraft:
     incident_id: str
     
     # Metadata
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     author: str = "AutoSRE"
     status: str = "draft"  # draft, review, published
     
@@ -409,7 +409,7 @@ class PostmortemGenerator:
         # Add investigation events
         for event in events:
             timeline.append(TimelineEvent(
-                timestamp=datetime.fromisoformat(event["timestamp"]) if isinstance(event.get("timestamp"), str) else event.get("timestamp", datetime.utcnow()),
+                timestamp=datetime.fromisoformat(event["timestamp"]) if isinstance(event.get("timestamp"), str) else event.get("timestamp", datetime.now(timezone.utc)),
                 description=event.get("description", event.get("message", "")),
                 actor=event.get("actor", "system"),
                 event_type=event.get("type", "observation"),

@@ -1,6 +1,6 @@
 """Config service - manages team and skill configuration."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import structlog
@@ -60,8 +60,8 @@ class ConfigService:
                 auto_remediate=True,
                 investigation_timeout_minutes=45,
                 preferences={"prefer_rollback": True, "auto_scale_enabled": True},
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
             ),
             TeamConfig(
                 team_id="team-sre",
@@ -80,8 +80,8 @@ class ConfigService:
                 auto_remediate=False,
                 investigation_timeout_minutes=60,
                 preferences={},
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
             ),
         ]
 
@@ -316,7 +316,7 @@ class ConfigService:
             if value is not None:
                 setattr(team, field, value)
 
-        team.updated_at = datetime.utcnow()
+        team.updated_at = datetime.now(timezone.utc)
 
         logger.info(
             "team_updated",

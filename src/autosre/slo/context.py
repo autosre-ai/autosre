@@ -6,7 +6,7 @@ This helps operators understand the impact of incidents on SLOs.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 import logging
 
@@ -344,7 +344,7 @@ class SLOContextProvider:
     ) -> IncidentBudgetImpact:
         """Calculate incident impact on error budget."""
         # Calculate duration
-        end_time = ended_at or datetime.utcnow()
+        end_time = ended_at or datetime.now(timezone.utc)
         duration = (end_time - started_at).total_seconds() / 60
         
         # Calculate monthly budget
@@ -396,7 +396,7 @@ class SLOContextProvider:
         budget: ErrorBudget,
     ) -> IncidentBudgetImpact:
         """Calculate incident impact using Prometheus queries."""
-        end_time = ended_at or datetime.utcnow()
+        end_time = ended_at or datetime.now(timezone.utc)
         duration = (end_time - started_at).total_seconds() / 60
         
         # Query for requests during incident window
@@ -460,8 +460,8 @@ class SLOContextProvider:
             
             result = await self.prometheus.query_range(
                 query,
-                start=datetime.utcnow() - timedelta(days=days),
-                end=datetime.utcnow(),
+                start=datetime.now(timezone.utc) - timedelta(days=days),
+                end=datetime.now(timezone.utc),
                 step="1d",
             )
             

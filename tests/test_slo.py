@@ -5,7 +5,7 @@ Tests error budget calculation, availability tracking, and SLO context.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from autosre.slo.error_budget import (
     ErrorBudget,
@@ -435,8 +435,8 @@ class TestIncidentBudgetImpact:
         impact = IncidentBudgetImpact(
             incident_id="INC001",
             service="api",
-            started_at=datetime.utcnow() - timedelta(minutes=30),
-            ended_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc) - timedelta(minutes=30),
+            ended_at=datetime.now(timezone.utc),
             duration_minutes=30,
             requests_affected=10000,
             requests_failed=500,
@@ -474,8 +474,8 @@ class TestSLOContextProvider:
         context = provider.get_context(
             service="api",
             incident_id="INC001",
-            incident_start=datetime.utcnow() - timedelta(minutes=15),
-            incident_end=datetime.utcnow(),
+            incident_start=datetime.now(timezone.utc) - timedelta(minutes=15),
+            incident_end=datetime.now(timezone.utc),
             requests_failed=1000,
             requests_total=10000,
         )

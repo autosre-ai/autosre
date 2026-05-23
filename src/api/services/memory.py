@@ -1,6 +1,6 @@
 """Memory service - manages episodes and strategies."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 import uuid
 
@@ -49,7 +49,7 @@ class MemoryService:
                 resolution="Rolled back deployment, patched memory leak",
                 outcome=EpisodeOutcome.RESOLVED,
                 duration_seconds=847,
-                created_at=datetime.utcnow() - timedelta(days=3),
+                created_at=datetime.now(timezone.utc) - timedelta(days=3),
                 feedback_rating=4,
                 tags=["deployment", "memory-leak", "rollback"],
             ),
@@ -67,7 +67,7 @@ class MemoryService:
                 resolution="Added composite index, latency normalized",
                 outcome=EpisodeOutcome.RESOLVED,
                 duration_seconds=1234,
-                created_at=datetime.utcnow() - timedelta(days=7),
+                created_at=datetime.now(timezone.utc) - timedelta(days=7),
                 feedback_rating=5,
                 tags=["database", "index", "performance"],
             ),
@@ -95,8 +95,8 @@ class MemoryService:
                 success_rate=0.87,
                 avg_resolution_time=600,
                 learned_from=["ep-001"],
-                created_at=datetime.utcnow() - timedelta(days=30),
-                updated_at=datetime.utcnow() - timedelta(days=1),
+                created_at=datetime.now(timezone.utc) - timedelta(days=30),
+                updated_at=datetime.now(timezone.utc) - timedelta(days=1),
                 usage_count=23,
             ),
             Strategy(
@@ -116,8 +116,8 @@ class MemoryService:
                 success_rate=0.79,
                 avg_resolution_time=900,
                 learned_from=["ep-002"],
-                created_at=datetime.utcnow() - timedelta(days=20),
-                updated_at=datetime.utcnow() - timedelta(days=5),
+                created_at=datetime.now(timezone.utc) - timedelta(days=20),
+                updated_at=datetime.now(timezone.utc) - timedelta(days=5),
                 usage_count=15,
             ),
         ]
@@ -288,7 +288,7 @@ class MemoryService:
         episodes = list(self._episodes.values())
         strategies = list(self._strategies.values())
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         week_ago = now - timedelta(days=7)
 
         recent_episodes = [e for e in episodes if e.created_at >= week_ago]

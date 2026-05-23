@@ -6,7 +6,7 @@ Key principle: Max 2 incidents per 12-hour shift.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Any
 from enum import Enum
 import json
@@ -91,7 +91,7 @@ class ShiftStatus:
     @property
     def hours_remaining(self) -> float:
         """Hours remaining in shift."""
-        remaining = (self.shift_end - datetime.utcnow()).total_seconds() / 3600
+        remaining = (self.shift_end - datetime.now(timezone.utc)).total_seconds() / 3600
         return max(0, remaining)
     
     @property
@@ -162,7 +162,7 @@ class OnCallLoadTracker:
         Returns:
             New shift status
         """
-        start = start_time or datetime.utcnow()
+        start = start_time or datetime.now(timezone.utc)
         end = start + timedelta(hours=self.shift_hours)
         
         shift = ShiftStatus(
@@ -186,7 +186,7 @@ class OnCallLoadTracker:
         """
         shift = self._shifts.get(user)
         
-        if shift and datetime.utcnow() > shift.shift_end:
+        if shift and datetime.now(timezone.utc) > shift.shift_end:
             # Shift has ended
             del self._shifts[user]
             return None
@@ -224,7 +224,7 @@ class OnCallLoadTracker:
             incident_id=incident_id,
             title=title,
             severity=severity,
-            started_at=started_at or datetime.utcnow(),
+            started_at=started_at or datetime.now(timezone.utc),
         )
         shift.incidents.append(incident)
         
@@ -256,7 +256,7 @@ class OnCallLoadTracker:
         
         for incident in shift.incidents:
             if incident.incident_id == incident_id:
-                incident.resolved_at = datetime.utcnow()
+                incident.resolved_at = datetime.now(timezone.utc)
                 incident.notes = notes
                 
                 # Calculate TTR
@@ -370,7 +370,7 @@ class OnCallLoadTracker:
             
             # Check for long-running incidents
             for incident in unresolved:
-                age = (datetime.utcnow() - incident.started_at).total_seconds() / 60
+                age = (datetime.now(timezone.utc) - incident.started_at).total_seconds() / 60
                 if age > 30:
                     actions.append(
                         f"Incident '{incident.incident_id}' open for {int(age)}min - "

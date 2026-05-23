@@ -6,7 +6,7 @@ Key triggers: user impact, data loss, on-call intervention, long resolution, mon
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, Callable
 from enum import Enum
 from pathlib import Path
@@ -257,7 +257,7 @@ class PostmortemPolicy:
         Returns:
             Created ticket
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         due_date = now + timedelta(days=self.config.default_due_days)
         
         ticket = PostmortemTicket(
@@ -297,14 +297,14 @@ class PostmortemPolicy:
             return None
         
         ticket.status = "completed"
-        ticket.completed_at = datetime.utcnow()
+        ticket.completed_at = datetime.now(timezone.utc)
         ticket.postmortem_url = postmortem_url
         
         return ticket
     
     def get_overdue_postmortems(self) -> list[PostmortemTicket]:
         """Get list of overdue postmortem tickets."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         overdue = []
         
         for ticket in self._tickets.values():
@@ -341,7 +341,7 @@ class PostmortemPolicy:
                 "completion_rate": 0.0,
             }
         
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         completed = [t for t in tickets if t.status == "completed"]
         overdue = [t for t in tickets if t.status != "completed" and t.due_date < now]
         open_tickets = [t for t in tickets if t.status not in ("completed",) and t.due_date >= now]

@@ -1,7 +1,7 @@
 """Tests for Postmortem Generator and Policy."""
 
 import pytest
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from pathlib import Path
 import tempfile
 
@@ -380,7 +380,7 @@ class TestPostmortemPolicy:
         assert "Postmortem" in ticket.title
         assert ticket.assignee == "alice@example.com"
         assert ticket.status == "open"
-        assert ticket.due_date > datetime.utcnow()
+        assert ticket.due_date > datetime.now(timezone.utc)
     
     def test_complete_postmortem(self):
         """Test marking postmortem as complete."""
@@ -416,7 +416,7 @@ class TestPostmortemPolicy:
         
         # Manually backdate it
         ticket = policy.get_ticket("INC-009")
-        ticket.due_date = datetime.utcnow() - timedelta(days=1)
+        ticket.due_date = datetime.now(timezone.utc) - timedelta(days=1)
         
         overdue = policy.get_overdue_postmortems()
         

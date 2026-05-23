@@ -1,7 +1,7 @@
 """Tests for On-Call Load Tracker and Alert Quality Validator."""
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from autosre.oncall.load import (
     OnCallLoadTracker,
@@ -338,7 +338,7 @@ class TestOnCallLoadTracker:
         tracker = OnCallLoadTracker()
         
         # Start shift in the past
-        past_time = datetime.utcnow() - timedelta(hours=SHIFT_HOURS + 1)
+        past_time = datetime.now(timezone.utc) - timedelta(hours=SHIFT_HOURS + 1)
         tracker.start_shift("henry@example.com", start_time=past_time)
         
         # Shift should be expired
