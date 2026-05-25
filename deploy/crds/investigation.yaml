@@ -1,0 +1,481 @@
+---
+# AutoSRE Investigation Custom Resource Definition
+# Represents an incident investigation in Kubernetes
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: investigations.autosre.io
+  labels:
+    app.kubernetes.io/name: autosre
+    app.kubernetes.io/component: crds
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+spec:
+  group: autosre.io
+  scope: Namespaced
+  names:
+    plural: investigations
+    singular: investigation
+    kind: Investigation
+    shortNames:
+      - inv
+      - invs
+    categories:
+      - autosre
+      - sre
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Status
+          type: string
+          jsonPath: .status.phase
+          description: Current phase of the investigation
+        - name: Alert
+          type: string
+          jsonPath: .spec.alertRef.name
+          description: Referenced alert
+        - name: Severity
+          type: string
+          jsonPath: .spec.severity
+          description: Investigation severity
+        - name: RootCause
+          type: string
+          jsonPath: .status.rootCause
+          description: Identified root cause
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              required:
+                - description
+              properties:
+                description:
+                  type: string
+                  description: Human-readable description of the incident
+                  minLength: 10
+                  maxLength: 10000
+                severity:
+                  type: string
+                  description: Severity level of the incident
+                  enum:
+                    - critical
+                    - high
+                    - medium
+                    - low
+                    - info
+                  default: medium
+                priority:
+                  type: string
+                  description: Priority for investigation
+                  enum:
+                    - P1
+                    - P2
+                    - P3
+                    - P4
+                    - P5
+                  default: P3
+                alertRef:
+                  type: object
+                  description: Reference to the alert that triggered this investigation
+                  properties:
+                    name:
+                      type: string
+                      description: Name of the Alert resource
+                    namespace:
+                      type: string
+                      description: Namespace of the Alert resource
+                runbookRef:
+                  type: object
+                  description: Reference to a runbook to execute
+                  properties:
+                    name:
+                      type: string
+                      description: Name of the Runbook resource
+                    namespace:
+                      type: string
+                      description: Namespace of the Runbook resource
+                targetResources:
+                  type: array
+                  description: Kubernetes resources to investigate
+                  items:
+                    type: object
+                    properties:
+                      kind:
+                        type: string
+                        description: Resource kind (Pod, Deployment, Service, etc.)
+                      name:
+                        type: string
+                        description: Resource name
+                      namespace:
+                        type: string
+                        description: Resource namespace
+                      labels:
+                        type: object
+                        additionalProperties:
+                          type: string
+                        description: Label selector for resources
+                scope:
+                  type: object
+                  description: Investigation scope configuration
+                  properties:
+                    timeRange:
+                      type: object
+                      description: Time range for data collection
+                      properties:
+                        start:
+                          type: string
+                          format: date-time
+                          description: Start time (RFC3339)
+                        end:
+                          type: string
+                          format: date-time
+                          description: End time (RFC3339)
+                        duration:
+                          type: string
+                          description: Duration (e.g., "1h", "30m", "2d")
+                          pattern: '^[0-9]+[smhd]$'
+                    namespaces:
+                      type: array
+                      description: Namespaces to investigate
+                      items:
+                        type: string
+                    clusters:
+                      type: array
+                      description: Clusters to investigate (multi-cluster)
+                      items:
+                        type: string
+                analysisConfig:
+                  type: object
+                  description: Configuration for AI analysis
+                  properties:
+                    model:
+                      type: string
+                      description: LLM model to use
+                      default: gpt-4
+                    depth:
+                      type: string
+                      description: Analysis depth
+                      enum:
+                        - quick
+                        - standard
+                        - deep
+                        - exhaustive
+                      default: standard
+                    enableRemediation:
+                      type: boolean
+                      description: Enable automatic remediation
+                      default: false
+                    maxIterations:
+                      type: integer
+                      description: Maximum analysis iterations
+                      minimum: 1
+                      maximum: 50
+                      default: 10
+                    timeout:
+                      type: string
+                      description: Analysis timeout
+                      pattern: '^[0-9]+[smh]$'
+                      default: "30m"
+                    hypothesisMode:
+                      type: string
+                      description: Hypothesis generation mode
+                      enum:
+                        - conservative
+                        - balanced
+                        - aggressive
+                      default: balanced
+                dataSources:
+                  type: array
+                  description: Data sources to query during investigation
+                  items:
+                    type: object
+                    required:
+                      - type
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - prometheus
+                          - datadog
+                          - cloudwatch
+                          - elasticsearch
+                          - loki
+                          - kubernetes
+                      endpoint:
+                        type: string
+                        description: Data source endpoint URL
+                      secretRef:
+                        type: object
+                        description: Reference to credentials secret
+                        properties:
+                          name:
+                            type: string
+                          namespace:
+                            type: string
+                notifications:
+                  type: object
+                  description: Notification configuration
+                  properties:
+                    slack:
+                      type: object
+                      properties:
+                        channel:
+                          type: string
+                        secretRef:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            key:
+                              type: string
+                    pagerduty:
+                      type: object
+                      properties:
+                        routingKey:
+                          type: string
+                        secretRef:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            key:
+                              type: string
+                    webhook:
+                      type: object
+                      properties:
+                        url:
+                          type: string
+                        secretRef:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            key:
+                              type: string
+                labels:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: Custom labels for organization
+                annotations:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: Custom annotations
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  description: Current phase of the investigation
+                  enum:
+                    - Pending
+                    - Running
+                    - Analyzing
+                    - WaitingForApproval
+                    - Remediating
+                    - Completed
+                    - Failed
+                    - Cancelled
+                startTime:
+                  type: string
+                  format: date-time
+                  description: When the investigation started
+                completionTime:
+                  type: string
+                  format: date-time
+                  description: When the investigation completed
+                lastUpdateTime:
+                  type: string
+                  format: date-time
+                  description: Last status update time
+                currentStep:
+                  type: string
+                  description: Current step in the investigation
+                progress:
+                  type: integer
+                  description: Progress percentage (0-100)
+                  minimum: 0
+                  maximum: 100
+                rootCause:
+                  type: string
+                  description: Identified root cause summary
+                confidence:
+                  type: number
+                  description: Confidence score for root cause (0.0-1.0)
+                  minimum: 0
+                  maximum: 1
+                hypothesis:
+                  type: array
+                  description: Generated hypotheses
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      description:
+                        type: string
+                      confidence:
+                        type: number
+                      evidence:
+                        type: array
+                        items:
+                          type: string
+                      status:
+                        type: string
+                        enum:
+                          - pending
+                          - validated
+                          - rejected
+                findings:
+                  type: array
+                  description: Investigation findings
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - anomaly
+                          - correlation
+                          - pattern
+                          - error
+                          - warning
+                          - info
+                      severity:
+                        type: string
+                      message:
+                        type: string
+                      timestamp:
+                        type: string
+                        format: date-time
+                      source:
+                        type: string
+                      details:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                recommendations:
+                  type: array
+                  description: Recommended actions
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      type:
+                        type: string
+                        enum:
+                          - immediate
+                          - short_term
+                          - long_term
+                      priority:
+                        type: string
+                      action:
+                        type: string
+                      rationale:
+                        type: string
+                      automated:
+                        type: boolean
+                      status:
+                        type: string
+                        enum:
+                          - pending
+                          - approved
+                          - rejected
+                          - executed
+                          - failed
+                remediations:
+                  type: array
+                  description: Applied remediations
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      action:
+                        type: string
+                      timestamp:
+                        type: string
+                        format: date-time
+                      status:
+                        type: string
+                        enum:
+                          - pending
+                          - running
+                          - completed
+                          - failed
+                          - rolled_back
+                      result:
+                        type: string
+                metrics:
+                  type: object
+                  description: Investigation metrics
+                  properties:
+                    dataPointsAnalyzed:
+                      type: integer
+                    queriesExecuted:
+                      type: integer
+                    logsProcessed:
+                      type: integer
+                    timeToRootCause:
+                      type: string
+                    totalTokensUsed:
+                      type: integer
+                    costEstimate:
+                      type: string
+                conditions:
+                  type: array
+                  description: Standard Kubernetes conditions
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - "Unknown"
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                reportUrl:
+                  type: string
+                  description: URL to full investigation report
+                relatedInvestigations:
+                  type: array
+                  description: Related investigation references
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                      relationship:
+                        type: string

@@ -1,0 +1,368 @@
+---
+# AutoSRE Alert Custom Resource Definition
+# Represents incoming alerts that can trigger investigations
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: alerts.autosre.io
+  labels:
+    app.kubernetes.io/name: autosre
+    app.kubernetes.io/component: crds
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+spec:
+  group: autosre.io
+  scope: Namespaced
+  names:
+    plural: alerts
+    singular: alert
+    kind: Alert
+    shortNames:
+      - alrt
+    categories:
+      - autosre
+      - sre
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Status
+          type: string
+          jsonPath: .status.state
+          description: Current state of the alert
+        - name: Severity
+          type: string
+          jsonPath: .spec.severity
+          description: Alert severity
+        - name: Source
+          type: string
+          jsonPath: .spec.source.type
+          description: Alert source
+        - name: Investigation
+          type: string
+          jsonPath: .status.investigationRef.name
+          description: Linked investigation
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              required:
+                - alertName
+                - severity
+              properties:
+                alertName:
+                  type: string
+                  description: Name/identifier of the alert
+                  minLength: 1
+                  maxLength: 256
+                severity:
+                  type: string
+                  description: Alert severity level
+                  enum:
+                    - critical
+                    - high
+                    - medium
+                    - low
+                    - info
+                description:
+                  type: string
+                  description: Human-readable description
+                  maxLength: 10000
+                summary:
+                  type: string
+                  description: Short summary of the alert
+                  maxLength: 500
+                source:
+                  type: object
+                  description: Alert source information
+                  required:
+                    - type
+                  properties:
+                    type:
+                      type: string
+                      description: Source type
+                      enum:
+                        - prometheus
+                        - alertmanager
+                        - pagerduty
+                        - datadog
+                        - cloudwatch
+                        - newrelic
+                        - custom
+                        - kubernetes
+                    instance:
+                      type: string
+                      description: Source instance identifier
+                    alertId:
+                      type: string
+                      description: Original alert ID from source
+                    fingerprint:
+                      type: string
+                      description: Alert fingerprint for deduplication
+                    url:
+                      type: string
+                      description: URL to original alert
+                labels:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: Alert labels (Prometheus-style)
+                annotations:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: Alert annotations
+                startsAt:
+                  type: string
+                  format: date-time
+                  description: When the alert started firing
+                endsAt:
+                  type: string
+                  format: date-time
+                  description: When the alert resolved (if resolved)
+                affectedResources:
+                  type: array
+                  description: Kubernetes resources affected by this alert
+                  items:
+                    type: object
+                    properties:
+                      apiVersion:
+                        type: string
+                      kind:
+                        type: string
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                      uid:
+                        type: string
+                metrics:
+                  type: array
+                  description: Related metrics data
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        description: Metric name
+                      query:
+                        type: string
+                        description: Query used to detect the alert
+                      value:
+                        type: number
+                        description: Current value
+                      threshold:
+                        type: number
+                        description: Threshold that triggered the alert
+                      unit:
+                        type: string
+                        description: Metric unit
+                relatedAlerts:
+                  type: array
+                  description: References to related alerts (for correlation)
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                      relationship:
+                        type: string
+                        enum:
+                          - parent
+                          - child
+                          - sibling
+                          - correlated
+                routing:
+                  type: object
+                  description: Alert routing configuration
+                  properties:
+                    team:
+                      type: string
+                      description: Team responsible
+                    service:
+                      type: string
+                      description: Service affected
+                    environment:
+                      type: string
+                      description: Environment (prod, staging, dev)
+                    region:
+                      type: string
+                      description: Region/datacenter
+                    tier:
+                      type: string
+                      description: Service tier
+                investigationPolicy:
+                  type: object
+                  description: Policy for automatic investigation
+                  properties:
+                    autoInvestigate:
+                      type: boolean
+                      description: Automatically create investigation
+                      default: true
+                    investigationTemplate:
+                      type: string
+                      description: Investigation template to use
+                    runbookRef:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        namespace:
+                          type: string
+                    suppressDuplicates:
+                      type: boolean
+                      description: Suppress duplicate investigations
+                      default: true
+                    suppressionWindow:
+                      type: string
+                      description: Window for duplicate suppression
+                      pattern: '^[0-9]+[smh]$'
+                      default: "1h"
+                    minSeverityForInvestigation:
+                      type: string
+                      description: Minimum severity to auto-investigate
+                      enum:
+                        - critical
+                        - high
+                        - medium
+                        - low
+                        - info
+                      default: medium
+                rawPayload:
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+                  description: Original raw payload from alert source
+            status:
+              type: object
+              properties:
+                state:
+                  type: string
+                  description: Current state of the alert
+                  enum:
+                    - Firing
+                    - Acknowledged
+                    - Investigating
+                    - Resolved
+                    - Silenced
+                    - Expired
+                firstSeenAt:
+                  type: string
+                  format: date-time
+                  description: When alert was first seen
+                lastSeenAt:
+                  type: string
+                  format: date-time
+                  description: When alert was last seen
+                acknowledgedAt:
+                  type: string
+                  format: date-time
+                  description: When alert was acknowledged
+                acknowledgedBy:
+                  type: string
+                  description: Who acknowledged the alert
+                resolvedAt:
+                  type: string
+                  format: date-time
+                  description: When alert was resolved
+                firingCount:
+                  type: integer
+                  description: Number of times this alert has fired
+                  default: 1
+                investigationRef:
+                  type: object
+                  description: Reference to created investigation
+                  properties:
+                    name:
+                      type: string
+                    namespace:
+                      type: string
+                    uid:
+                      type: string
+                relatedInvestigations:
+                  type: array
+                  description: All related investigations
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                      phase:
+                        type: string
+                silenced:
+                  type: object
+                  description: Silence information
+                  properties:
+                    until:
+                      type: string
+                      format: date-time
+                    reason:
+                      type: string
+                    silencedBy:
+                      type: string
+                correlationGroup:
+                  type: string
+                  description: ID for correlated alert group
+                aggregatedAlerts:
+                  type: integer
+                  description: Number of aggregated similar alerts
+                conditions:
+                  type: array
+                  description: Standard Kubernetes conditions
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - "Unknown"
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                history:
+                  type: array
+                  description: State transition history
+                  items:
+                    type: object
+                    properties:
+                      timestamp:
+                        type: string
+                        format: date-time
+                      fromState:
+                        type: string
+                      toState:
+                        type: string
+                      reason:
+                        type: string
+                      actor:
+                        type: string

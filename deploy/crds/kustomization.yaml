@@ -1,0 +1,18 @@
+# Kustomization for AutoSRE CRDs
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: autosre-crds
+  labels:
+    app.kubernetes.io/name: autosre
+    app.kubernetes.io/component: crds
+
+resources:
+  - investigation.yaml
+  - alert.yaml
+  - runbook.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: autosre
+  app.kubernetes.io/managed-by: kustomize

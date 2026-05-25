@@ -1,0 +1,658 @@
+---
+# AutoSRE Runbook Custom Resource Definition
+# Represents automated runbooks for incident response
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: runbooks.autosre.io
+  labels:
+    app.kubernetes.io/name: autosre
+    app.kubernetes.io/component: crds
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+spec:
+  group: autosre.io
+  scope: Namespaced
+  names:
+    plural: runbooks
+    singular: runbook
+    kind: Runbook
+    shortNames:
+      - rb
+      - rbs
+    categories:
+      - autosre
+      - sre
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Status
+          type: string
+          jsonPath: .status.state
+          description: Current state of the runbook
+        - name: Version
+          type: string
+          jsonPath: .spec.version
+          description: Runbook version
+        - name: Category
+          type: string
+          jsonPath: .spec.category
+          description: Runbook category
+        - name: Executions
+          type: integer
+          jsonPath: .status.executionCount
+          description: Total executions
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              required:
+                - name
+                - steps
+              properties:
+                name:
+                  type: string
+                  description: Human-readable runbook name
+                  minLength: 3
+                  maxLength: 256
+                description:
+                  type: string
+                  description: Detailed description of the runbook
+                  maxLength: 10000
+                version:
+                  type: string
+                  description: Runbook version (semver)
+                  pattern: '^v?[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$'
+                  default: "1.0.0"
+                category:
+                  type: string
+                  description: Runbook category
+                  enum:
+                    - incident_response
+                    - remediation
+                    - diagnostic
+                    - maintenance
+                    - scaling
+                    - deployment
+                    - security
+                    - custom
+                  default: remediation
+                triggers:
+                  type: array
+                  description: Conditions that can trigger this runbook
+                  items:
+                    type: object
+                    required:
+                      - type
+                    properties:
+                      type:
+                        type: string
+                        description: Trigger type
+                        enum:
+                          - alert
+                          - schedule
+                          - manual
+                          - event
+                          - webhook
+                      alertName:
+                        type: string
+                        description: Alert name pattern (regex supported)
+                      severity:
+                        type: array
+                        description: Severities that trigger
+                        items:
+                          type: string
+                          enum:
+                            - critical
+                            - high
+                            - medium
+                            - low
+                      labels:
+                        type: object
+                        additionalProperties:
+                          type: string
+                        description: Label selector for alerts
+                      schedule:
+                        type: string
+                        description: Cron schedule for scheduled triggers
+                      eventType:
+                        type: string
+                        description: Kubernetes event type
+                scope:
+                  type: object
+                  description: Scope restrictions for runbook
+                  properties:
+                    namespaces:
+                      type: array
+                      description: Allowed namespaces
+                      items:
+                        type: string
+                    clusters:
+                      type: array
+                      description: Allowed clusters
+                      items:
+                        type: string
+                    resourceTypes:
+                      type: array
+                      description: Resource types this runbook operates on
+                      items:
+                        type: string
+                    environments:
+                      type: array
+                      description: Allowed environments
+                      items:
+                        type: string
+                        enum:
+                          - production
+                          - staging
+                          - development
+                          - testing
+                parameters:
+                  type: array
+                  description: Input parameters for the runbook
+                  items:
+                    type: object
+                    required:
+                      - name
+                      - type
+                    properties:
+                      name:
+                        type: string
+                        description: Parameter name
+                      type:
+                        type: string
+                        description: Parameter type
+                        enum:
+                          - string
+                          - integer
+                          - boolean
+                          - array
+                          - object
+                          - secret
+                      description:
+                        type: string
+                      required:
+                        type: boolean
+                        default: false
+                      default:
+                        x-kubernetes-preserve-unknown-fields: true
+                      validation:
+                        type: object
+                        properties:
+                          pattern:
+                            type: string
+                          minValue:
+                            type: number
+                          maxValue:
+                            type: number
+                          enum:
+                            type: array
+                            items:
+                              type: string
+                steps:
+                  type: array
+                  description: Runbook steps to execute
+                  minItems: 1
+                  items:
+                    type: object
+                    required:
+                      - name
+                      - action
+                    properties:
+                      name:
+                        type: string
+                        description: Step name
+                      description:
+                        type: string
+                        description: Step description
+                      action:
+                        type: object
+                        description: Action to perform
+                        required:
+                          - type
+                        properties:
+                          type:
+                            type: string
+                            description: Action type
+                            enum:
+                              - kubernetes
+                              - shell
+                              - http
+                              - ai_analysis
+                              - notification
+                              - wait
+                              - approval
+                              - conditional
+                              - loop
+                              - parallel
+                          kubernetes:
+                            type: object
+                            description: Kubernetes action
+                            properties:
+                              operation:
+                                type: string
+                                enum:
+                                  - get
+                                  - list
+                                  - create
+                                  - update
+                                  - patch
+                                  - delete
+                                  - scale
+                                  - restart
+                                  - rollout
+                                  - exec
+                                  - logs
+                              resource:
+                                type: object
+                                properties:
+                                  apiVersion:
+                                    type: string
+                                  kind:
+                                    type: string
+                                  name:
+                                    type: string
+                                  namespace:
+                                    type: string
+                                  selector:
+                                    type: object
+                                    additionalProperties:
+                                      type: string
+                              manifest:
+                                type: object
+                                x-kubernetes-preserve-unknown-fields: true
+                              command:
+                                type: array
+                                items:
+                                  type: string
+                              container:
+                                type: string
+                          shell:
+                            type: object
+                            description: Shell command action
+                            properties:
+                              command:
+                                type: string
+                                description: Shell command to execute
+                              script:
+                                type: string
+                                description: Multi-line script
+                              image:
+                                type: string
+                                description: Container image for execution
+                                default: "alpine:latest"
+                              workdir:
+                                type: string
+                              env:
+                                type: object
+                                additionalProperties:
+                                  type: string
+                              timeout:
+                                type: string
+                                pattern: '^[0-9]+[smh]$'
+                                default: "5m"
+                          http:
+                            type: object
+                            description: HTTP request action
+                            properties:
+                              method:
+                                type: string
+                                enum:
+                                  - GET
+                                  - POST
+                                  - PUT
+                                  - PATCH
+                                  - DELETE
+                                default: GET
+                              url:
+                                type: string
+                              headers:
+                                type: object
+                                additionalProperties:
+                                  type: string
+                              body:
+                                type: string
+                              bodyFromSecret:
+                                type: object
+                                properties:
+                                  name:
+                                    type: string
+                                  key:
+                                    type: string
+                              expectedStatus:
+                                type: array
+                                items:
+                                  type: integer
+                          aiAnalysis:
+                            type: object
+                            description: AI analysis action
+                            properties:
+                              prompt:
+                                type: string
+                                description: Analysis prompt
+                              context:
+                                type: array
+                                description: Context from previous steps
+                                items:
+                                  type: string
+                              model:
+                                type: string
+                                default: gpt-4
+                              outputVariable:
+                                type: string
+                                description: Variable to store output
+                          notification:
+                            type: object
+                            description: Notification action
+                            properties:
+                              type:
+                                type: string
+                                enum:
+                                  - slack
+                                  - pagerduty
+                                  - email
+                                  - webhook
+                              message:
+                                type: string
+                              channel:
+                                type: string
+                              secretRef:
+                                type: object
+                                properties:
+                                  name:
+                                    type: string
+                                  key:
+                                    type: string
+                          wait:
+                            type: object
+                            description: Wait action
+                            properties:
+                              duration:
+                                type: string
+                                pattern: '^[0-9]+[smh]$'
+                              condition:
+                                type: object
+                                properties:
+                                  type:
+                                    type: string
+                                    enum:
+                                      - resource_ready
+                                      - metric_threshold
+                                      - http_success
+                                  timeout:
+                                    type: string
+                                    pattern: '^[0-9]+[smh]$'
+                          approval:
+                            type: object
+                            description: Human approval gate
+                            properties:
+                              approvers:
+                                type: array
+                                items:
+                                  type: string
+                              timeout:
+                                type: string
+                                pattern: '^[0-9]+[smhd]$'
+                                default: "1h"
+                              message:
+                                type: string
+                              slackChannel:
+                                type: string
+                          conditional:
+                            type: object
+                            description: Conditional execution
+                            properties:
+                              condition:
+                                type: string
+                                description: Condition expression
+                              thenSteps:
+                                type: array
+                                items:
+                                  type: string
+                              elseSteps:
+                                type: array
+                                items:
+                                  type: string
+                          loop:
+                            type: object
+                            description: Loop action
+                            properties:
+                              items:
+                                type: string
+                                description: Variable containing items
+                              itemVariable:
+                                type: string
+                                description: Variable name for current item
+                              steps:
+                                type: array
+                                items:
+                                  type: string
+                              maxIterations:
+                                type: integer
+                                default: 100
+                          parallel:
+                            type: object
+                            description: Parallel execution
+                            properties:
+                              steps:
+                                type: array
+                                items:
+                                  type: string
+                              maxConcurrency:
+                                type: integer
+                                default: 5
+                      condition:
+                        type: string
+                        description: Condition for step execution
+                      onFailure:
+                        type: string
+                        description: Failure handling
+                        enum:
+                          - fail
+                          - continue
+                          - retry
+                        default: fail
+                      retryPolicy:
+                        type: object
+                        description: Retry configuration
+                        properties:
+                          maxRetries:
+                            type: integer
+                            default: 3
+                          backoff:
+                            type: string
+                            enum:
+                              - linear
+                              - exponential
+                            default: exponential
+                          initialDelay:
+                            type: string
+                            pattern: '^[0-9]+[smh]$'
+                            default: "5s"
+                      timeout:
+                        type: string
+                        description: Step timeout
+                        pattern: '^[0-9]+[smh]$'
+                        default: "10m"
+                      outputs:
+                        type: array
+                        description: Output variables from this step
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            jsonPath:
+                              type: string
+                rollback:
+                  type: array
+                  description: Rollback steps if runbook fails
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      action:
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                approval:
+                  type: object
+                  description: Global approval settings
+                  properties:
+                    required:
+                      type: boolean
+                      description: Require approval before execution
+                      default: false
+                    approvers:
+                      type: array
+                      description: Required approvers
+                      items:
+                        type: string
+                    autoApproveForSeverity:
+                      type: array
+                      description: Auto-approve for these severities
+                      items:
+                        type: string
+                        enum:
+                          - critical
+                          - high
+                timeout:
+                  type: string
+                  description: Global runbook timeout
+                  pattern: '^[0-9]+[smh]$'
+                  default: "1h"
+                concurrencyPolicy:
+                  type: string
+                  description: Concurrency handling
+                  enum:
+                    - allow
+                    - forbid
+                    - replace
+                  default: forbid
+                maxConcurrentExecutions:
+                  type: integer
+                  description: Maximum concurrent executions
+                  default: 1
+                owner:
+                  type: object
+                  description: Runbook ownership
+                  properties:
+                    team:
+                      type: string
+                    email:
+                      type: string
+                    slack:
+                      type: string
+                documentation:
+                  type: object
+                  description: Documentation links
+                  properties:
+                    url:
+                      type: string
+                    wikiPage:
+                      type: string
+                    videoUrl:
+                      type: string
+            status:
+              type: object
+              properties:
+                state:
+                  type: string
+                  description: Current state
+                  enum:
+                    - Ready
+                    - Disabled
+                    - Error
+                    - Deprecated
+                lastValidated:
+                  type: string
+                  format: date-time
+                  description: Last validation time
+                validationErrors:
+                  type: array
+                  description: Validation errors
+                  items:
+                    type: string
+                executionCount:
+                  type: integer
+                  description: Total execution count
+                  default: 0
+                successCount:
+                  type: integer
+                  description: Successful execution count
+                  default: 0
+                failureCount:
+                  type: integer
+                  description: Failed execution count
+                  default: 0
+                lastExecutionTime:
+                  type: string
+                  format: date-time
+                  description: Last execution time
+                lastExecutionStatus:
+                  type: string
+                  description: Last execution status
+                  enum:
+                    - success
+                    - failure
+                    - cancelled
+                    - timeout
+                averageExecutionTime:
+                  type: string
+                  description: Average execution duration
+                activeExecutions:
+                  type: array
+                  description: Currently running executions
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                      startTime:
+                        type: string
+                        format: date-time
+                      currentStep:
+                        type: string
+                conditions:
+                  type: array
+                  description: Standard Kubernetes conditions
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - "Unknown"
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string

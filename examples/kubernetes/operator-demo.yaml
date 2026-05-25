@@ -1,0 +1,627 @@
+---
+# AutoSRE Kubernetes Operator Demo
+# This file contains example resources for demonstrating the AutoSRE operators
+# Apply with: kubectl apply -f operator-demo.yaml
+
+# Namespace for AutoSRE
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: autosre-system
+  labels:
+    app.kubernetes.io/name: autosre
+    app.kubernetes.io/component: operator
+
+---
+# ServiceAccount for the operator
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: autosre-operator
+  namespace: autosre-system
+  labels:
+    app.kubernetes.io/name: autosre
+    app.kubernetes.io/component: operator
+
+---
+# ClusterRole with permissions for CRDs and resources
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: autosre-operator
+  labels:
+    app.kubernetes.io/name: autosre
+rules:
+  # AutoSRE CRDs
+  - apiGroups: ["autosre.io"]
+    resources:
+      - investigations
+      - investigations/status
+      - alerts
+      - alerts/status
+      - runbooks
+      - runbooks/status
+    verbs: ["*"]
+  # Kubernetes resources for investigation
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - pods/exec
+      - services
+      - endpoints
+      - configmaps
+      - secrets
+      - events
+      - namespaces
+      - nodes
+      - persistentvolumeclaims
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - replicasets
+      - statefulsets
+      - daemonsets
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+      - networkpolicies
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs: ["get", "list", "watch", "patch"]
+  # For kopf
+  - apiGroups: ["kopf.dev"]
+    resources: ["clusterkopfpeerings"]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create"]
+
+---
+# ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: autosre-operator
+  labels:
+    app.kubernetes.io/name: autosre
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: autosre-operator
+subjects:
+  - kind: ServiceAccount
+    name: autosre-operator
+    namespace: autosre-system
+
+---
+# ConfigMap for operator configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: autosre-operator-config
+  namespace: autosre-system
+  labels:
+    app.kubernetes.io/name: autosre
+    app.kubernetes.io/component: operator
+data:
+  config.yaml: |
+    # AutoSRE Operator Configuration
+    operator:
+      namespace: autosre-system
+      log_level: INFO
+      
+    investigation:
+      default_timeout: 30m
+      default_depth: standard
+      max_concurrent: 10
+      
+    alerts:
+      deduplication_window: 1h
+      correlation_enabled: true
+      auto_investigate: true
+      min_severity_for_investigation: medium
+      
+    notifications:
+      enabled: true
+      default_channel: "#sre-alerts"
+      
+    integrations:
+      prometheus:
+        enabled: true
+        url: http://prometheus.monitoring:9090
+      slack:
+        enabled: false
+
+---
+# Operator Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autosre-operator
+  namespace: autosre-system
+  labels:
+    app.kubernetes.io/name: autosre
+    app.kubernetes.io/component: operator
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate  # Only one operator instance should run
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: autosre
+      app.kubernetes.io/component: operator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: autosre
+        app.kubernetes.io/component: operator
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: autosre-operator
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: operator
+          image: autosre/operator:latest
+          imagePullPolicy: Always
+          command:
+            - kopf
+            - run
+            - -m
+            - autosre.operators
+            - --standalone
+            - --verbose
+          env:
+            - name: KOPF_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: autosre-secrets
+                  key: openai-api-key
+                  optional: true
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: autosre-secrets
+                  key: anthropic-api-key
+                  optional: true
+          ports:
+            - name: metrics
+              containerPort: 8080
+              protocol: TCP
+            - name: health
+              containerPort: 8081
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: config
+              mountPath: /etc/autosre
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: autosre-operator-config
+
+---
+# Secrets for API keys (create manually or use external secrets)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: autosre-secrets
+  namespace: autosre-system
+  labels:
+    app.kubernetes.io/name: autosre
+type: Opaque
+stringData:
+  openai-api-key: "sk-your-openai-key-here"
+  anthropic-api-key: "sk-ant-your-anthropic-key-here"
+  slack-bot-token: "xoxb-your-slack-token-here"
+
+---
+# Service for operator metrics
+apiVersion: v1
+kind: Service
+metadata:
+  name: autosre-operator
+  namespace: autosre-system
+  labels:
+    app.kubernetes.io/name: autosre
+    app.kubernetes.io/component: operator
+spec:
+  selector:
+    app.kubernetes.io/name: autosre
+    app.kubernetes.io/component: operator
+  ports:
+    - name: metrics
+      port: 8080
+      targetPort: metrics
+    - name: health
+      port: 8081
+      targetPort: health
+
+---
+# ServiceMonitor for Prometheus (if using prometheus-operator)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: autosre-operator
+  namespace: autosre-system
+  labels:
+    app.kubernetes.io/name: autosre
+    app.kubernetes.io/component: operator
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: autosre
+      app.kubernetes.io/component: operator
+  endpoints:
+    - port: metrics
+      interval: 30s
+
+---
+# Example Alert Resource
+apiVersion: autosre.io/v1alpha1
+kind: Alert
+metadata:
+  name: demo-high-cpu-alert
+  namespace: autosre-system
+  labels:
+    app: demo-app
+    severity: high
+spec:
+  alertName: HighCPUUsage
+  severity: high
+  description: |
+    CPU usage has exceeded 90% threshold for the demo application.
+    This may indicate a resource constraint or runaway process.
+  summary: "High CPU usage detected on demo-app pods"
+  source:
+    type: prometheus
+    alertId: "alert-12345"
+  labels:
+    alertname: HighCPUUsage
+    job: kubernetes-pods
+    severity: high
+    namespace: demo
+  metrics:
+    - name: container_cpu_usage_seconds_total
+      query: 'sum(rate(container_cpu_usage_seconds_total{pod=~"demo-app.*"}[5m]))'
+      value: 0.95
+      threshold: 0.9
+      unit: cores
+  affectedResources:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: demo-app
+      namespace: demo
+  routing:
+    team: platform
+    service: demo-app
+    environment: production
+  investigationPolicy:
+    autoInvestigate: true
+    minSeverityForInvestigation: medium
+    suppressDuplicates: true
+    suppressionWindow: "30m"
+
+---
+# Example Investigation Resource
+apiVersion: autosre.io/v1alpha1
+kind: Investigation
+metadata:
+  name: demo-investigation
+  namespace: autosre-system
+  labels:
+    app: demo-app
+    team: platform
+spec:
+  description: |
+    Investigating high CPU usage on demo-app deployment.
+    Users have reported slow response times and the monitoring
+    system detected CPU usage above 90% threshold.
+  severity: high
+  priority: P2
+  alertRef:
+    name: demo-high-cpu-alert
+    namespace: autosre-system
+  targetResources:
+    - kind: Deployment
+      name: demo-app
+      namespace: demo
+    - kind: Pod
+      namespace: demo
+      labels:
+        app: demo-app
+  scope:
+    timeRange:
+      duration: "1h"
+    namespaces:
+      - demo
+      - monitoring
+  analysisConfig:
+    model: gpt-4
+    depth: deep
+    enableRemediation: false
+    maxIterations: 15
+    timeout: "45m"
+    hypothesisMode: balanced
+  dataSources:
+    - type: prometheus
+      endpoint: http://prometheus.monitoring:9090
+    - type: kubernetes
+  notifications:
+    slack:
+      channel: "#sre-incidents"
+
+---
+# Example Runbook Resource
+apiVersion: autosre.io/v1alpha1
+kind: Runbook
+metadata:
+  name: high-cpu-remediation
+  namespace: autosre-system
+  labels:
+    app.kubernetes.io/name: autosre
+    category: remediation
+spec:
+  name: "High CPU Usage Remediation"
+  description: |
+    Standard operating procedure for handling high CPU usage alerts.
+    This runbook performs diagnostics and applies common remediations.
+  version: "1.0.0"
+  category: remediation
+  triggers:
+    - type: alert
+      alertName: "HighCPU.*"
+      severity:
+        - critical
+        - high
+  scope:
+    environments:
+      - production
+      - staging
+  parameters:
+    - name: deployment_name
+      type: string
+      description: "Name of the deployment to investigate"
+      required: true
+    - name: namespace
+      type: string
+      description: "Namespace of the deployment"
+      required: true
+    - name: cpu_threshold
+      type: integer
+      description: "CPU threshold percentage"
+      default: 90
+    - name: scale_up_replicas
+      type: integer
+      description: "Number of replicas to scale to if needed"
+      default: 3
+  steps:
+    - name: collect-metrics
+      description: "Collect current CPU metrics"
+      action:
+        type: http
+        http:
+          method: GET
+          url: "http://prometheus.monitoring:9090/api/v1/query"
+          expectedStatus: [200]
+      outputs:
+        - name: cpu_usage
+          jsonPath: "$.data.result[0].value[1]"
+    
+    - name: get-pod-status
+      description: "Check pod status and resource usage"
+      action:
+        type: kubernetes
+        kubernetes:
+          operation: list
+          resource:
+            kind: Pod
+            namespace: "{{ namespace }}"
+            selector:
+              app: "{{ deployment_name }}"
+      outputs:
+        - name: pod_count
+          jsonPath: "$.items | length"
+        - name: pods
+          jsonPath: "$.items"
+    
+    - name: analyze-with-ai
+      description: "AI analysis of the situation"
+      action:
+        type: ai_analysis
+        aiAnalysis:
+          prompt: |
+            Analyze the following CPU usage situation:
+            - Current CPU usage: {{ cpu_usage }}%
+            - Number of pods: {{ pod_count }}
+            - Threshold: {{ cpu_threshold }}%
+            
+            Determine if scaling is needed and provide recommendations.
+          model: gpt-4
+          outputVariable: ai_recommendation
+    
+    - name: notify-team
+      description: "Send notification to team"
+      action:
+        type: notification
+        notification:
+          type: slack
+          channel: "#sre-alerts"
+          message: |
+            🔍 *CPU Investigation for {{ deployment_name }}*
+            
+            Current CPU: {{ cpu_usage }}%
+            Pod Count: {{ pod_count }}
+            
+            AI Recommendation: {{ ai_recommendation }}
+    
+    - name: scale-decision
+      description: "Decide whether to scale"
+      condition: "{{ cpu_usage | float > cpu_threshold }}"
+      action:
+        type: conditional
+        conditional:
+          condition: "{{ ai_recommendation contains 'scale' }}"
+          thenSteps:
+            - scale-deployment
+          elseSteps:
+            - wait-and-monitor
+    
+    - name: scale-deployment
+      description: "Scale up the deployment"
+      action:
+        type: kubernetes
+        kubernetes:
+          operation: scale
+          resource:
+            kind: Deployment
+            name: "{{ deployment_name }}"
+            namespace: "{{ namespace }}"
+          manifest:
+            spec:
+              replicas: "{{ scale_up_replicas }}"
+      onFailure: continue
+    
+    - name: wait-and-monitor
+      description: "Wait and monitor metrics"
+      action:
+        type: wait
+        wait:
+          duration: "5m"
+          condition:
+            type: metric_threshold
+            timeout: "10m"
+    
+    - name: verify-remediation
+      description: "Verify the remediation was effective"
+      action:
+        type: http
+        http:
+          method: GET
+          url: "http://prometheus.monitoring:9090/api/v1/query"
+          expectedStatus: [200]
+    
+    - name: final-notification
+      description: "Send completion notification"
+      action:
+        type: notification
+        notification:
+          type: slack
+          channel: "#sre-alerts"
+          message: |
+            ✅ *Remediation Complete for {{ deployment_name }}*
+            
+            The high CPU situation has been addressed.
+            Please verify application behavior.
+  
+  rollback:
+    - name: scale-down
+      action:
+        type: kubernetes
+        kubernetes:
+          operation: scale
+          resource:
+            kind: Deployment
+            namespace: "{{ namespace }}"
+            name: "{{ deployment_name }}"
+  
+  approval:
+    required: false
+    autoApproveForSeverity:
+      - critical
+  
+  timeout: "30m"
+  concurrencyPolicy: forbid
+  maxConcurrentExecutions: 1
+  
+  owner:
+    team: platform
+    email: platform-team@example.com
+    slack: "#platform-team"
+  
+  documentation:
+    url: "https://wiki.example.com/runbooks/high-cpu"
+
+---
+# PodDisruptionBudget for operator
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: autosre-operator
+  namespace: autosre-system
+  labels:
+    app.kubernetes.io/name: autosre
+    app.kubernetes.io/component: operator
+spec:
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: autosre
+      app.kubernetes.io/component: operator
+
+---
+# NetworkPolicy to restrict operator access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: autosre-operator
+  namespace: autosre-system
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: autosre
+      app.kubernetes.io/component: operator
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to: []  # Allow all egress for API server, Prometheus, etc.

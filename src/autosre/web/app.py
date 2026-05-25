@@ -14,6 +14,8 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 
 from autosre.web.routes import dashboard, evals, context, agent, feedback
+from autosre.api.routes.ws import router as ws_router
+from autosre.api.websocket import get_connection_manager
 
 
 # Get template and static directories
@@ -27,9 +29,12 @@ async def lifespan(app: FastAPI):
     """Application lifespan - startup/shutdown events."""
     # Startup
     print("🚀 AutoSRE Web Dashboard starting...")
+    manager = get_connection_manager()
+    await manager.start_heartbeat()
     yield
     # Shutdown
     print("👋 AutoSRE Web Dashboard shutting down...")
+    await manager.stop_heartbeat()
 
 
 def create_app() -> FastAPI:
@@ -56,6 +61,9 @@ def create_app() -> FastAPI:
     app.include_router(context.router, prefix="/context", tags=["Context"])
     app.include_router(agent.router, prefix="/agent", tags=["Agent"])
     app.include_router(feedback.router, prefix="/feedback", tags=["Feedback"])
+    
+    # WebSocket routes
+    app.include_router(ws_router, prefix="/api", tags=["WebSocket"])
     
     # Health check
     @app.get("/health")
