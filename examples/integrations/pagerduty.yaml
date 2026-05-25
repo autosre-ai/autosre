@@ -1,0 +1,409 @@
+# =============================================================================
+# AutoSRE PagerDuty Integration Configuration
+# =============================================================================
+#
+# This configuration file sets up PagerDuty integration for AutoSRE.
+# PagerDuty enables:
+#   - Automated incident creation and management
+#   - On-call schedule integration
+#   - Escalation policy automation
+#   - Bi-directional incident synchronization
+#   - Custom event rules and routing
+#
+# SETUP INSTRUCTIONS:
+# 1. Log in to PagerDuty and navigate to Integrations > API Access Keys
+# 2. Create a new API key with read/write access
+# 3. Note your service integration keys for each service
+# 4. Configure webhook endpoints for bi-directional sync
+# 5. Store credentials securely in environment variables
+#
+# API PERMISSIONS REQUIRED:
+#   - Incidents: read, write
+#   - Services: read
+#   - Schedules: read
+#   - Escalation Policies: read
+#   - Users: read
+#   - Teams: read
+#   - Event Rules: read, write (optional)
+#
+# =============================================================================
+
+# Integration metadata
+name: pagerduty
+version: "1.0.0"
+description: "PagerDuty integration for AutoSRE incident management"
+
+# =============================================================================
+# Connection Settings
+# =============================================================================
+connection:
+  # PagerDuty API Token (REST API v2)
+  # Store securely - use environment variable or secrets manager
+  api_token: "${PAGERDUTY_API_TOKEN}"
+  
+  # API base URL (usually doesn't need to change)
+  api_url: "https://api.pagerduty.com"
+  
+  # Events API v2 routing key for sending events
+  # This is your integration key from the service
+  routing_key: "${PAGERDUTY_ROUTING_KEY}"
+  
+  # Events API endpoint
+  events_url: "https://events.pagerduty.com/v2/enqueue"
+  
+  # Webhook secret for verifying incoming webhooks
+  webhook_secret: "${PAGERDUTY_WEBHOOK_SECRET}"
+  
+  # Your PagerDuty subdomain (e.g., 'yourcompany' from yourcompany.pagerduty.com)
+  subdomain: "${PAGERDUTY_SUBDOMAIN:-mycompany}"
+
+# =============================================================================
+# Service Mappings
+# =============================================================================
+# Map AutoSRE services to PagerDuty services and integration keys
+services:
+  # Default service for unmapped alerts
+  default:
+    service_id: "PDEFAULT"
+    integration_key: "${PAGERDUTY_DEFAULT_INTEGRATION_KEY}"
+    escalation_policy_id: "PESCPOL1"
+  
+  # Service-specific mappings
+  mappings:
+    # Payment processing service - highest priority
+    checkout-service:
+      service_id: "PCHECKOUT"
+      integration_key: "${PAGERDUTY_CHECKOUT_KEY}"
+      escalation_policy_id: "PPAYMENTS"
+      urgency: high
+      
+    # Database services
+    postgres-primary:
+      service_id: "PDATABASE"
+      integration_key: "${PAGERDUTY_DATABASE_KEY}"
+      escalation_policy_id: "PDATAENG"
+      urgency: high
+      
+    postgres-replica:
+      service_id: "PDATABASE"
+      integration_key: "${PAGERDUTY_DATABASE_KEY}"
+      escalation_policy_id: "PDATAENG"
+      urgency: low
+      
+    # API Gateway
+    api-gateway:
+      service_id: "PAPIGTW"
+      integration_key: "${PAGERDUTY_APIGTW_KEY}"
+      escalation_policy_id: "PPLATFORM"
+      urgency: high
+      
+    # Background workers - lower priority
+    worker-*:
+      service_id: "PWORKERS"
+      integration_key: "${PAGERDUTY_WORKERS_KEY}"
+      escalation_policy_id: "PPLATFORM"
+      urgency: low
+      pattern: true  # Enable glob pattern matching
+
+# =============================================================================
+# Incident Creation Settings
+# =============================================================================
+incidents:
+  # Auto-create incidents from AutoSRE alerts
+  auto_create:
+    enabled: true
+    # Only create for these severity levels
+    severity_threshold: [critical, high]
+    # Require human confirmation for medium/low severity
+    require_confirmation: [medium]
+    # Ignore low severity for PagerDuty
+    ignore: [low]
+  
+  # Incident title format
+  title_format: "[{{ severity | upper }}] {{ alertname }} - {{ service }}"
+  
+  # Default incident body template
+  body_template: |
+    ## Alert Details
+    
+    **Service:** {{ service }}
+    **Namespace:** {{ namespace | default('default') }}
+    **Cluster:** {{ cluster | default('production') }}
+    
+    ## Summary
+    {{ summary }}
+    
+    ## AutoSRE Investigation
+    {% if investigation_id %}
+    Investigation ID: `{{ investigation_id }}`
+    Status: {{ investigation_status }}
+    {% if investigation_url %}
+    [View Investigation]({{ investigation_url }})
+    {% endif %}
+    {% else %}
+    No active investigation. Start one from the AutoSRE dashboard.
+    {% endif %}
+    
+    ## Runbook
+    {% if runbook_url %}
+    [View Runbook]({{ runbook_url }})
+    {% else %}
+    No runbook configured for this alert.
+    {% endif %}
+    
+    ---
+    _Generated by AutoSRE at {{ timestamp }}_
+  
+  # Deduplication settings
+  deduplication:
+    enabled: true
+    # Use this field combination as dedup key
+    key_fields:
+      - alertname
+      - service
+      - namespace
+    # Dedupe window in seconds
+    window: 3600
+  
+  # Priority mapping from alert severity
+  priority_mapping:
+    critical: P1
+    high: P2
+    medium: P3
+    low: P4
+
+# =============================================================================
+# Bi-directional Sync
+# =============================================================================
+sync:
+  # Enable syncing PagerDuty incident updates back to AutoSRE
+  enabled: true
+  
+  # Webhook endpoint for PagerDuty to call
+  webhook:
+    enabled: true
+    path: "/api/pagerduty/webhook"
+    port: 3000
+  
+  # Events to sync from PagerDuty
+  events:
+    - incident.triggered
+    - incident.acknowledged
+    - incident.resolved
+    - incident.escalated
+    - incident.reassigned
+    - incident.annotated
+  
+  # Auto-resolve AutoSRE investigations when PD incident resolves
+  auto_resolve_investigations: true
+  
+  # Add PagerDuty timeline notes to AutoSRE investigation
+  sync_timeline: true
+
+# =============================================================================
+# On-Call Integration
+# =============================================================================
+oncall:
+  # Enable on-call schedule lookup
+  enabled: true
+  
+  # Primary schedule to check for on-call
+  schedules:
+    - id: "PSCHEDPRI"
+      name: "Primary On-Call"
+      type: primary
+    - id: "PSCHEDSEC"
+      name: "Secondary On-Call"
+      type: secondary
+    - id: "PSCHEDMGR"
+      name: "Manager Escalation"
+      type: manager
+  
+  # Include on-call info in investigation context
+  include_in_investigations: true
+  
+  # Notify on-call in Slack when investigation starts
+  notify_slack:
+    enabled: true
+    dm_primary: true
+    dm_secondary: false
+    channel_mention: true
+  
+  # Cache on-call info (refresh interval in seconds)
+  cache_ttl: 300
+
+# =============================================================================
+# Escalation Settings
+# =============================================================================
+escalation:
+  # Auto-escalate stale incidents
+  auto_escalate:
+    enabled: true
+    # Escalate if not acknowledged within (seconds)
+    ack_timeout: 300
+    # Escalate if not resolved within (seconds)
+    resolution_timeout: 3600
+  
+  # Custom escalation rules
+  rules:
+    # Escalate payment issues faster
+    - match:
+        service: "checkout-service"
+        severity: critical
+      ack_timeout: 120
+      resolution_timeout: 1800
+    
+    # Database issues need DBA escalation
+    - match:
+        service: "postgres-*"
+      escalation_policy_override: "PDBAESCL"
+
+# =============================================================================
+# Event Rules (Change Events)
+# =============================================================================
+change_events:
+  # Send deployment events to PagerDuty
+  enabled: true
+  
+  # Types of changes to report
+  event_types:
+    - deployment
+    - rollback
+    - config_change
+    - scale
+    - remediation
+  
+  # Event format
+  format:
+    source: "autosre"
+    custom_details:
+      environment: "{{ cluster }}"
+      namespace: "{{ namespace }}"
+      version: "{{ image_tag | default('unknown') }}"
+      triggered_by: "{{ triggered_by | default('autosre') }}"
+
+# =============================================================================
+# Rate Limiting & Throttling
+# =============================================================================
+rate_limits:
+  # Maximum events per minute
+  events_per_minute: 60
+  
+  # Maximum API calls per minute
+  api_calls_per_minute: 100
+  
+  # Batch events when rate limited
+  batch_events: true
+  batch_window_seconds: 10
+  
+  # Alert aggregation
+  aggregation:
+    enabled: true
+    # Aggregate alerts of same type within window
+    window_seconds: 60
+    # Max alerts per aggregated incident
+    max_per_incident: 10
+
+# =============================================================================
+# Maintenance Windows
+# =============================================================================
+maintenance:
+  # Respect PagerDuty maintenance windows
+  honor_maintenance_windows: true
+  
+  # Services to suppress during maintenance
+  suppress_services: all  # or list of service IDs
+  
+  # Still log events during maintenance (for audit)
+  log_suppressed: true
+  
+  # Override maintenance for critical alerts
+  override_for_critical: true
+
+# =============================================================================
+# Custom Fields and Tags
+# =============================================================================
+custom_fields:
+  # Add custom fields to incidents
+  enabled: true
+  
+  fields:
+    - name: autosre_investigation_id
+      type: string
+      source: investigation.id
+    
+    - name: autosre_runbook_executed
+      type: boolean
+      source: investigation.runbook_executed
+    
+    - name: autosre_confidence_score
+      type: integer
+      source: investigation.confidence
+    
+    - name: environment
+      type: string
+      source: labels.environment
+
+tags:
+  # Auto-tag incidents
+  enabled: true
+  
+  # Static tags
+  static:
+    - autosre-managed
+    - sre-automation
+  
+  # Dynamic tags from alert labels
+  from_labels:
+    - service
+    - team
+    - environment
+
+# =============================================================================
+# Advanced Settings
+# =============================================================================
+advanced:
+  # Connection timeout (seconds)
+  timeout: 30
+  
+  # Retry configuration
+  retry:
+    max_attempts: 3
+    backoff_seconds: 2
+    backoff_multiplier: 2
+    retry_on:
+      - 429  # Rate limited
+      - 500  # Server error
+      - 502  # Bad gateway
+      - 503  # Service unavailable
+  
+  # Enable detailed logging
+  debug: false
+  
+  # Validate API responses
+  strict_mode: false
+  
+  # User agent for API calls
+  user_agent: "AutoSRE/1.0 (PagerDuty Integration)"
+
+# =============================================================================
+# Environment Variable Reference
+# =============================================================================
+# Required environment variables:
+#   PAGERDUTY_API_TOKEN         - REST API v2 token
+#   PAGERDUTY_ROUTING_KEY       - Events API v2 routing key (default service)
+#   PAGERDUTY_WEBHOOK_SECRET    - Webhook signature verification secret
+#   PAGERDUTY_SUBDOMAIN         - Your PagerDuty subdomain
+#
+# Optional (per-service integration keys):
+#   PAGERDUTY_DEFAULT_INTEGRATION_KEY
+#   PAGERDUTY_CHECKOUT_KEY
+#   PAGERDUTY_DATABASE_KEY
+#   PAGERDUTY_APIGTW_KEY
+#   PAGERDUTY_WORKERS_KEY
+#
+# Example .env file:
+#   PAGERDUTY_API_TOKEN=u+abcdefghijklmnopqrs
+#   PAGERDUTY_ROUTING_KEY=R0123456789ABCDEFGHIJKLMNOPQRSTU
+#   PAGERDUTY_WEBHOOK_SECRET=whsec_abcdefghijklmnopqrstuvwxyz123456
+#   PAGERDUTY_SUBDOMAIN=mycompany

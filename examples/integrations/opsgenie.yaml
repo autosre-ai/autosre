@@ -1,0 +1,498 @@
+# =============================================================================
+# AutoSRE OpsGenie Integration Configuration
+# =============================================================================
+#
+# This configuration file sets up OpsGenie integration for AutoSRE.
+# OpsGenie enables:
+#   - Alert creation and lifecycle management
+#   - On-call schedule and rotation integration
+#   - Team-based routing and escalation
+#   - Incident management with war rooms
+#   - Bi-directional synchronization
+#
+# SETUP INSTRUCTIONS:
+# 1. Log in to OpsGenie and navigate to Settings > Integration List
+# 2. Add a new "API" integration or "Incoming Webhook"
+# 3. Copy the API Key from the integration settings
+# 4. Configure team routing keys if using team-based routing
+# 5. Set up outgoing webhooks for bi-directional sync
+#
+# API PERMISSIONS REQUIRED:
+#   - Create/Update/Close alerts
+#   - Read configuration (teams, schedules, policies)
+#   - Read/Write incidents (optional, for incident management)
+#   - Read on-call schedules
+#
+# =============================================================================
+
+# Integration metadata
+name: opsgenie
+version: "1.0.0"
+description: "OpsGenie integration for AutoSRE alerting and incident management"
+
+# =============================================================================
+# Connection Settings
+# =============================================================================
+connection:
+  # OpsGenie API Key
+  # Use a "GenieKey" from an API integration
+  # Store securely - use environment variable or secrets manager
+  api_key: "${OPSGENIE_API_KEY}"
+  
+  # API base URL
+  # US: https://api.opsgenie.com
+  # EU: https://api.eu.opsgenie.com
+  api_url: "${OPSGENIE_API_URL:-https://api.opsgenie.com}"
+  
+  # Region setting (us or eu)
+  region: "${OPSGENIE_REGION:-us}"
+  
+  # Webhook secret for incoming webhooks (bi-directional sync)
+  webhook_secret: "${OPSGENIE_WEBHOOK_SECRET}"
+
+# =============================================================================
+# Team Configuration
+# =============================================================================
+# Route alerts to appropriate teams based on service/labels
+teams:
+  # Default team for unmatched alerts
+  default:
+    id: "sre-team"
+    name: "SRE Team"
+    routing_key: "${OPSGENIE_DEFAULT_ROUTING_KEY}"
+  
+  # Team mappings by service pattern
+  mappings:
+    # Platform team handles infrastructure
+    - pattern: "^(api-gateway|load-balancer|ingress)"
+      team_id: "platform-team"
+      routing_key: "${OPSGENIE_PLATFORM_KEY}"
+      priority: P2
+    
+    # Payment team for checkout services
+    - pattern: "^(checkout|payment|billing)"
+      team_id: "payments-team"
+      routing_key: "${OPSGENIE_PAYMENTS_KEY}"
+      priority: P1
+      tags:
+        - pci-scope
+        - payment-critical
+    
+    # Data engineering for databases
+    - pattern: "^(postgres|mysql|redis|mongo|elasticsearch)"
+      team_id: "data-engineering"
+      routing_key: "${OPSGENIE_DATA_KEY}"
+      priority: P2
+    
+    # Frontend team
+    - pattern: "^(web-app|mobile-api|cdn)"
+      team_id: "frontend-team"
+      routing_key: "${OPSGENIE_FRONTEND_KEY}"
+      priority: P3
+    
+    # Background processing
+    - pattern: "^(worker|queue|scheduler|cron)"
+      team_id: "backend-team"
+      routing_key: "${OPSGENIE_BACKEND_KEY}"
+      priority: P4
+
+# =============================================================================
+# Alert Configuration
+# =============================================================================
+alerts:
+  # Alert creation settings
+  create:
+    enabled: true
+    # Create alerts for these severity levels
+    severity_levels: [critical, high, medium]
+    # Skip low-priority alerts in OpsGenie
+    skip_low_priority: true
+  
+  # Alert message format
+  message_format: "[{{ severity | upper }}] {{ alertname }} - {{ service }}"
+  
+  # Max message length (OpsGenie limit is 130 chars)
+  max_message_length: 130
+  
+  # Alert alias for deduplication
+  # Use a stable identifier to prevent duplicate alerts
+  alias_format: "{{ alertname }}-{{ service }}-{{ namespace }}"
+  
+  # Alert description template (max 15000 chars)
+  description_template: |
+    ## Alert Information
+    
+    | Field | Value |
+    |-------|-------|
+    | **Alert Name** | {{ alertname }} |
+    | **Service** | {{ service }} |
+    | **Namespace** | {{ namespace | default('default') }} |
+    | **Cluster** | {{ cluster | default('production') }} |
+    | **Severity** | {{ severity | upper }} |
+    | **Started At** | {{ starts_at | datetime }} |
+    
+    ## Summary
+    {{ summary | default('No summary provided') }}
+    
+    ## Description
+    {{ description | default('No detailed description available') }}
+    
+    {% if runbook_url %}
+    ## Runbook
+    [View Runbook]({{ runbook_url }})
+    {% endif %}
+    
+    {% if investigation_id %}
+    ## AutoSRE Investigation
+    - **ID:** {{ investigation_id }}
+    - **Status:** {{ investigation_status }}
+    {% if investigation_findings %}
+    ### Key Findings
+    {% for finding in investigation_findings %}
+    - {{ finding.title }} ({{ finding.confidence }}% confidence)
+    {% endfor %}
+    {% endif %}
+    {% endif %}
+    
+    ---
+    _Alert generated by AutoSRE at {{ timestamp }}_
+  
+  # Priority mapping
+  priority_mapping:
+    critical: P1
+    high: P2
+    medium: P3
+    low: P4
+    info: P5
+  
+  # Tags to add to all alerts
+  default_tags:
+    - autosre
+    - automated
+  
+  # Dynamic tags from labels
+  tags_from_labels:
+    - environment
+    - team
+    - service
+    - tier
+
+# =============================================================================
+# Alert Details (Extra Properties)
+# =============================================================================
+details:
+  # Include these fields as alert details
+  include:
+    - cluster
+    - namespace
+    - pod_name
+    - container_name
+    - node_name
+    - deployment
+    - replica_set
+    - image
+    - image_tag
+  
+  # Custom details to always include
+  static:
+    source: "autosre"
+    automation_version: "1.0"
+  
+  # Include investigation context
+  investigation:
+    enabled: true
+    fields:
+      - investigation_id
+      - investigation_status
+      - investigation_url
+      - root_cause
+      - confidence_score
+      - recommended_action
+
+# =============================================================================
+# Alert Actions
+# =============================================================================
+actions:
+  # Custom actions that responders can trigger
+  custom_actions:
+    - name: "Start AutoSRE Investigation"
+      description: "Trigger an automated investigation for this alert"
+      webhook: "${AUTOSRE_WEBHOOK_URL}/api/investigate"
+      method: POST
+      type: investigation
+    
+    - name: "Execute Runbook"
+      description: "Run the associated remediation runbook"
+      webhook: "${AUTOSRE_WEBHOOK_URL}/api/runbook/execute"
+      method: POST
+      type: remediation
+    
+    - name: "Scale Service"
+      description: "Increase replica count by 50%"
+      webhook: "${AUTOSRE_WEBHOOK_URL}/api/actions/scale"
+      method: POST
+      type: remediation
+    
+    - name: "View Grafana Dashboard"
+      description: "Open the service dashboard in Grafana"
+      url: "${GRAFANA_URL}/d/{{ dashboard_id }}?var-service={{ service }}"
+      type: external_link
+    
+    - name: "View Logs"
+      description: "Open logs in logging platform"
+      url: "${LOGS_URL}/explore?service={{ service }}&time={{ starts_at }}"
+      type: external_link
+
+# =============================================================================
+# Responder Settings
+# =============================================================================
+responders:
+  # Auto-add responders based on service
+  auto_assign:
+    enabled: true
+    # Add team as responder
+    include_team: true
+    # Add on-call user as responder
+    include_oncall: true
+  
+  # Escalation configuration
+  escalation:
+    # Use custom escalation for critical alerts
+    critical_escalation_policy: "critical-incidents"
+    # Default escalation for others
+    default_escalation_policy: "standard-incidents"
+  
+  # Notify these users/teams for all alerts (observers)
+  always_notify:
+    - type: team
+      id: "sre-managers"
+      role: observer
+
+# =============================================================================
+# On-Call Integration
+# =============================================================================
+oncall:
+  # Enable on-call lookup
+  enabled: true
+  
+  # Schedules to check
+  schedules:
+    - id: "Primary_On-Call"
+      name: "Primary On-Call Rotation"
+      type: primary
+    
+    - id: "Secondary_On-Call"
+      name: "Secondary/Backup Rotation"
+      type: secondary
+    
+    - id: "Manager_Escalation"
+      name: "Manager Escalation Rotation"
+      type: escalation
+  
+  # Include on-call info in AutoSRE investigations
+  include_in_context: true
+  
+  # Cache on-call data (TTL in seconds)
+  cache_ttl: 300
+  
+  # Notify on-call via preferred contact method
+  notify_methods:
+    - push
+    - sms
+    - voice
+
+# =============================================================================
+# Incident Management (Opsgenie Incident Feature)
+# =============================================================================
+# Only available on OpsGenie Enterprise plans
+incidents:
+  # Enable incident management integration
+  enabled: true
+  
+  # Auto-create incidents from critical alerts
+  auto_create:
+    enabled: true
+    # Only for P1/P2 alerts
+    priority_threshold: [P1, P2]
+    # Message format for incidents
+    message_format: "[INCIDENT] {{ alertname }} - {{ service }}"
+  
+  # Status page integration
+  status_page:
+    enabled: false
+    page_id: "${OPSGENIE_STATUS_PAGE_ID}"
+    # Components to update
+    components:
+      - component_id: "api"
+        services: ["api-gateway", "auth-service"]
+      - component_id: "payments"
+        services: ["checkout-service", "payment-processor"]
+  
+  # War room settings (for incident collaboration)
+  war_room:
+    auto_create: true
+    include_teams: true
+    add_bridge_link: true
+    bridge_url: "${WAR_ROOM_BRIDGE_URL}"
+
+# =============================================================================
+# Bi-directional Sync
+# =============================================================================
+sync:
+  # Enable syncing OpsGenie updates back to AutoSRE
+  enabled: true
+  
+  # Webhook endpoint configuration
+  webhook:
+    enabled: true
+    path: "/api/opsgenie/webhook"
+    port: 3000
+  
+  # Events to sync
+  events:
+    - alertCreated
+    - alertAcknowledged
+    - alertClosed
+    - alertSnoozed
+    - alertEscalated
+    - alertAssigned
+    - noteAdded
+  
+  # Auto-resolve AutoSRE investigation when alert is closed
+  auto_resolve_on_close: true
+  
+  # Sync notes/comments to investigation timeline
+  sync_notes: true
+
+# =============================================================================
+# Heartbeat Monitoring
+# =============================================================================
+# Use OpsGenie heartbeats to monitor AutoSRE health
+heartbeat:
+  enabled: true
+  name: "autosre-heartbeat"
+  # Heartbeat interval (seconds)
+  interval: 60
+  # Alert if heartbeat fails
+  alert_on_failure: true
+  alert_priority: P2
+  alert_tags:
+    - infrastructure
+    - autosre-health
+
+# =============================================================================
+# Filtering and Suppression
+# =============================================================================
+filtering:
+  # Alert suppression rules
+  suppression:
+    # Suppress during maintenance windows
+    maintenance_windows:
+      enabled: true
+      # Still log suppressed alerts
+      log_suppressed: true
+    
+    # Time-based suppression
+    quiet_hours:
+      enabled: false
+      start: "02:00"
+      end: "06:00"
+      timezone: "America/New_York"
+      # Only suppress low priority
+      apply_to: [P4, P5]
+    
+    # Pattern-based suppression
+    patterns:
+      - name: "Ignore test alerts"
+        match:
+          environment: "test"
+        action: drop
+      
+      - name: "Downgrade staging alerts"
+        match:
+          environment: "staging"
+        action: downgrade_priority
+        new_priority: P4
+
+# =============================================================================
+# Rate Limiting
+# =============================================================================
+rate_limits:
+  # Max alerts per minute
+  alerts_per_minute: 100
+  
+  # Max API calls per minute
+  api_calls_per_minute: 300
+  
+  # Alert aggregation
+  aggregation:
+    enabled: true
+    window_seconds: 60
+    # Group alerts by these fields
+    group_by:
+      - service
+      - alertname
+    # Max alerts per aggregated message
+    max_per_group: 10
+
+# =============================================================================
+# Advanced Settings
+# =============================================================================
+advanced:
+  # Connection settings
+  timeout_seconds: 30
+  
+  # Retry configuration
+  retry:
+    max_attempts: 3
+    initial_delay_seconds: 1
+    max_delay_seconds: 30
+    exponential_backoff: true
+    retry_on_status:
+      - 429  # Rate limited
+      - 500  # Internal server error
+      - 502  # Bad gateway
+      - 503  # Service unavailable
+      - 504  # Gateway timeout
+  
+  # Enable debug logging
+  debug: false
+  
+  # Validate API responses
+  strict_validation: false
+  
+  # Custom headers
+  headers:
+    X-Autosre-Version: "1.0.0"
+  
+  # User agent
+  user_agent: "AutoSRE/1.0 (OpsGenie Integration)"
+
+# =============================================================================
+# Environment Variable Reference
+# =============================================================================
+# Required environment variables:
+#   OPSGENIE_API_KEY             - API integration key (GenieKey)
+#   OPSGENIE_API_URL             - API base URL (optional, defaults to US)
+#   OPSGENIE_REGION              - Region: us or eu (optional, defaults to us)
+#   OPSGENIE_WEBHOOK_SECRET      - Webhook signature secret
+#
+# Optional (team routing keys):
+#   OPSGENIE_DEFAULT_ROUTING_KEY
+#   OPSGENIE_PLATFORM_KEY
+#   OPSGENIE_PAYMENTS_KEY
+#   OPSGENIE_DATA_KEY
+#   OPSGENIE_FRONTEND_KEY
+#   OPSGENIE_BACKEND_KEY
+#
+# Optional (external links):
+#   AUTOSRE_WEBHOOK_URL          - AutoSRE API URL for callbacks
+#   GRAFANA_URL                  - Grafana base URL
+#   LOGS_URL                     - Logging platform URL
+#   WAR_ROOM_BRIDGE_URL          - War room bridge/call URL
+#
+# Example .env file:
+#   OPSGENIE_API_KEY=12345678-abcd-1234-efgh-123456789012
+#   OPSGENIE_REGION=us
+#   OPSGENIE_WEBHOOK_SECRET=your-webhook-signing-secret
+#   OPSGENIE_DEFAULT_ROUTING_KEY=98765432-wxyz-9876-ijkl-987654321098

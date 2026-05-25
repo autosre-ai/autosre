@@ -1,0 +1,317 @@
+# =============================================================================
+# AutoSRE Slack Integration Configuration
+# =============================================================================
+#
+# This configuration file sets up Slack integration for AutoSRE.
+# Slack enables:
+#   - Real-time incident notifications in channels
+#   - Interactive incident investigation via bot commands
+#   - Runbook execution from Slack threads
+#   - Approval workflows for remediation actions
+#
+# SETUP INSTRUCTIONS:
+# 1. Create a Slack App at https://api.slack.com/apps
+# 2. Enable Socket Mode for real-time events
+# 3. Add required OAuth scopes (see below)
+# 4. Install the app to your workspace
+# 5. Copy tokens to environment variables or secrets
+#
+# REQUIRED OAUTH SCOPES:
+#   Bot Token Scopes:
+#     - chat:write           (Post messages to channels)
+#     - chat:write.public    (Post to channels bot isn't a member of)
+#     - channels:history     (Read message history in channels)
+#     - channels:read        (List channels)
+#     - users:read           (Get user info for mentions)
+#     - reactions:write      (Add reactions for status updates)
+#     - files:write          (Upload investigation reports)
+#     - im:history           (Read DMs for private commands)
+#     - im:write             (Send DMs for alerts)
+#
+# =============================================================================
+
+# Integration metadata
+name: slack
+version: "1.2.0"
+description: "Slack integration for AutoSRE incident management"
+
+# =============================================================================
+# Connection Settings
+# =============================================================================
+connection:
+  # Slack Bot Token (xoxb-...)
+  # Store securely - use environment variable or secrets manager
+  bot_token: "${SLACK_BOT_TOKEN}"
+  
+  # Slack App Token for Socket Mode (xapp-...)
+  # Required for receiving events without a public endpoint
+  app_token: "${SLACK_APP_TOKEN}"
+  
+  # Signing Secret for verifying webhook requests
+  # Used when NOT using Socket Mode
+  signing_secret: "${SLACK_SIGNING_SECRET}"
+  
+  # Connection mode: socket (recommended) or webhook
+  mode: socket
+  
+  # Webhook endpoint (only if mode: webhook)
+  # webhook_path: "/api/slack/events"
+  # webhook_port: 3000
+
+# =============================================================================
+# Channel Configuration
+# =============================================================================
+channels:
+  # Primary incident channel - all alerts go here by default
+  incidents:
+    name: "#incidents"
+    severity: [critical, high, medium, low]
+    types: [alert, incident, investigation]
+  
+  # Critical-only channel - pages the on-call team
+  critical:
+    name: "#incidents-critical"
+    severity: [critical]
+    types: [alert, incident]
+    mention_oncall: true
+  
+  # SRE team channel - investigation updates and runbook execution
+  sre:
+    name: "#sre-team"
+    severity: [high, medium]
+    types: [investigation, remediation, postmortem]
+  
+  # Audit log channel - all actions taken by AutoSRE
+  audit:
+    name: "#autosre-audit"
+    types: [action, approval, remediation]
+    log_all_commands: true
+
+# =============================================================================
+# Notification Settings
+# =============================================================================
+notifications:
+  # Alert notification format
+  alerts:
+    enabled: true
+    # Include rich formatting with blocks
+    use_blocks: true
+    # Add action buttons for quick triage
+    include_actions: true
+    # Threading behavior for related alerts
+    thread_related: true
+    # Suppress duplicate alerts within this window (seconds)
+    dedup_window: 300
+  
+  # Investigation notifications
+  investigations:
+    enabled: true
+    # Notify when investigation starts
+    on_start: true
+    # Notify on significant findings
+    on_finding: true
+    # Notify when complete
+    on_complete: true
+    # Include investigation timeline
+    include_timeline: true
+  
+  # Remediation notifications
+  remediations:
+    enabled: true
+    # Require approval via Slack for these actions
+    require_approval:
+      - pod_restart
+      - deployment_rollback
+      - scale_replicas
+      - config_change
+    # Approval timeout (seconds) - escalate if not approved
+    approval_timeout: 300
+    # Users/groups who can approve (Slack user IDs or @group-handles)
+    approvers:
+      - "@sre-oncall"
+      - "@platform-team-leads"
+    # Post remediation results
+    post_results: true
+
+# =============================================================================
+# Bot Commands
+# =============================================================================
+commands:
+  # Enable slash commands
+  slash_commands:
+    enabled: true
+    prefix: "/autosre"
+  
+  # Enable @mention commands
+  mention_commands:
+    enabled: true
+  
+  # Available commands
+  available:
+    - name: investigate
+      description: "Start an investigation"
+      usage: "/autosre investigate <alert-name or description>"
+      example: "/autosre investigate high CPU on checkout-service"
+    
+    - name: status
+      description: "Get status of ongoing investigations"
+      usage: "/autosre status [investigation-id]"
+      example: "/autosre status INV-2024-001"
+    
+    - name: runbook
+      description: "Execute a runbook"
+      usage: "/autosre runbook <runbook-name> [--service <service>]"
+      example: "/autosre runbook database-failover --service postgres-primary"
+    
+    - name: approve
+      description: "Approve a pending remediation action"
+      usage: "/autosre approve <action-id>"
+      example: "/autosre approve REM-2024-042"
+    
+    - name: reject
+      description: "Reject a pending remediation action"
+      usage: "/autosre reject <action-id> [--reason <reason>]"
+      example: "/autosre reject REM-2024-042 --reason 'Need more context'"
+    
+    - name: oncall
+      description: "Get or set on-call information"
+      usage: "/autosre oncall [set @user]"
+      example: "/autosre oncall set @alice"
+    
+    - name: help
+      description: "Show available commands"
+      usage: "/autosre help [command]"
+
+# =============================================================================
+# Message Templates
+# =============================================================================
+templates:
+  # Alert notification template
+  alert: |
+    :rotating_light: *{{ severity | upper }} Alert: {{ alertname }}*
+    
+    *Service:* {{ labels.service | default('unknown') }}
+    *Namespace:* {{ labels.namespace | default('default') }}
+    *Cluster:* {{ labels.cluster | default('production') }}
+    
+    *Summary:* {{ annotations.summary | default('No summary available') }}
+    
+    *Started:* {{ startsAt | time_ago }}
+    {% if fingerprint %}*Alert ID:* `{{ fingerprint }}`{% endif %}
+  
+  # Investigation started template
+  investigation_start: |
+    :mag: *Investigation Started*
+    
+    *ID:* `{{ investigation_id }}`
+    *Trigger:* {{ trigger_alert | default(description) }}
+    *Started by:* {{ initiated_by }}
+    *ETA:* ~{{ estimated_time }} minutes
+    
+    _I'll post updates in this thread as I investigate._
+  
+  # Investigation finding template
+  investigation_finding: |
+    :bulb: *Finding:* {{ finding.title }}
+    
+    {{ finding.description }}
+    
+    *Confidence:* {{ finding.confidence }}%
+    *Source:* {{ finding.source }}
+    {% if finding.evidence %}
+    *Evidence:*
+    ```
+    {{ finding.evidence | truncate(500) }}
+    ```
+    {% endif %}
+  
+  # Approval request template
+  approval_request: |
+    :warning: *Approval Required*
+    
+    *Action:* {{ action.type }}
+    *Target:* {{ action.target }}
+    *Risk Level:* {{ action.risk_level }}
+    
+    *Proposed by:* AutoSRE ({{ investigation_id }})
+    *Reason:* {{ action.reason }}
+    
+    *Details:*
+    ```yaml
+    {{ action.details | yaml }}
+    ```
+    
+    :white_check_mark: To approve: `/autosre approve {{ action.id }}`
+    :x: To reject: `/autosre reject {{ action.id }}`
+    
+    _This request will expire in {{ approval_timeout_minutes }} minutes._
+
+# =============================================================================
+# Rate Limiting & Safety
+# =============================================================================
+rate_limits:
+  # Maximum messages per channel per minute
+  messages_per_minute: 20
+  
+  # Maximum alerts before aggregation kicks in
+  alert_aggregation_threshold: 10
+  
+  # Cool-down between similar notifications (seconds)
+  notification_cooldown: 60
+
+safety:
+  # Never post to these channels
+  blocked_channels:
+    - "#general"
+    - "#random"
+    - "#announcements"
+  
+  # Require explicit channel membership before posting
+  require_membership: true
+  
+  # Maximum message length before truncation
+  max_message_length: 4000
+  
+  # Sanitize sensitive data patterns
+  sanitize_patterns:
+    - "password"
+    - "secret"
+    - "token"
+    - "api[_-]?key"
+    - "credential"
+
+# =============================================================================
+# Advanced Settings
+# =============================================================================
+advanced:
+  # Enable unfurling of links
+  unfurl_links: false
+  unfurl_media: true
+  
+  # Retry configuration
+  retry:
+    max_attempts: 3
+    backoff_seconds: 2
+    backoff_multiplier: 2
+  
+  # Connection health check interval (seconds)
+  health_check_interval: 30
+  
+  # Cache user/channel info (seconds)
+  cache_ttl: 300
+  
+  # Enable debug logging for Slack API calls
+  debug: false
+
+# =============================================================================
+# Environment Variable Reference
+# =============================================================================
+# Required environment variables:
+#   SLACK_BOT_TOKEN     - Bot user OAuth token (xoxb-...)
+#   SLACK_APP_TOKEN     - App-level token for Socket Mode (xapp-...)
+#   SLACK_SIGNING_SECRET - For webhook verification (optional with Socket Mode)
+#
+# Example .env file:
+#   SLACK_BOT_TOKEN=xoxb-YOUR-BOT-TOKEN-HERE
+#   SLACK_APP_TOKEN=xapp-1-A1234567890-1234567890123-abcdefghijklmnopqrstuvwxyz
+#   SLACK_SIGNING_SECRET=abcdef1234567890abcdef1234567890
