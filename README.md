@@ -30,10 +30,39 @@
   <em>45-minute investigations → 5 minutes. Autonomous triage. Evidence-based RCA. Human-in-the-loop for safety.</em>
 </p>
 
-<!-- Demo GIF Placeholder -->
+## 🎬 See It In Action
+
 <p align="center">
-  <img src="docs/assets/demo.gif" alt="AutoSRE Demo" width="700"/>
+  <img src="docs/assets/demo.gif" alt="AutoSRE Demo - AI-powered incident investigation" width="700"/>
 </p>
+
+<p align="center">
+  <sub>
+    ▲ AutoSRE automatically triages alerts, gathers evidence from Kubernetes, Prometheus, and logs,
+    <br>tests hypotheses, identifies root cause, and recommends remediation — all in under 5 minutes.
+  </sub>
+</p>
+
+<details>
+<summary><strong>📹 What the demo shows</strong></summary>
+
+1. **Alert Triage** — Receives "payment service 500 errors" alert
+2. **Evidence Gathering** — Queries K8s pods, Prometheus metrics, recent deployments
+3. **Hypothesis Testing** — Tests deployment bug vs DB issues vs resource exhaustion
+4. **Root Cause** — Identifies null pointer in v2.3.1 with 92% confidence
+5. **Human Approval** — Requests confirmation before rollback action
+6. **Memory Recall** — Shows similar past incidents for context
+
+Try it yourself:
+```bash
+# Mock mode (no external dependencies)
+python examples/demo_simple.py --mock
+
+# With your LLM configured
+autosre investigate "payment service 500 errors" --service payment-service
+```
+
+</details>
 
 ---
 
@@ -258,7 +287,7 @@ pytest  # Run the test suite
 **Areas we need help:**
 - 🔌 New integrations (Elastic, Splunk, New Relic)
 - 📊 Investigation scenarios for evaluation
-- 📚 Documentation and examples
+- 📚 Documentation and examples — see [examples/](examples/)
 - 🐛 Bug reports and fixes
 
 ---

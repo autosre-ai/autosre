@@ -1,0 +1,53 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                          AUTOSRE DEMO PLACEHOLDER                            ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                              ║
+║  This is a placeholder for the AutoSRE demo GIF.                             ║
+║                                                                              ║
+║  The actual GIF will show:                                                   ║
+║                                                                              ║
+║  ┌──────────────────────────────────────────────────────────────────────┐    ║
+║  │  $ autosre investigate "payment service 500 errors"                  │    ║
+║  │                                                                      │    ║
+║  │  🔍 [Triage] Starting investigation...                               │    ║
+║  │  ├── Connecting to Kubernetes cluster                                │    ║
+║  │  ├── Querying Prometheus metrics                                     │    ║
+║  │  └── Analyzing recent deployments                                    │    ║
+║  │                                                                      │    ║
+║  │  📊 [Evidence Collection]                                            │    ║
+║  │  ├── Error rate: 12.3% (baseline: 0.1%)                              │    ║
+║  │  ├── Recent deployment: payment-service v2.3.1 at 14:02 UTC          │    ║
+║  │  └── Affected pods: 3/5 returning 500s                               │    ║
+║  │                                                                      │    ║
+║  │  🧠 [Hypothesis Testing]                                             │    ║
+║  │  ├── H1: Recent deployment introduced bug       [CONFIRMED ✓]       │    ║
+║  │  ├── H2: Database connectivity issue            [REJECTED ✗]        │    ║
+║  │  └── H3: Resource exhaustion                    [REJECTED ✗]        │    ║
+║  │                                                                      │    ║
+║  │  🎯 [Root Cause] payment-service v2.3.1 introduced null pointer     │    ║
+║  │     in retry logic (confidence: 0.92)                                │    ║
+║  │                                                                      │    ║
+║  │  💡 [Recommendation] Rollback to v2.3.0                              │    ║
+║  │     ⚠️  This action requires human approval                          │    ║
+║  │                                                                      │    ║
+║  │  [a]pprove / [r]eject / [m]ore info? _                               │    ║
+║  └──────────────────────────────────────────────────────────────────────┘    ║
+║                                                                              ║
+║  Recording Instructions:                                                     ║
+║  ────────────────────────────────────────────────────────────────────────    ║
+║  1. Install asciinema: pip install asciinema                                 ║
+║  2. Record session: asciinema rec demo.cast                                  ║
+║  3. Run demo: python examples/demo_simple.py --mock                          ║
+║  4. Convert to GIF: agg demo.cast docs/assets/demo.gif                       ║
+║                                                                              ║
+║  Or use the demo walkthrough: cd examples/demo-walkthrough && ./record.sh    ║
+║                                                                              ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║  Key moments to capture:                                                     ║
+║  • Initial alert triage and severity assessment                              ║
+║  • Multi-source evidence gathering (K8s, Prometheus, logs)                   ║
+║  • AI-powered hypothesis generation and testing                              ║
+║  • Confidence-scored root cause identification                               ║
+║  • Human-in-the-loop approval for remediation actions                        ║
+║  • Memory recall of similar past incidents                                   ║
+╚══════════════════════════════════════════════════════════════════════════════╝
