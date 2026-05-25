@@ -44,6 +44,14 @@ Practical guides for setting up and operating AutoSRE.
 
     [:octicons-arrow-right-24: Scaling](scaling.md)
 
+-   :material-shield-check:{ .lg .middle } **Deployment Safety**
+
+    ---
+
+    Implement safe deployments with verification, gates, and rollback
+
+    [:octicons-arrow-right-24: Deployment Safety](deployment.md)
+
 </div>
 
 ## Customization
@@ -69,3 +77,4 @@ Practical guides for setting up and operating AutoSRE.
 | [Custom Skills](custom-skills.md) | 30 min | Add your own tools |
 | [Kubernetes Deployment](kubernetes-deployment.md) | 20 min | Production setup |
 | [Scaling](scaling.md) | 30 min | High availability |
+| [Deployment Safety](deployment.md) | 45 min | Safe deployments with gates and verification |
