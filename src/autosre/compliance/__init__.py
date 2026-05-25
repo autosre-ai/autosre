@@ -39,7 +39,21 @@ from autosre.compliance.audit import (
     AuditFinding,
     AuditSeverity,
     ComplianceStatus,
+    ComplianceFramework,
     generate_compliance_dashboard,
+)
+from autosre.compliance.evidence import (
+    EvidenceCollector,
+    EvidenceItem,
+    EvidencePackage,
+    EvidenceType,
+)
+from autosre.compliance.remediation import (
+    RemediationTracker,
+    RemediationTask,
+    RemediationStatus,
+    RemediationPriority,
+    RemediationProgress,
 )
 
 __all__ = [
@@ -73,5 +87,17 @@ __all__ = [
     "AuditFinding",
     "AuditSeverity",
     "ComplianceStatus",
+    "ComplianceFramework",
     "generate_compliance_dashboard",
+    # Evidence
+    "EvidenceCollector",
+    "EvidenceItem",
+    "EvidencePackage",
+    "EvidenceType",
+    # Remediation
+    "RemediationTracker",
+    "RemediationTask",
+    "RemediationStatus",
+    "RemediationPriority",
+    "RemediationProgress",
 ]

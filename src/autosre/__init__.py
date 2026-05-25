@@ -69,6 +69,27 @@ from autosre.utils.deliberate import (
     PAUSE_CHECKLIST_PROMPT,
 )
 
+# Multi-Tenancy (v2.2) - Enterprise SaaS support
+from autosre.tenancy import (
+    Tenant,
+    TenantTier,
+    TenantStatus,
+    Workspace,
+    WorkspaceType,
+    Team,
+    TeamRole,
+    TenantContext,
+    TenantIsolation,
+    get_current_tenant,
+    tenant_context,
+    QuotaManager,
+    QuotaType,
+    QuotaExceededError,
+    UsageTracker,
+    BillingService,
+    TenantMiddleware,
+)
+
 # Foundation (v1) exports - maintained for compatibility
 from autosre.foundation.context_store import ContextStore
 from autosre.foundation.models import Service, Ownership, ChangeEvent
@@ -130,6 +151,24 @@ __all__ = [
     "DeliberateReasoner",
     "DeliberationRecord",
     "PAUSE_CHECKLIST_PROMPT",
+    # Multi-Tenancy (v2.2)
+    "Tenant",
+    "TenantTier",
+    "TenantStatus",
+    "Workspace",
+    "WorkspaceType",
+    "Team",
+    "TeamRole",
+    "TenantContext",
+    "TenantIsolation",
+    "get_current_tenant",
+    "tenant_context",
+    "QuotaManager",
+    "QuotaType",
+    "QuotaExceededError",
+    "UsageTracker",
+    "BillingService",
+    "TenantMiddleware",
     # Foundation (v1)
     "ContextStore",
     "Service",
