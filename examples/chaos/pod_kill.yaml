@@ -1,0 +1,207 @@
+# Pod Kill Chaos Experiment
+# This example demonstrates how to test application resilience
+# by randomly killing pods in a namespace.
+#
+# Compatible with Chaos Mesh and LitmusChaos patterns.
+# Run with: autosre chaos run examples/chaos/pod_kill.yaml
+
+apiVersion: autosre.io/v1
+kind: ChaosExperiment
+metadata:
+  name: pod-kill-payment-service
+  namespace: chaos-testing
+  labels:
+    team: platform
+    environment: staging
+    experiment-type: resilience
+  annotations:
+    owner: sre-team@example.com
+    jira-ticket: SRE-1234
+
+spec:
+  # Experiment type
+  experimentType: pod_chaos
+  
+  # What we're testing
+  hypothesis: |
+    When a payment-service pod is killed, the service should:
+    1. Kubernetes should reschedule the pod within 30 seconds
+    2. Load balancer should route traffic to healthy pods
+    3. No customer-facing errors should occur
+    4. Metrics and alerts should fire appropriately
+  
+  # Target selection
+  target:
+    namespaces:
+      - payments
+    labelSelectors:
+      app: payment-service
+      tier: backend
+    mode: one  # Kill one pod at a time (options: one, all, fixed, fixed-percent, random-max-percent)
+    value: ""  # For percentage modes, specify the value
+    podPhaseSelectors:
+      - Running
+
+  # Fault configuration
+  fault:
+    type: pod_kill
+    gracePeriod: 0  # Immediate termination (simulates node failure)
+    # Alternative: gracePeriod: 30 for graceful shutdown testing
+
+  # Schedule configuration
+  schedule:
+    duration: 30s  # How long the chaos lasts
+    # For recurring experiments:
+    # cron: "0 10 * * 1-5"  # Every weekday at 10 AM
+    # concurrencyPolicy: Forbid
+    # historyLimit: 5
+
+  # Safety configuration
+  safety:
+    # Blast radius limits
+    maxPodsAffected: 1
+    maxPodsPercentage: 25
+    
+    # Protected resources
+    blockedNamespaces:
+      - kube-system
+      - monitoring
+      - cert-manager
+    
+    # Time restrictions (24h format, UTC)
+    allowedHours: [9, 17]
+    blockedDays: [5, 6]  # Saturday, Sunday
+    
+    # Circuit breaker
+    circuitBreaker:
+      enabled: true
+      failureThreshold: 3
+      timeoutMinutes: 30
+
+  # Steady-state hypothesis checks
+  steadyState:
+    before:
+      - name: payment-service-healthy
+        type: prometheus
+        query: |
+          sum(kube_pod_status_ready{
+            namespace="payments",
+            pod=~"payment-service-.*"
+          }) >= 2
+        expected: true
+      
+      - name: error-rate-normal
+        type: prometheus
+        query: |
+          sum(rate(http_requests_total{
+            namespace="payments",
+            code=~"5.."
+          }[5m])) / 
+          sum(rate(http_requests_total{
+            namespace="payments"
+          }[5m])) < 0.01
+        expected: true
+
+    after:
+      - name: payment-service-recovered
+        type: prometheus
+        query: |
+          sum(kube_pod_status_ready{
+            namespace="payments",
+            pod=~"payment-service-.*"
+          }) >= 2
+        expected: true
+        timeout: 60s  # Give time for pod to recover
+      
+      - name: no-elevated-errors
+        type: prometheus
+        query: |
+          sum(rate(http_requests_total{
+            namespace="payments",
+            code=~"5.."
+          }[5m])) / 
+          sum(rate(http_requests_total{
+            namespace="payments"
+          }[5m])) < 0.05
+        expected: true
+
+  # Rollback triggers - abort experiment if these conditions are met
+  rollbackTriggers:
+    - name: high-error-rate
+      metricQuery: |
+        sum(rate(http_requests_total{namespace="payments", code=~"5.."}[1m])) /
+        sum(rate(http_requests_total{namespace="payments"}[1m]))
+      threshold: 0.1
+      comparison: ">"
+      durationSeconds: 30
+    
+    - name: all-pods-down
+      metricQuery: |
+        sum(kube_pod_status_ready{namespace="payments", pod=~"payment-service-.*"})
+      threshold: 1
+      comparison: "<"
+      durationSeconds: 10
+
+  # Lifecycle hooks
+  hooks:
+    pre:
+      - name: notify-team
+        type: slack
+        config:
+          channel: "#sre-chaos"
+          message: "🔬 Starting pod-kill experiment on payment-service"
+      
+      - name: snapshot-metrics
+        type: prometheus
+        config:
+          queries:
+            - "sum(rate(http_requests_total{namespace='payments'}[5m]))"
+            - "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{namespace='payments'}[5m]))"
+    
+    post:
+      - name: notify-completion
+        type: slack
+        config:
+          channel: "#sre-chaos"
+          message: "✅ Pod-kill experiment completed"
+      
+      - name: generate-report
+        type: report
+        config:
+          format: markdown
+          destination: /tmp/chaos-reports/
+
+  # Observability
+  observability:
+    metrics:
+      enabled: true
+      endpoint: http://prometheus:9090
+    
+    tracing:
+      enabled: true
+      samplingRate: 1.0
+    
+    logging:
+      level: info
+      format: json
+
+  # Dry run mode (validate without executing)
+  dryRun: false
+
+# Equivalent Chaos Mesh PodChaos manifest (for reference):
+# apiVersion: chaos-mesh.org/v1alpha1
+# kind: PodChaos
+# metadata:
+#   name: pod-kill-payment-service
+#   namespace: chaos-testing
+# spec:
+#   action: pod-kill
+#   mode: one
+#   selector:
+#     namespaces:
+#       - payments
+#     labelSelectors:
+#       app: payment-service
+#       tier: backend
+#   gracePeriod: 0
+#   duration: 30s

@@ -1,0 +1,71 @@
+# Network Delay Chaos Experiment
+# Simulates network latency to test timeout handling and circuit breakers.
+#
+# Run with: autosre chaos run examples/chaos/network_delay.yaml
+
+apiVersion: autosre.io/v1
+kind: ChaosExperiment
+metadata:
+  name: network-delay-api-gateway
+  namespace: chaos-testing
+  labels:
+    team: platform
+    experiment-type: network
+
+spec:
+  experimentType: network_chaos
+  
+  hypothesis: |
+    When 200ms latency is injected between API gateway and backend services:
+    1. Circuit breakers should open after timeout threshold
+    2. Graceful degradation should occur
+    3. Client-side timeouts should trigger fallback responses
+  
+  target:
+    namespaces:
+      - api
+    labelSelectors:
+      app: api-gateway
+    mode: all
+
+  fault:
+    type: network_delay
+    latency: 200ms
+    jitter: 50ms
+    correlation: "25"
+    direction: to
+    targetService: backend-service
+    targetPort: 8080
+
+  schedule:
+    duration: 2m
+
+  safety:
+    maxPodsAffected: 5
+    maxPodsPercentage: 50
+    circuitBreaker:
+      enabled: true
+      failureThreshold: 3
+
+  steadyState:
+    before:
+      - name: latency-baseline
+        type: prometheus
+        query: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{namespace="api"}[5m])) < 0.5
+        expected: true
+
+    after:
+      - name: latency-recovered
+        type: prometheus
+        query: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{namespace="api"}[5m])) < 0.5
+        expected: true
+        timeout: 120s
+
+  rollbackTriggers:
+    - name: extreme-latency
+      metricQuery: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{namespace="api"}[1m]))
+      threshold: 5.0
+      comparison: ">"
+      durationSeconds: 60
+
+  dryRun: false

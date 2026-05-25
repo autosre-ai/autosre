@@ -1,0 +1,276 @@
+# Incident Triage Workflow
+#
+# This workflow automates the initial triage of incidents:
+# 1. Creates incident record
+# 2. Gathers context from multiple sources
+# 3. Performs AI-powered analysis
+# 4. Routes to appropriate responder
+
+apiVersion: autosre.io/v1
+kind: Workflow
+metadata:
+  name: incident-triage
+  version: 1.0.0
+  description: Automated incident triage and routing
+  author: AutoSRE Team
+  tags:
+    - incident
+    - triage
+    - automation
+
+spec:
+  inputs:
+    - name: alert_id
+      type: string
+      required: true
+      description: Alert ID that triggered the incident
+      
+    - name: severity
+      type: string
+      required: true
+      enum: [critical, high, medium, low]
+      description: Alert severity level
+      
+    - name: service
+      type: string
+      required: true
+      description: Affected service name
+      
+    - name: namespace
+      type: string
+      default: production
+      description: Kubernetes namespace
+
+  outputs:
+    - name: incident_id
+      value: ${{ steps.create_incident.output.incident_id }}
+      description: Created incident ID
+      
+    - name: triage_result
+      value: ${{ steps.analyze.output }}
+      description: Triage analysis result
+
+  triggers:
+    - type: alert
+      severity: [critical, high, medium]
+      sources: [prometheus, pagerduty, datadog]
+
+  timeout: 900  # 15 minutes
+
+  steps:
+    # Step 1: Create incident record
+    - name: Create Incident Record
+      id: create_incident
+      action: incident.create
+      inputs:
+        alert_id: ${{ inputs.alert_id }}
+        severity: ${{ inputs.severity }}
+        service: ${{ inputs.service }}
+        title: "Incident from alert ${{ inputs.alert_id }}"
+      outputs:
+        - incident_id
+        - created_at
+
+    # Step 2: Acknowledge alert
+    - name: Acknowledge Alert
+      id: ack_alert
+      action: alert.acknowledge
+      inputs:
+        alert_id: ${{ inputs.alert_id }}
+        message: "Automated triage started - Incident ${{ steps.create_incident.output.incident_id }}"
+      continueOnError: true
+
+    # Step 3: Gather context from multiple sources in parallel
+    - name: Gather Context
+      id: gather_context
+      type: parallel
+      maxConcurrency: 5
+      steps:
+        - name: Get Pod Status
+          id: pods
+          action: kubernetes.get_pods
+          inputs:
+            namespace: ${{ inputs.namespace }}
+            label_selector: app=${{ inputs.service }}
+          timeout: 30
+          
+        - name: Get Recent Events
+          id: events
+          action: kubernetes.get_events
+          inputs:
+            namespace: ${{ inputs.namespace }}
+            field_selector: involvedObject.name=${{ inputs.service }}
+            limit: 20
+          timeout: 30
+          
+        - name: Get CPU Metrics
+          id: cpu_metrics
+          action: prometheus.query
+          inputs:
+            query: |
+              avg(rate(container_cpu_usage_seconds_total{
+                namespace="${{ inputs.namespace }}",
+                pod=~"${{ inputs.service }}.*"
+              }[5m])) by (pod)
+          timeout: 30
+          
+        - name: Get Memory Metrics
+          id: memory_metrics
+          action: prometheus.query
+          inputs:
+            query: |
+              avg(container_memory_usage_bytes{
+                namespace="${{ inputs.namespace }}",
+                pod=~"${{ inputs.service }}.*"
+              }) by (pod)
+          timeout: 30
+          
+        - name: Get Error Logs
+          id: error_logs
+          action: logs.search
+          inputs:
+            service: ${{ inputs.service }}
+            namespace: ${{ inputs.namespace }}
+            level: error
+            timerange: 30m
+            limit: 100
+          timeout: 60
+          
+        - name: Get Recent Deployments
+          id: deployments
+          action: kubernetes.get_deployment_history
+          inputs:
+            namespace: ${{ inputs.namespace }}
+            name: ${{ inputs.service }}
+            limit: 5
+          timeout: 30
+          
+        - name: Get Service Dependencies
+          id: dependencies
+          action: topology.get_dependencies
+          inputs:
+            service: ${{ inputs.service }}
+          timeout: 30
+
+    # Step 4: AI-powered analysis
+    - name: Analyze Context
+      id: analyze
+      action: autosre.analyze
+      inputs:
+        incident_id: ${{ steps.create_incident.output.incident_id }}
+        severity: ${{ inputs.severity }}
+        service: ${{ inputs.service }}
+        context:
+          pods: ${{ steps.gather_context.output.pods }}
+          events: ${{ steps.gather_context.output.events }}
+          cpu_metrics: ${{ steps.gather_context.output.cpu_metrics }}
+          memory_metrics: ${{ steps.gather_context.output.memory_metrics }}
+          error_logs: ${{ steps.gather_context.output.error_logs }}
+          deployments: ${{ steps.gather_context.output.deployments }}
+          dependencies: ${{ steps.gather_context.output.dependencies }}
+      timeout: 120
+      outputs:
+        - category
+        - likely_cause
+        - affected_components
+        - recommended_actions
+        - confidence_score
+        - suggested_runbook
+
+    # Step 5: Determine routing based on analysis
+    - name: Route Incident
+      id: route
+      type: condition
+      if: steps.analyze.output.confidence_score >= 0.7
+      then:
+        # High confidence - use AI recommendation
+        - name: Auto-Route
+          id: auto_route
+          action: incident.route
+          inputs:
+            incident_id: ${{ steps.create_incident.output.incident_id }}
+            team: ${{ steps.analyze.output.category }}
+            reason: "Auto-routed based on analysis (confidence: ${{ steps.analyze.output.confidence_score }})"
+            suggested_runbook: ${{ steps.analyze.output.suggested_runbook }}
+      else:
+        # Low confidence - escalate to on-call
+        - name: Escalate to On-Call
+          id: escalate
+          action: oncall.page
+          inputs:
+            team: sre
+            incident_id: ${{ steps.create_incident.output.incident_id }}
+            message: |
+              Automated triage needs human review.
+              Service: ${{ inputs.service }}
+              Likely cause: ${{ steps.analyze.output.likely_cause }}
+              Confidence: ${{ steps.analyze.output.confidence_score }}
+
+    # Step 6: Update incident with triage results
+    - name: Update Incident
+      id: update_incident
+      action: incident.update
+      inputs:
+        incident_id: ${{ steps.create_incident.output.incident_id }}
+        status: triaged
+        triage_result:
+          category: ${{ steps.analyze.output.category }}
+          likely_cause: ${{ steps.analyze.output.likely_cause }}
+          affected_components: ${{ steps.analyze.output.affected_components }}
+          recommended_actions: ${{ steps.analyze.output.recommended_actions }}
+          confidence_score: ${{ steps.analyze.output.confidence_score }}
+        
+    # Step 7: Send notification
+    - name: Notify
+      id: notify
+      action: slack.post_message
+      inputs:
+        channel: "#incidents"
+        blocks:
+          - type: header
+            text: ":rotating_light: Incident Triaged"
+          - type: section
+            fields:
+              - type: mrkdwn
+                text: "*Incident:* ${{ steps.create_incident.output.incident_id }}"
+              - type: mrkdwn
+                text: "*Severity:* ${{ inputs.severity }}"
+              - type: mrkdwn
+                text: "*Service:* ${{ inputs.service }}"
+              - type: mrkdwn
+                text: "*Category:* ${{ steps.analyze.output.category }}"
+          - type: section
+            text: "*Likely Cause:* ${{ steps.analyze.output.likely_cause }}"
+          - type: actions
+            elements:
+              - type: button
+                text: "View Incident"
+                url: "https://autosre.internal/incidents/${{ steps.create_incident.output.incident_id }}"
+      continueOnError: true
+
+  onSuccess:
+    - name: Record Success Metrics
+      action: metrics.record
+      inputs:
+        name: workflow_triage_success
+        labels:
+          service: ${{ inputs.service }}
+          severity: ${{ inputs.severity }}
+          
+  onFailure:
+    - name: Alert Triage Failure
+      action: slack.post_message
+      inputs:
+        channel: "#sre-alerts"
+        message: |
+          :x: *Incident Triage Failed*
+          Alert: ${{ inputs.alert_id }}
+          Service: ${{ inputs.service }}
+          Manual triage required.
+          
+    - name: Create Fallback Incident
+      action: pagerduty.create_incident
+      inputs:
+        service: sre-fallback
+        urgency: high
+        title: "Triage workflow failed for ${{ inputs.service }}"

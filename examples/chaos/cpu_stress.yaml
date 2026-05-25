@@ -1,0 +1,85 @@
+# CPU Stress Chaos Experiment
+# Tests application behavior under CPU pressure.
+#
+# Run with: autosre chaos run examples/chaos/cpu_stress.yaml
+
+apiVersion: autosre.io/v1
+kind: ChaosExperiment
+metadata:
+  name: cpu-stress-worker
+  namespace: chaos-testing
+  labels:
+    team: platform
+    experiment-type: stress
+
+spec:
+  experimentType: stress_chaos
+  
+  hypothesis: |
+    When CPU is stressed to 80% on worker pods:
+    1. Horizontal Pod Autoscaler should scale up replicas
+    2. Request queue depth should remain manageable
+    3. Job processing latency may increase but jobs should not fail
+  
+  target:
+    namespaces:
+      - workers
+    labelSelectors:
+      app: job-worker
+      tier: processing
+    mode: fixed
+    value: "2"  # Stress 2 pods
+
+  fault:
+    type: cpu_stress
+    workers: 2     # Number of CPU workers per pod
+    load: 80       # CPU load percentage per worker
+    
+  schedule:
+    duration: 5m
+
+  safety:
+    maxPodsAffected: 3
+    maxPodsPercentage: 30
+    circuitBreaker:
+      enabled: true
+      failureThreshold: 2
+
+  steadyState:
+    before:
+      - name: cpu-baseline
+        type: prometheus
+        query: avg(rate(container_cpu_usage_seconds_total{namespace="workers", container="worker"}[5m])) < 0.5
+        expected: true
+      
+      - name: job-queue-healthy
+        type: prometheus
+        query: sum(worker_queue_depth{namespace="workers"}) < 1000
+        expected: true
+
+    after:
+      - name: cpu-recovered
+        type: prometheus
+        query: avg(rate(container_cpu_usage_seconds_total{namespace="workers", container="worker"}[5m])) < 0.7
+        expected: true
+        timeout: 180s
+      
+      - name: no-failed-jobs
+        type: prometheus
+        query: increase(worker_job_failures_total{namespace="workers"}[10m]) < 10
+        expected: true
+
+  rollbackTriggers:
+    - name: queue-overflow
+      metricQuery: sum(worker_queue_depth{namespace="workers"})
+      threshold: 5000
+      comparison: ">"
+      durationSeconds: 60
+    
+    - name: high-job-failures
+      metricQuery: rate(worker_job_failures_total{namespace="workers"}[1m])
+      threshold: 1
+      comparison: ">"
+      durationSeconds: 30
+
+  dryRun: false

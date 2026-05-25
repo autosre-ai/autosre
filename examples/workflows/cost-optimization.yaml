@@ -1,0 +1,286 @@
+# Cost Optimization Workflow
+#
+# Automated cloud cost optimization:
+# 1. Analyze resource utilization
+# 2. Identify optimization opportunities
+# 3. Generate recommendations
+# 4. Auto-implement safe optimizations
+# 5. Report savings
+
+apiVersion: autosre.io/v1
+kind: Workflow
+metadata:
+  name: cost-optimization
+  version: 1.0.0
+  description: Automated cloud cost optimization analysis and implementation
+  author: AutoSRE Team
+  tags:
+    - cost
+    - optimization
+    - finops
+
+spec:
+  inputs:
+    - name: cloud_provider
+      type: string
+      required: true
+      enum: [aws, gcp, azure]
+      
+    - name: accounts
+      type: array
+      required: true
+      description: List of cloud accounts to analyze
+      
+    - name: auto_implement
+      type: boolean
+      default: false
+      description: Automatically implement safe optimizations
+      
+    - name: savings_threshold_percent
+      type: number
+      default: 10
+      description: Minimum savings to flag as opportunity
+
+  outputs:
+    - name: total_savings
+      value: ${{ steps.summarize.output.total_savings }}
+    - name: opportunities
+      value: ${{ steps.summarize.output.opportunities }}
+
+  triggers:
+    - type: schedule
+      cron: "0 8 * * 1"  # Every Monday at 8 AM
+      
+    - type: manual
+      required_inputs: [cloud_provider, accounts]
+
+  timeout: 3600  # 1 hour
+
+  steps:
+    # Step 1: Collect cost data
+    - name: Collect Cost Data
+      id: collect_costs
+      type: loop
+      forEach: ${{ inputs.accounts }}
+      itemVar: account
+      maxConcurrency: 3
+      steps:
+        - name: Get Account Costs
+          action: cloud.get_costs
+          inputs:
+            provider: ${{ inputs.cloud_provider }}
+            account: ${{ account }}
+            timerange: 30d
+            granularity: daily
+            group_by: [service, resource_type]
+
+    # Step 2: Analyze resources in parallel
+    - name: Analyze Resources
+      id: analyze
+      type: parallel
+      steps:
+        # Compute analysis
+        - name: Analyze Compute
+          id: compute
+          action: cost.analyze_compute
+          inputs:
+            provider: ${{ inputs.cloud_provider }}
+            accounts: ${{ inputs.accounts }}
+            metrics:
+              - cpu_utilization
+              - memory_utilization
+              - network_io
+            thresholds:
+              idle_cpu_percent: 5
+              idle_days: 7
+              
+        # Storage analysis
+        - name: Analyze Storage
+          id: storage
+          action: cost.analyze_storage
+          inputs:
+            provider: ${{ inputs.cloud_provider }}
+            accounts: ${{ inputs.accounts }}
+            checks:
+              - unattached_volumes
+              - old_snapshots
+              - infrequent_access_candidates
+              
+        # Database analysis
+        - name: Analyze Databases
+          id: databases
+          action: cost.analyze_databases
+          inputs:
+            provider: ${{ inputs.cloud_provider }}
+            accounts: ${{ inputs.accounts }}
+            checks:
+              - oversized_instances
+              - idle_instances
+              - reserved_capacity_coverage
+              
+        # Network analysis
+        - name: Analyze Network
+          id: network
+          action: cost.analyze_network
+          inputs:
+            provider: ${{ inputs.cloud_provider }}
+            accounts: ${{ inputs.accounts }}
+            checks:
+              - idle_load_balancers
+              - unused_elastic_ips
+              - cross_az_traffic
+              
+        # Reserved/Commitment analysis
+        - name: Analyze Commitments
+          id: commitments
+          action: cost.analyze_commitments
+          inputs:
+            provider: ${{ inputs.cloud_provider }}
+            accounts: ${{ inputs.accounts }}
+            checks:
+              - expiring_reservations
+              - underutilized_commitments
+              - new_commitment_opportunities
+
+    # Step 3: Generate recommendations
+    - name: Generate Recommendations
+      id: recommendations
+      action: cost.generate_recommendations
+      inputs:
+        compute_analysis: ${{ steps.analyze.output.compute }}
+        storage_analysis: ${{ steps.analyze.output.storage }}
+        database_analysis: ${{ steps.analyze.output.databases }}
+        network_analysis: ${{ steps.analyze.output.network }}
+        commitment_analysis: ${{ steps.analyze.output.commitments }}
+        min_savings_percent: ${{ inputs.savings_threshold_percent }}
+      outputs:
+        - recommendations
+        - estimated_monthly_savings
+        - risk_levels
+
+    # Step 4: Auto-implement safe optimizations
+    - name: Implement Safe Optimizations
+      id: implement
+      if: inputs.auto_implement == true
+      type: loop
+      forEach: ${{ steps.recommendations.output.recommendations }}
+      itemVar: rec
+      steps:
+        - name: Check Risk Level
+          type: condition
+          if: rec.risk_level == "low" and rec.auto_implementable == true
+          then:
+            - name: Implement Optimization
+              action: cost.implement_recommendation
+              inputs:
+                recommendation_id: ${{ rec.id }}
+                provider: ${{ inputs.cloud_provider }}
+                dry_run: false
+              retries: 2
+              
+            - name: Record Implementation
+              action: cost.record_implementation
+              inputs:
+                recommendation_id: ${{ rec.id }}
+                status: implemented
+                estimated_savings: ${{ rec.estimated_savings }}
+          else:
+            - name: Flag for Review
+              action: cost.flag_recommendation
+              inputs:
+                recommendation_id: ${{ rec.id }}
+                reason: "Requires manual review (risk: ${{ rec.risk_level }})"
+
+    # Step 5: Summarize results
+    - name: Summarize
+      id: summarize
+      action: cost.summarize_analysis
+      inputs:
+        cost_data: ${{ steps.collect_costs.output }}
+        analysis: ${{ steps.analyze.output }}
+        recommendations: ${{ steps.recommendations.output }}
+        implementations: ${{ steps.implement.output }}
+      outputs:
+        - total_spend
+        - total_savings
+        - opportunities
+        - implemented_count
+        - pending_count
+
+    # Step 6: Generate report
+    - name: Generate Report
+      id: report
+      action: report.generate
+      inputs:
+        template: cost-optimization
+        data:
+          provider: ${{ inputs.cloud_provider }}
+          accounts: ${{ inputs.accounts }}
+          analysis_date: ${{ execution.started_at }}
+          summary: ${{ steps.summarize.output }}
+          recommendations: ${{ steps.recommendations.output.recommendations }}
+        format: [html, pdf]
+
+    # Step 7: Store and distribute report
+    - name: Distribute Report
+      type: parallel
+      steps:
+        - name: Store Report
+          action: storage.upload
+          inputs:
+            path: reports/cost-optimization/${{ inputs.cloud_provider }}/${{ execution.id }}.pdf
+            content: ${{ steps.report.output.pdf }}
+            
+        - name: Email Stakeholders
+          action: email.send
+          inputs:
+            to: ["finops@company.com", "platform-leads@company.com"]
+            subject: "Weekly Cost Optimization Report - ${{ inputs.cloud_provider }}"
+            body: |
+              Cost optimization analysis complete.
+              
+              Total Monthly Spend: $${{ steps.summarize.output.total_spend }}
+              Potential Savings: $${{ steps.summarize.output.total_savings }}
+              Opportunities Identified: ${{ steps.summarize.output.opportunities }}
+              Auto-Implemented: ${{ steps.summarize.output.implemented_count }}
+              
+              See attached report for details.
+            attachments:
+              - ${{ steps.report.output.pdf }}
+              
+        - name: Post to Slack
+          action: slack.post_message
+          inputs:
+            channel: "#finops"
+            blocks:
+              - type: header
+                text: ":moneybag: Weekly Cost Optimization Report"
+              - type: section
+                fields:
+                  - type: mrkdwn
+                    text: "*Provider:* ${{ inputs.cloud_provider }}"
+                  - type: mrkdwn
+                    text: "*Accounts:* ${{ inputs.accounts | length }}"
+                  - type: mrkdwn
+                    text: "*Monthly Spend:* $${{ steps.summarize.output.total_spend }}"
+                  - type: mrkdwn
+                    text: "*Potential Savings:* $${{ steps.summarize.output.total_savings }}"
+              - type: section
+                text: |
+                  *Top Opportunities:*
+                  ${{ steps.recommendations.output.recommendations | slice(0, 5) | map("- " + .description + " ($$" + .estimated_savings + "/mo)") | join("\n") }}
+              - type: actions
+                elements:
+                  - type: button
+                    text: "View Full Report"
+                    url: "${{ steps.report.output.url }}"
+
+  onFailure:
+    - name: Alert Failure
+      action: slack.post_message
+      inputs:
+        channel: "#finops"
+        message: |
+          :x: *Cost Optimization Workflow Failed*
+          *Provider:* ${{ inputs.cloud_provider }}
+          *Error:* ${{ execution.error }}

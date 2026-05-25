@@ -1,0 +1,300 @@
+# Canary Deployment Workflow
+#
+# Progressive canary deployment with automated analysis and rollback:
+# 1. Deploy canary version
+# 2. Gradually shift traffic
+# 3. Monitor key metrics
+# 4. Auto-rollback on degradation
+# 5. Promote or rollback based on results
+
+apiVersion: autosre.io/v1
+kind: Workflow
+metadata:
+  name: canary-deployment
+  version: 1.0.0
+  description: Progressive canary deployment with automated analysis
+  author: AutoSRE Team
+  tags:
+    - deployment
+    - canary
+    - progressive
+
+spec:
+  inputs:
+    - name: service
+      type: string
+      required: true
+      description: Service name to deploy
+      
+    - name: namespace
+      type: string
+      required: true
+      description: Target namespace
+      
+    - name: image
+      type: string
+      required: true
+      description: New container image to deploy
+      
+    - name: traffic_steps
+      type: array
+      default: [10, 25, 50, 75, 100]
+      description: Traffic percentage steps
+      
+    - name: step_duration_minutes
+      type: integer
+      default: 5
+      description: Minutes to wait at each traffic step
+      
+    - name: error_threshold_percent
+      type: number
+      default: 1.0
+      description: Max error rate before rollback
+      
+    - name: latency_threshold_ms
+      type: number
+      default: 500
+      description: Max P99 latency before rollback
+
+  outputs:
+    - name: deployment_result
+      value: ${{ steps.finalize.output.result }}
+    - name: final_version
+      value: ${{ steps.finalize.output.version }}
+
+  triggers:
+    - type: webhook
+      path: /deployments/canary
+      methods: [POST]
+      
+    - type: manual
+      required_inputs: [service, namespace, image]
+      require_confirmation: true
+      confirmation_message: "Deploy ${{ inputs.image }} to ${{ inputs.namespace }}/${{ inputs.service }}?"
+
+  timeout: 7200  # 2 hours
+
+  steps:
+    # Step 1: Pre-deployment checks
+    - name: Pre-Deployment Checks
+      id: prechecks
+      type: parallel
+      failFast: true
+      steps:
+        - name: Validate Image
+          id: validate_image
+          action: container.validate_image
+          inputs:
+            image: ${{ inputs.image }}
+            checks:
+              - exists
+              - vulnerability_scan
+              - signature
+              
+        - name: Check Current Health
+          id: current_health
+          action: health.check
+          inputs:
+            service: ${{ inputs.service }}
+            namespace: ${{ inputs.namespace }}
+            
+        - name: Get Baseline Metrics
+          id: baseline
+          action: prometheus.query
+          inputs:
+            query: |
+              {
+                "error_rate": sum(rate(http_requests_total{status=~"5..", service="${inputs.service}"}[10m])) / sum(rate(http_requests_total{service="${inputs.service}"}[10m])) * 100,
+                "p99_latency": histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{service="${inputs.service}"}[10m])) by (le)) * 1000,
+                "rps": sum(rate(http_requests_total{service="${inputs.service}"}[10m]))
+              }
+
+    # Step 2: Validate pre-conditions
+    - name: Validate Ready
+      id: validate
+      type: condition
+      if: steps.prechecks.output.current_health.status != "healthy"
+      then:
+        - name: Abort - Unhealthy
+          action: workflow.fail
+          inputs:
+            message: "Service is not healthy, aborting deployment"
+      else:
+        - name: Log Ready
+          action: log.info
+          inputs:
+            message: "Pre-checks passed, proceeding with canary deployment"
+
+    # Step 3: Create canary deployment
+    - name: Deploy Canary
+      id: deploy_canary
+      action: kubernetes.create_canary
+      inputs:
+        namespace: ${{ inputs.namespace }}
+        service: ${{ inputs.service }}
+        image: ${{ inputs.image }}
+        replicas: 1
+        labels:
+          version: canary
+          deployment-id: ${{ execution.id }}
+
+    # Step 4: Notify deployment start
+    - name: Notify Start
+      action: slack.post_message
+      inputs:
+        channel: "#deployments"
+        message: |
+          :rocket: *Canary Deployment Started*
+          *Service:* ${{ inputs.service }}
+          *Namespace:* ${{ inputs.namespace }}
+          *Image:* ${{ inputs.image }}
+          *Traffic Steps:* ${{ inputs.traffic_steps }}
+      continueOnError: true
+
+    # Step 5: Progressive traffic shift with monitoring
+    - name: Progressive Rollout
+      id: rollout
+      type: loop
+      forEach: ${{ inputs.traffic_steps }}
+      itemVar: traffic_percent
+      indexVar: step_index
+      steps:
+        # Shift traffic
+        - name: Shift Traffic
+          id: shift_traffic
+          action: istio.set_traffic_weight
+          inputs:
+            namespace: ${{ inputs.namespace }}
+            service: ${{ inputs.service }}
+            canary_weight: ${{ traffic_percent }}
+            
+        - name: Log Traffic Shift
+          action: log.info
+          inputs:
+            message: "Traffic shifted to ${{ traffic_percent }}% canary"
+
+        # Wait and monitor
+        - name: Monitor Period
+          id: monitor
+          type: loop
+          maxIterations: 10  # Check every 30 seconds for step_duration_minutes
+          delay: 30
+          until: index >= (${{ inputs.step_duration_minutes }} * 2)
+          steps:
+            - name: Check Metrics
+              id: check_metrics
+              action: prometheus.query
+              inputs:
+                query: |
+                  {
+                    "canary_error_rate": sum(rate(http_requests_total{status=~"5..", service="${inputs.service}", version="canary"}[2m])) / sum(rate(http_requests_total{service="${inputs.service}", version="canary"}[2m])) * 100,
+                    "canary_latency": histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{service="${inputs.service}", version="canary"}[2m])) by (le)) * 1000,
+                    "stable_error_rate": sum(rate(http_requests_total{status=~"5..", service="${inputs.service}", version="stable"}[2m])) / sum(rate(http_requests_total{service="${inputs.service}", version="stable"}[2m])) * 100
+                  }
+                  
+            # Check for degradation
+            - name: Evaluate Canary
+              id: evaluate
+              type: condition
+              if: |
+                steps.check_metrics.output.canary_error_rate > ${{ inputs.error_threshold_percent }} or
+                steps.check_metrics.output.canary_latency > ${{ inputs.latency_threshold_ms }}
+              then:
+                - name: Trigger Rollback
+                  action: workflow.set_variable
+                  inputs:
+                    name: rollback_needed
+                    value: true
+                    reason: |
+                      Canary degradation detected at ${{ traffic_percent }}% traffic.
+                      Error rate: ${{ steps.check_metrics.output.canary_error_rate }}%
+                      P99 latency: ${{ steps.check_metrics.output.canary_latency }}ms
+                      
+        # Check if rollback needed
+        - name: Check Rollback Flag
+          if: variables.rollback_needed == true
+          action: workflow.goto
+          inputs:
+            step: rollback
+
+    # Step 6: Promote canary (if we get here, all steps passed)
+    - name: Promote Canary
+      id: promote
+      action: kubernetes.promote_canary
+      inputs:
+        namespace: ${{ inputs.namespace }}
+        service: ${{ inputs.service }}
+        
+    - name: Finalize Success
+      id: finalize
+      action: deployment.finalize
+      inputs:
+        result: success
+        version: ${{ inputs.image }}
+        
+    - name: Notify Success
+      action: slack.post_message
+      inputs:
+        channel: "#deployments"
+        message: |
+          :white_check_mark: *Canary Deployment Successful*
+          *Service:* ${{ inputs.service }}
+          *Image:* ${{ inputs.image }}
+          Deployment completed through all traffic steps.
+
+    # Rollback step (jumped to on failure)
+    - name: Rollback
+      id: rollback
+      if: variables.rollback_needed == true
+      action: kubernetes.delete_canary
+      inputs:
+        namespace: ${{ inputs.namespace }}
+        service: ${{ inputs.service }}
+        
+    - name: Reset Traffic
+      if: variables.rollback_needed == true
+      action: istio.set_traffic_weight
+      inputs:
+        namespace: ${{ inputs.namespace }}
+        service: ${{ inputs.service }}
+        canary_weight: 0
+        
+    - name: Finalize Rollback
+      id: finalize_rollback
+      if: variables.rollback_needed == true
+      action: deployment.finalize
+      inputs:
+        result: rollback
+        reason: ${{ variables.rollback_reason }}
+        
+    - name: Notify Rollback
+      if: variables.rollback_needed == true
+      action: slack.post_message
+      inputs:
+        channel: "#deployments"
+        message: |
+          :warning: *Canary Deployment Rolled Back*
+          *Service:* ${{ inputs.service }}
+          *Image:* ${{ inputs.image }}
+          *Reason:* ${{ variables.rollback_reason }}
+
+  onFailure:
+    - name: Emergency Rollback
+      action: kubernetes.delete_canary
+      inputs:
+        namespace: ${{ inputs.namespace }}
+        service: ${{ inputs.service }}
+        
+    - name: Reset Traffic Emergency
+      action: istio.set_traffic_weight
+      inputs:
+        namespace: ${{ inputs.namespace }}
+        service: ${{ inputs.service }}
+        canary_weight: 0
+        
+    - name: Alert Failure
+      action: pagerduty.create_incident
+      inputs:
+        service: deployments
+        urgency: high
+        title: "Canary deployment failed: ${{ inputs.service }}"

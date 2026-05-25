@@ -1,0 +1,343 @@
+# Incident Response Workflow
+#
+# This workflow automates incident response from detection to resolution:
+# 1. Acknowledges the incident and notifies stakeholders
+# 2. Gathers diagnostic information
+# 3. Executes automated remediation based on category
+# 4. Validates fix and notifies resolution
+# 5. Creates post-incident documentation
+
+apiVersion: autosre.io/v1
+kind: Workflow
+metadata:
+  name: incident-response
+  version: 1.0.0
+  description: Automated incident response workflow with remediation
+  author: AutoSRE Team
+  tags:
+    - incident
+    - response
+    - remediation
+    - automation
+
+spec:
+  inputs:
+    - name: incident_id
+      type: string
+      required: true
+      description: Incident ID to respond to
+
+    - name: category
+      type: string
+      required: true
+      enum: [cpu_high, memory_pressure, pod_crash, network_issue, disk_full, latency_spike]
+      description: Incident category for automated response
+
+    - name: service
+      type: string
+      required: true
+      description: Affected service name
+
+    - name: namespace
+      type: string
+      default: production
+      description: Kubernetes namespace
+
+    - name: severity
+      type: string
+      default: high
+      enum: [critical, high, medium, low]
+      description: Incident severity
+
+    - name: auto_remediate
+      type: boolean
+      default: true
+      description: Enable automated remediation
+
+  outputs:
+    - name: resolution_status
+      value: ${{ steps.validate_fix.output.status }}
+      description: Final resolution status
+
+    - name: actions_taken
+      value: ${{ steps.remediate.output.actions }}
+      description: List of remediation actions taken
+
+  triggers:
+    - type: alert
+      severity: [critical, high]
+      categories: [cpu_high, memory_pressure, pod_crash]
+
+    - type: webhook
+      path: /incident/respond
+
+  timeout: 1800  # 30 minutes
+
+  steps:
+    # Step 1: Acknowledge incident
+    - name: Acknowledge Incident
+      id: acknowledge
+      action: incident.acknowledge
+      inputs:
+        incident_id: ${{ inputs.incident_id }}
+        responder: autosre-workflow
+        message: "Automated response workflow initiated"
+
+    # Step 2: Notify incident channel
+    - name: Notify Start
+      id: notify_start
+      action: slack.post_message
+      inputs:
+        channel: "#incidents"
+        message: |
+          :robot_face: *Automated Response Started*
+          Incident: ${{ inputs.incident_id }}
+          Service: ${{ inputs.service }}
+          Category: ${{ inputs.category }}
+          Severity: ${{ inputs.severity }}
+      continueOnError: true
+
+    # Step 3: Gather diagnostics
+    - name: Gather Diagnostics
+      id: diagnostics
+      type: parallel
+      maxConcurrency: 4
+      steps:
+        - name: Get Pod Info
+          id: pods
+          action: kubernetes.get_pods
+          inputs:
+            namespace: ${{ inputs.namespace }}
+            label_selector: app=${{ inputs.service }}
+          timeout: 30
+
+        - name: Get Resource Usage
+          id: resources
+          action: kubernetes.top_pods
+          inputs:
+            namespace: ${{ inputs.namespace }}
+            label_selector: app=${{ inputs.service }}
+          timeout: 30
+
+        - name: Get Recent Logs
+          id: logs
+          action: logs.tail
+          inputs:
+            service: ${{ inputs.service }}
+            namespace: ${{ inputs.namespace }}
+            lines: 200
+            level: "error,warn"
+          timeout: 60
+
+        - name: Get Metrics Snapshot
+          id: metrics
+          action: prometheus.instant_query
+          inputs:
+            queries:
+              cpu: rate(container_cpu_usage_seconds_total{pod=~"${{ inputs.service }}.*"}[5m])
+              memory: container_memory_usage_bytes{pod=~"${{ inputs.service }}.*"}
+              restarts: kube_pod_container_status_restarts_total{pod=~"${{ inputs.service }}.*"}
+          timeout: 30
+
+    # Step 4: Execute remediation based on category
+    - name: Remediate
+      id: remediate
+      condition: inputs.auto_remediate == true
+      type: condition
+      if: inputs.category == "cpu_high"
+      then:
+        - name: Scale Up for CPU
+          id: scale_cpu
+          action: kubernetes.scale
+          inputs:
+            namespace: ${{ inputs.namespace }}
+            deployment: ${{ inputs.service }}
+            replicas: "+2"  # Add 2 replicas
+          timeout: 120
+          outputs:
+            - new_replica_count
+
+      elif:
+        - if: inputs.category == "memory_pressure"
+          then:
+            - name: Restart Pods for Memory
+              id: restart_memory
+              action: kubernetes.rollout_restart
+              inputs:
+                namespace: ${{ inputs.namespace }}
+                deployment: ${{ inputs.service }}
+              timeout: 180
+
+        - if: inputs.category == "pod_crash"
+          then:
+            - name: Check and Rollback
+              id: rollback_check
+              action: kubernetes.get_deployment_history
+              inputs:
+                namespace: ${{ inputs.namespace }}
+                name: ${{ inputs.service }}
+                limit: 3
+
+            - name: Rollback Deployment
+              id: rollback
+              action: kubernetes.rollout_undo
+              inputs:
+                namespace: ${{ inputs.namespace }}
+                deployment: ${{ inputs.service }}
+              timeout: 300
+
+        - if: inputs.category == "disk_full"
+          then:
+            - name: Clean Disk
+              id: clean_disk
+              action: exec.run_playbook
+              inputs:
+                playbook: disk-cleanup
+                targets: ${{ inputs.service }}
+                params:
+                  threshold: 70
+              timeout: 300
+
+        - if: inputs.category == "latency_spike"
+          then:
+            - name: Enable Rate Limiting
+              id: rate_limit
+              action: istio.apply_rate_limit
+              inputs:
+                service: ${{ inputs.service }}
+                namespace: ${{ inputs.namespace }}
+                rps: 100
+              timeout: 60
+
+      else:
+        # Generic restart for unknown categories
+        - name: Generic Restart
+          id: generic_restart
+          action: kubernetes.rollout_restart
+          inputs:
+            namespace: ${{ inputs.namespace }}
+            deployment: ${{ inputs.service }}
+          timeout: 180
+
+    # Step 5: Wait for stabilization
+    - name: Wait for Stabilization
+      id: stabilize
+      action: wait
+      inputs:
+        duration: 60  # Wait 60 seconds
+
+    # Step 6: Validate fix
+    - name: Validate Fix
+      id: validate_fix
+      type: loop
+      until: steps.health_check.output.healthy == true
+      maxIterations: 10
+      delay: 15
+      steps:
+        - name: Health Check
+          id: health_check
+          action: kubernetes.check_deployment_health
+          inputs:
+            namespace: ${{ inputs.namespace }}
+            deployment: ${{ inputs.service }}
+            min_ready: 1
+          timeout: 30
+
+    # Step 7: Determine resolution status
+    - name: Determine Resolution
+      id: resolution
+      type: condition
+      if: steps.validate_fix.output.iterations < 10
+      then:
+        - name: Mark Resolved
+          id: mark_resolved
+          action: incident.resolve
+          inputs:
+            incident_id: ${{ inputs.incident_id }}
+            resolution: automated
+            notes: |
+              Resolved by automated workflow.
+              Category: ${{ inputs.category }}
+              Actions: ${{ steps.remediate.output }}
+      else:
+        - name: Escalate
+          id: escalate
+          action: oncall.page
+          inputs:
+            team: sre
+            urgency: high
+            incident_id: ${{ inputs.incident_id }}
+            message: |
+              Automated remediation did not resolve the issue.
+              Service: ${{ inputs.service }}
+              Category: ${{ inputs.category }}
+              Manual intervention required.
+
+    # Step 8: Notify completion
+    - name: Notify Completion
+      id: notify_complete
+      action: slack.post_message
+      inputs:
+        channel: "#incidents"
+        blocks:
+          - type: section
+            text: |
+              :white_check_mark: *Incident Response Complete*
+              *Incident:* ${{ inputs.incident_id }}
+              *Service:* ${{ inputs.service }}
+              *Category:* ${{ inputs.category }}
+              *Status:* ${{ steps.resolution.output.branch }}
+              *Duration:* ${{ steps.validate_fix.output.iterations * 15 }}s validation
+      continueOnError: true
+
+  onSuccess:
+    - name: Record Resolution Metrics
+      action: metrics.record
+      inputs:
+        name: incident_response_success
+        labels:
+          service: ${{ inputs.service }}
+          category: ${{ inputs.category }}
+          severity: ${{ inputs.severity }}
+
+    - name: Create Post-Incident Note
+      action: incident.add_note
+      inputs:
+        incident_id: ${{ inputs.incident_id }}
+        note: |
+          ## Automated Response Summary
+          
+          **Category:** ${{ inputs.category }}
+          **Service:** ${{ inputs.service }}
+          
+          ### Diagnostics Collected
+          - Pod status: ${{ steps.diagnostics.output.pods }}
+          - Resource usage captured
+          - Logs collected
+          
+          ### Actions Taken
+          ${{ steps.remediate.output }}
+          
+          ### Resolution
+          Service stabilized after automated remediation.
+
+  onFailure:
+    - name: Alert Response Failure
+      action: slack.post_message
+      inputs:
+        channel: "#sre-alerts"
+        message: |
+          :x: *Incident Response Workflow Failed*
+          Incident: ${{ inputs.incident_id }}
+          Service: ${{ inputs.service }}
+          Category: ${{ inputs.category }}
+          
+          Manual intervention required immediately.
+
+    - name: Escalate to SRE
+      action: oncall.page
+      inputs:
+        team: sre
+        urgency: high
+        incident_id: ${{ inputs.incident_id }}
+        message: "Automated response workflow failed. Immediate attention required."

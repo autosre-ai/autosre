@@ -1,0 +1,289 @@
+# Database Maintenance Workflow
+#
+# Scheduled database maintenance tasks:
+# 1. Create backup
+# 2. Run vacuum/analyze
+# 3. Check index health
+# 4. Generate maintenance report
+
+apiVersion: autosre.io/v1
+kind: Workflow
+metadata:
+  name: database-maintenance
+  version: 1.0.0
+  description: Scheduled database maintenance workflow
+  author: AutoSRE Team
+  tags:
+    - database
+    - maintenance
+    - scheduled
+
+spec:
+  inputs:
+    - name: database
+      type: string
+      required: true
+      description: Database identifier
+      
+    - name: database_type
+      type: string
+      required: true
+      enum: [postgresql, mysql, mongodb]
+      
+    - name: maintenance_window_minutes
+      type: integer
+      default: 60
+      description: Maximum maintenance duration
+      
+    - name: skip_backup
+      type: boolean
+      default: false
+      description: Skip backup step (for testing)
+
+  outputs:
+    - name: report
+      value: ${{ steps.generate_report.output }}
+
+  triggers:
+    - type: schedule
+      cron: "0 3 * * 0"  # Every Sunday at 3 AM
+      timezone: UTC
+      
+    - type: manual
+      required_inputs: [database, database_type]
+
+  timeout: 7200  # 2 hours
+
+  steps:
+    # Step 1: Pre-maintenance checks
+    - name: Pre-Maintenance Checks
+      id: prechecks
+      type: parallel
+      steps:
+        - name: Check Replication Lag
+          id: replication
+          action: database.check_replication
+          inputs:
+            database: ${{ inputs.database }}
+            type: ${{ inputs.database_type }}
+            max_lag_seconds: 30
+            
+        - name: Check Active Connections
+          id: connections
+          action: database.get_connections
+          inputs:
+            database: ${{ inputs.database }}
+            type: ${{ inputs.database_type }}
+            
+        - name: Check Disk Space
+          id: disk
+          action: database.check_disk_space
+          inputs:
+            database: ${{ inputs.database }}
+            min_free_percent: 20
+
+    # Step 2: Validate conditions
+    - name: Validate Conditions
+      id: validate
+      type: condition
+      if: |
+        steps.prechecks.output.replication.lag_seconds > 30 or
+        steps.prechecks.output.disk.free_percent < 20
+      then:
+        - name: Abort Maintenance
+          action: workflow.fail
+          inputs:
+            message: |
+              Pre-conditions not met:
+              - Replication lag: ${{ steps.prechecks.output.replication.lag_seconds }}s
+              - Disk free: ${{ steps.prechecks.output.disk.free_percent }}%
+
+    # Step 3: Notify start
+    - name: Notify Start
+      action: slack.post_message
+      inputs:
+        channel: "#database-ops"
+        message: |
+          :wrench: *Database Maintenance Starting*
+          *Database:* ${{ inputs.database }}
+          *Type:* ${{ inputs.database_type }}
+          *Window:* ${{ inputs.maintenance_window_minutes }} minutes
+      continueOnError: true
+
+    # Step 4: Create backup
+    - name: Create Backup
+      id: backup
+      if: inputs.skip_backup != true
+      action: database.backup
+      inputs:
+        database: ${{ inputs.database }}
+        type: ${{ inputs.database_type }}
+        backup_type: full
+        compression: true
+      timeout: 3600
+      retries: 2
+      
+    # Step 5: Type-specific maintenance
+    - name: Run Maintenance
+      id: maintenance
+      type: condition
+      if: inputs.database_type == "postgresql"
+      then:
+        - name: PostgreSQL Maintenance
+          type: parallel
+          steps:
+            - name: VACUUM ANALYZE
+              id: vacuum
+              action: database.execute
+              inputs:
+                database: ${{ inputs.database }}
+                type: postgresql
+                command: VACUUM ANALYZE
+                timeout: 1800
+                
+            - name: REINDEX
+              id: reindex
+              action: database.execute
+              inputs:
+                database: ${{ inputs.database }}
+                type: postgresql
+                command: REINDEX DATABASE CONCURRENTLY
+                timeout: 1800
+                
+            - name: Update Statistics
+              id: stats
+              action: database.execute
+              inputs:
+                database: ${{ inputs.database }}
+                type: postgresql
+                command: ANALYZE
+                
+      elif:
+        - condition: inputs.database_type == "mysql"
+          steps:
+            - name: MySQL Maintenance
+              type: parallel
+              steps:
+                - name: Optimize Tables
+                  id: optimize
+                  action: database.execute
+                  inputs:
+                    database: ${{ inputs.database }}
+                    type: mysql
+                    command: |
+                      SELECT CONCAT('OPTIMIZE TABLE ', table_schema, '.', table_name, ';')
+                      FROM information_schema.tables
+                      WHERE table_schema = DATABASE()
+                    timeout: 1800
+                    
+                - name: Analyze Tables
+                  id: analyze
+                  action: database.execute
+                  inputs:
+                    database: ${{ inputs.database }}
+                    type: mysql
+                    command: |
+                      mysqlcheck --analyze --all-databases
+                      
+      else:
+        - name: MongoDB Maintenance
+          steps:
+            - name: Compact Collections
+              id: compact
+              action: database.execute
+              inputs:
+                database: ${{ inputs.database }}
+                type: mongodb
+                command: |
+                  db.runCommand({ compact: "collection_name" })
+                  
+            - name: Repair Database
+              id: repair
+              action: database.execute
+              inputs:
+                database: ${{ inputs.database }}
+                type: mongodb
+                command: db.repairDatabase()
+
+    # Step 6: Index health check
+    - name: Check Index Health
+      id: index_health
+      action: database.check_indexes
+      inputs:
+        database: ${{ inputs.database }}
+        type: ${{ inputs.database_type }}
+        checks:
+          - unused_indexes
+          - duplicate_indexes
+          - missing_indexes
+          - bloated_indexes
+
+    # Step 7: Generate recommendations
+    - name: Generate Recommendations
+      id: recommendations
+      type: loop
+      forEach: ${{ steps.index_health.output.issues }}
+      itemVar: issue
+      steps:
+        - name: Analyze Issue
+          action: database.analyze_issue
+          inputs:
+            issue: ${{ issue }}
+            database: ${{ inputs.database }}
+            
+    # Step 8: Generate report
+    - name: Generate Report
+      id: generate_report
+      action: report.generate
+      inputs:
+        template: database-maintenance
+        data:
+          database: ${{ inputs.database }}
+          type: ${{ inputs.database_type }}
+          backup: ${{ steps.backup.output }}
+          maintenance: ${{ steps.maintenance.output }}
+          index_health: ${{ steps.index_health.output }}
+          recommendations: ${{ steps.recommendations.output }}
+          start_time: ${{ execution.started_at }}
+          end_time: ${{ execution.completed_at }}
+
+    # Step 9: Store report
+    - name: Store Report
+      action: storage.upload
+      inputs:
+        path: reports/database-maintenance/${{ inputs.database }}/${{ execution.id }}.html
+        content: ${{ steps.generate_report.output.html }}
+
+    # Step 10: Notify completion
+    - name: Notify Complete
+      action: slack.post_message
+      inputs:
+        channel: "#database-ops"
+        message: |
+          :white_check_mark: *Database Maintenance Complete*
+          *Database:* ${{ inputs.database }}
+          *Duration:* ${{ execution.duration_seconds }}s
+          *Backup:* ${{ steps.backup.output.backup_id }}
+          *Issues Found:* ${{ steps.index_health.output.issue_count }}
+          *Report:* <${{ steps.generate_report.output.url }}|View Report>
+
+  onFailure:
+    - name: Alert Failure
+      action: pagerduty.create_incident
+      inputs:
+        service: database
+        urgency: high
+        title: "Database maintenance failed: ${{ inputs.database }}"
+        body: |
+          Maintenance workflow failed.
+          Database: ${{ inputs.database }}
+          Error: ${{ execution.error }}
+          
+    - name: Notify Failure
+      action: slack.post_message
+      inputs:
+        channel: "#database-ops"
+        message: |
+          :x: *Database Maintenance Failed*
+          *Database:* ${{ inputs.database }}
+          *Error:* ${{ execution.error }}
