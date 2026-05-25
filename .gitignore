@@ -44,3 +44,4 @@ htmlcov/
 # Ignore Docker volumes (if mounted locally)
 volumes/
 reference-opensre/
+.venv/

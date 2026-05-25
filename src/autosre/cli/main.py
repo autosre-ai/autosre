@@ -46,12 +46,13 @@ def main_callback(
 
 
 # Import and register command groups
-from autosre.cli.commands import investigate, memory, config, demo
+from autosre.cli.commands import investigate, memory, config, demo, chat
 
 app.add_typer(investigate.app, name="investigate", help="Investigation commands")
 app.add_typer(memory.app, name="memory", help="Episodic memory management")
 app.add_typer(config.app, name="config", help="Configuration management")
 app.add_typer(demo.app, name="demo", help="Demo and testing scenarios")
+app.add_typer(chat.app, name="chat", help="Interactive AI chat assistant")
 
 
 # Quick access to investigate run

@@ -3,6 +3,7 @@
 # Import all command modules to make them available
 from autosre.cli.commands import (
     agent,
+    chat,
     context,
     eval,
     feedback,
@@ -15,6 +16,7 @@ from autosre.cli.commands import (
 
 __all__ = [
     "agent",
+    "chat",
     "context",
     "eval", 
     "feedback",
