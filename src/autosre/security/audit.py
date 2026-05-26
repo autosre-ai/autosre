@@ -938,6 +938,347 @@ class SecurityAuditLogger:
 
 
 # =============================================================================
+# Backwards Compatibility Layer
+# =============================================================================
+# These classes maintain compatibility with the original simpler audit API
+# used by tests and older code.
+
+
+class EventType(str, Enum):
+    """Simple event types for backwards compatibility."""
+    
+    # Auth events
+    AUTH_SUCCESS = "auth.success"
+    AUTH_FAILURE = "auth.failure"
+    AUTH_REVOKE = "auth.revoke"
+    
+    # Investigation events
+    INVESTIGATION_START = "investigation.start"
+    INVESTIGATION_COMPLETE = "investigation.complete"
+    
+    # Action events
+    ACTION_PROPOSED = "action.proposed"
+    ACTION_APPROVED = "action.approved"
+    ACTION_REJECTED = "action.rejected"
+    ACTION_EXECUTED = "action.executed"
+    ACTION_FAILED = "action.failed"
+    
+    # Security events
+    COMMAND_SANITIZE_FAIL = "command.sanitize_fail"
+    PERMISSION_DENIED = "permission.denied"
+    
+    # Config events
+    CONFIG_CHANGE = "config.change"
+
+
+@dataclass
+class AuditEntry:
+    """Simple audit entry for backwards compatibility."""
+    
+    timestamp: str
+    event_type: str
+    user: str
+    action: str
+    result: str
+    details: dict = field(default_factory=dict)
+    source_ip: Optional[str] = None
+    session_id: Optional[str] = None
+    
+    def to_dict(self) -> dict[str, Any]:
+        """Convert entry to dictionary."""
+        d = {
+            "timestamp": self.timestamp,
+            "event_type": self.event_type,
+            "user": self.user,
+            "action": self.action,
+            "result": self.result,
+            "details": self.details,
+        }
+        if self.source_ip:
+            d["source_ip"] = self.source_ip
+        if self.session_id:
+            d["session_id"] = self.session_id
+        return d
+    
+    def to_json(self) -> str:
+        """Convert entry to JSON string."""
+        return json.dumps(self.to_dict())
+
+
+class AuditLogger:
+    """Simple audit logger for backwards compatibility."""
+    
+    def __init__(self, log_dir: str = "/var/log/autosre/audit"):
+        """Initialize audit logger."""
+        self.log_dir = log_dir
+        os.makedirs(log_dir, exist_ok=True)
+        self._current_file: Optional[str] = None
+    
+    def _get_log_file(self) -> str:
+        """Get current log file path."""
+        date_str = datetime.utcnow().strftime("%Y-%m-%d")
+        return os.path.join(self.log_dir, f"audit-{date_str}.jsonl")
+    
+    def log(
+        self,
+        event_type: Union[EventType, str],
+        user: str,
+        action: str,
+        result: str = "success",
+        details: Optional[dict] = None,
+        source_ip: Optional[str] = None,
+        session_id: Optional[str] = None,
+    ) -> AuditEntry:
+        """Log an audit entry."""
+        # Convert EventType enum to string if needed
+        if isinstance(event_type, EventType):
+            event_type_str = event_type.value
+        else:
+            event_type_str = str(event_type)
+        
+        entry = AuditEntry(
+            timestamp=datetime.utcnow().isoformat() + "Z",
+            event_type=event_type_str,
+            user=user,
+            action=action,
+            result=result,
+            details=details or {},
+            source_ip=source_ip,
+            session_id=session_id,
+        )
+        
+        # Write to log file
+        log_file = self._get_log_file()
+        with open(log_file, "a") as f:
+            f.write(entry.to_json() + "\n")
+        
+        return entry
+    
+    def log_investigation(
+        self,
+        user: str,
+        issue: str,
+        namespace: Optional[str] = None,
+        **kwargs,
+    ) -> AuditEntry:
+        """Log investigation start."""
+        action = f"Started investigation: {issue}"
+        details = {"issue": issue}
+        if namespace:
+            details["namespace"] = namespace
+        details.update(kwargs)
+        
+        return self.log(
+            event_type=EventType.INVESTIGATION_START,
+            user=user,
+            action=action,
+            details=details,
+        )
+    
+    def log_investigation_complete(
+        self,
+        user: str,
+        investigation_id: str,
+        root_cause: str,
+        actions_count: int = 0,
+        **kwargs,
+    ) -> AuditEntry:
+        """Log investigation completion."""
+        details = {
+            "investigation_id": investigation_id,
+            "root_cause": root_cause,
+            "actions_count": actions_count,
+            "actions_proposed": actions_count,  # Alias for backwards compatibility
+        }
+        details.update(kwargs)
+        
+        return self.log(
+            event_type=EventType.INVESTIGATION_COMPLETE,
+            user=user,
+            action=f"Completed investigation {investigation_id}",
+            details=details,
+        )
+    
+    def log_action_proposed(
+        self,
+        user: str,
+        action_id: str,
+        command: str,
+        risk: str = "low",
+        **kwargs,
+    ) -> AuditEntry:
+        """Log action proposal."""
+        details = {
+            "action_id": action_id,
+            "command": command,
+            "risk_level": risk,
+        }
+        details.update(kwargs)
+        
+        return self.log(
+            event_type=EventType.ACTION_PROPOSED,
+            user=user,
+            action=f"Proposed action: {command}",
+            details=details,
+        )
+    
+    def log_action_approved(
+        self,
+        user: str,
+        action_id: str,
+        approver: Optional[str] = None,
+        command: Optional[str] = None,
+        approved_by: Optional[str] = None,
+        **kwargs,
+    ) -> AuditEntry:
+        """Log action approval."""
+        details = {"action_id": action_id}
+        # Support both 'approver' and 'approved_by' for backwards compatibility
+        actual_approver = approved_by or approver
+        if actual_approver:
+            details["approver"] = actual_approver
+            details["approved_by"] = actual_approver
+        if command:
+            details["command"] = command
+        details.update(kwargs)
+        
+        return self.log(
+            event_type=EventType.ACTION_APPROVED,
+            user=user,
+            action=f"Approved action {action_id}",
+            details=details,
+        )
+    
+    def log_action_executed(
+        self,
+        user: str,
+        action_id: str,
+        command: str,
+        output: Optional[str] = None,
+        exit_code: Optional[int] = None,
+        **kwargs,
+    ) -> AuditEntry:
+        """Log action execution."""
+        details = {
+            "action_id": action_id,
+            "command": command,
+        }
+        if output:
+            details["output"] = output
+        if exit_code is not None:
+            details["exit_code"] = str(exit_code)
+        details.update(kwargs)
+        
+        # Determine result based on exit_code
+        result = "success"
+        if exit_code is not None and exit_code != 0:
+            result = "failure"
+        
+        return self.log(
+            event_type=EventType.ACTION_EXECUTED,
+            user=user,
+            action=f"Executed: {command}",
+            result=result,
+            details=details,
+        )
+    
+    def log_action_rejected(
+        self,
+        user: str,
+        action_id: str,
+        reason: str,
+        **kwargs,
+    ) -> AuditEntry:
+        """Log action rejection."""
+        details = {
+            "action_id": action_id,
+            "reason": reason,
+        }
+        details.update(kwargs)
+        
+        return self.log(
+            event_type=EventType.ACTION_REJECTED,
+            user=user,
+            action=f"Rejected action {action_id}: {reason}",
+            result="rejected",
+            details=details,
+        )
+    
+    def log_sanitize_failure(
+        self,
+        user: str,
+        command: str,
+        reason: str,
+        **kwargs,
+    ) -> AuditEntry:
+        """Log command sanitization failure."""
+        details = {
+            "command": command,
+            "reason": reason,
+        }
+        details.update(kwargs)
+        
+        return self.log(
+            event_type=EventType.COMMAND_SANITIZE_FAIL,
+            user=user,
+            action=f"Blocked command: {command}",
+            result="blocked",
+            details=details,
+        )
+    
+    def log_permission_denied(
+        self,
+        user: str,
+        action: str,
+        required_permission: str,
+        **kwargs,
+    ) -> AuditEntry:
+        """Log permission denied event."""
+        details = {
+            "action": action,
+            "required_permission": required_permission,
+        }
+        details.update(kwargs)
+        
+        return self.log(
+            event_type=EventType.PERMISSION_DENIED,
+            user=user,
+            action=f"Permission denied for: {action}",
+            result="denied",
+            details=details,
+        )
+    
+    def _get_log_path(self):
+        """Get current log file path as Path object."""
+        from pathlib import Path
+        date_str = datetime.utcnow().strftime("%Y-%m-%d")
+        return Path(self.log_dir) / f"audit-{date_str}.jsonl"
+
+
+# Global logger instance
+_audit_logger: Optional[AuditLogger] = None
+
+
+def get_audit_logger(log_dir: Optional[str] = None) -> AuditLogger:
+    """Get or create the global audit logger."""
+    global _audit_logger
+    if _audit_logger is None:
+        _audit_logger = AuditLogger(log_dir=log_dir or "/var/log/autosre/audit")
+    return _audit_logger
+
+
+def audit_log(
+    event_type: Union[EventType, str],
+    user: str,
+    action: str,
+    **kwargs,
+) -> AuditEntry:
+    """Convenience function to log an audit entry."""
+    logger = get_audit_logger()
+    return logger.log(event_type=event_type, user=user, action=action, **kwargs)
+
+
+# =============================================================================
 # Exports
 # =============================================================================
 
@@ -962,4 +1303,10 @@ __all__ = [
     "SecurityAlert",
     # Logger
     "SecurityAuditLogger",
+    # Backwards compatibility
+    "EventType",
+    "AuditEntry",
+    "AuditLogger",
+    "get_audit_logger",
+    "audit_log",
 ]
