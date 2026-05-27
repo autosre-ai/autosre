@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .client import Neo4jClient
-from .topology import TopologyService, BlastRadiusResult, ServiceSubgraph
+from .topology import TopologyService
 from .models import Service, Dependency, ServiceStatus, ServiceTier
 
 logger = logging.getLogger(__name__)

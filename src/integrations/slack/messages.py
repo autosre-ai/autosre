@@ -9,7 +9,7 @@ Block Kit Reference: https://api.slack.com/block-kit
 """
 
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Optional
 
 
 def format_investigation_start(

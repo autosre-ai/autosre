@@ -9,7 +9,6 @@ import logging
 from typing import Any
 
 from .service import KnowledgeGraphService, get_service
-from .models import Service, BlastRadius, AlertContext
 
 logger = logging.getLogger(__name__)
 

@@ -17,13 +17,9 @@ from .client import (
 )
 from .models import (
     Alert,
-    Escalation,
     Incident,
     LogEntry,
-    Note,
-    OnCall,
     Service,
-    User,
 )
 
 logger = logging.getLogger(__name__)

@@ -13,7 +13,6 @@ Usage:
     kopf run -m autosre.operators.investigation_controller --standalone
 """
 
-import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional

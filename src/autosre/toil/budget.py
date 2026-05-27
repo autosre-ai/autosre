@@ -6,11 +6,10 @@ When it does, engineering capacity suffers and the team becomes reactive.
 "If a human needs to touch during normal ops, you have a bug."
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional
 from enum import Enum
-import json
 
 
 # Maximum acceptable toil ratio

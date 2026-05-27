@@ -14,12 +14,7 @@ import structlog
 
 from .messages import (
     format_investigation_start,
-    format_progress_update,
-    format_evidence_found,
-    format_investigation_complete,
     format_error,
-    format_hypothesis,
-    format_agent_result,
 )
 
 logger = structlog.get_logger(__name__)

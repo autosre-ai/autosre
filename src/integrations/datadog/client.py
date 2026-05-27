@@ -15,7 +15,6 @@ from .models import (
     DashboardSummary,
     Event,
     EventQueryResult,
-    Host,
     HostListResult,
     Log,
     LogQueryResult,

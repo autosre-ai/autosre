@@ -8,10 +8,8 @@ Provides Linkerd 2.x service mesh integration:
 - Mesh observability and mTLS status
 """
 
-import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from enum import Enum
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field

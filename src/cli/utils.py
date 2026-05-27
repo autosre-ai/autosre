@@ -1,6 +1,5 @@
 """Shared utilities for CLI output formatting, spinners, and common operations."""
 
-import sys
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Any

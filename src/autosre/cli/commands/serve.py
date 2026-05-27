@@ -7,13 +7,12 @@ Provides a webhook server that:
 3. Stores results and optionally sends notifications
 """
 
-import asyncio
 import hashlib
 import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, UTC
-from typing import Any, Optional
+from typing import Optional
 from uuid import uuid4
 
 import typer
@@ -177,9 +176,7 @@ def create_fastapi_app(
     notification_webhook: Optional[str] = None,
 ):
     """Create the FastAPI application for the webhook server."""
-    from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
-    from fastapi.responses import JSONResponse
-    from typing import Optional as OptionalType
+    from fastapi import FastAPI, HTTPException, BackgroundTasks
     
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -378,7 +375,6 @@ async def run_investigation_background(
     notification_webhook: Optional[str] = None,
 ):
     """Run an investigation in the background."""
-    import httpx
     
     logger.info(f"Starting background investigation {investigation_id}")
     _store.update(investigation_id, status="running")

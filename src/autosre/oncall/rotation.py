@@ -9,11 +9,10 @@ Provides rotation management capabilities including:
 """
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Any, Optional, Union
-import json
+from typing import Any, Optional
 from collections import defaultdict
 
 from pydantic import BaseModel, Field

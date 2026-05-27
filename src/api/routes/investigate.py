@@ -3,11 +3,10 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import StreamingResponse
 from sse_starlette.sse import EventSourceResponse
 import structlog
 
-from ..auth import User, require_auth
+from ..auth import User
 from ..auth.jwt import require_scope
 from ..models.investigation import (
     InvestigationCreate,

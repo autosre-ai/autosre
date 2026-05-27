@@ -8,13 +8,11 @@ Provides dynamic plugin discovery and loading:
 - Plugin validation and verification
 """
 
-import asyncio
 import importlib
 import importlib.metadata
 import importlib.util
 import inspect
 import os
-import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -25,9 +23,6 @@ from pydantic import BaseModel, Field
 
 from autosre.plugins.base import (
     Plugin,
-    PluginConfig,
-    PluginMetadata,
-    PluginState,
     PluginType,
 )
 from autosre.plugins.registry import PluginRegistry, get_registry

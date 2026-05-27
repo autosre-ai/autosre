@@ -9,7 +9,6 @@ Provides unified observability for service mesh:
 - Golden signals monitoring
 """
 
-import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum

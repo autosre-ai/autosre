@@ -12,13 +12,13 @@ import os
 import subprocess
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Optional
 from urllib.parse import urljoin, urlencode
 
 from langchain_core.tools import BaseTool, tool
 
-from .base import BaseSRETool, ToolResult, SREToolError, ConnectionError, AuthenticationError
+from .base import BaseSRETool, SREToolError, ConnectionError, AuthenticationError
 
 logger = logging.getLogger(__name__)
 

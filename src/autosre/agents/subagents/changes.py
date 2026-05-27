@@ -13,12 +13,10 @@ Change sources:
 - Traffic pattern changes
 """
 
-import asyncio
 import logging
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta, UTC
 from enum import Enum
-from typing import Any, Optional, Protocol
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 

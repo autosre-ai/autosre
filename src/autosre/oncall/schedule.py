@@ -9,12 +9,10 @@ Provides comprehensive on-call scheduling capabilities including:
 """
 
 import uuid
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone, time
 from enum import Enum
 from typing import Any, Optional, Union
-import json
 
 from pydantic import BaseModel, Field
 

@@ -5,7 +5,7 @@ allowing the agent to find and invoke tools by name or category.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional
 
 
 @dataclass

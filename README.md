@@ -227,14 +227,14 @@ AutoSRE provides a powerful CLI for investigations and management.
 ### Quick Commands
 
 ```bash
-# Start an investigation
+# Start an investigation (shortcut for 'investigate run')
 autosre run "High error rate on checkout" --service checkout
 
 # Check system status
 autosre status
 
-# Interactive chat
-autosre chat "What causes high p99 latency?"
+# Interactive chat session
+autosre chat start
 
 # Run health check
 autosre doctor
@@ -249,11 +249,14 @@ autosre investigate run "API latency spike" --service api-gateway
 # Demo mode (no infrastructure required)
 autosre investigate run "Memory leak detected" --demo
 
-# Continuous monitoring
+# Continuous monitoring (re-runs every N seconds)
 autosre investigate run "High error rate" --watch --watch-interval 120
 
 # Save report to HTML
 autosre investigate run "DB connection errors" --format html --save report.html
+
+# Stream output in real-time (default behavior)
+autosre investigate run "Redis connection timeout" --service cache-service --stream
 ```
 
 ### Memory & Learning
@@ -292,6 +295,22 @@ autosre serve start --port 8080
 
 # With Slack notifications
 autosre serve start --notification-webhook https://hooks.slack.com/...
+
+# Check server status
+autosre serve status
+```
+
+### Additional Commands
+
+```bash
+# Interactive tutorial for new users
+autosre tutorial
+
+# Manage runbooks
+autosre runbook list
+
+# Use investigation templates
+autosre template list
 ```
 
 📚 **Full CLI documentation:** [docs/COMMANDS.md](docs/COMMANDS.md)

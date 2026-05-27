@@ -4,9 +4,7 @@ AutoSRE Doctor Command
 Health check command to verify AutoSRE setup and diagnose issues.
 """
 
-import asyncio
 import importlib
-import os
 import platform
 import sys
 from pathlib import Path
@@ -16,7 +14,6 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
 
 app = typer.Typer(
     name="doctor",

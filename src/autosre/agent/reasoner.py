@@ -7,12 +7,12 @@ to analyze incidents and determine root cause.
 
 import json
 from datetime import datetime, timezone
-from typing import Optional, Any
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
 from autosre.foundation.context_store import ContextStore
-from autosre.foundation.models import Alert, Incident, Severity
+from autosre.foundation.models import Alert
 
 
 def utcnow() -> datetime:

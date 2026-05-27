@@ -5,7 +5,6 @@ Interactive onboarding tutorial to help new users get started with AutoSRE.
 """
 
 import time
-from pathlib import Path
 from typing import Optional
 
 import typer
@@ -13,7 +12,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.prompt import Prompt, Confirm
+from rich.prompt import Confirm
 from rich.rule import Rule
 from rich.tree import Tree
 from rich.syntax import Syntax

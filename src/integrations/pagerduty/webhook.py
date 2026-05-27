@@ -12,11 +12,9 @@ from typing import Any
 
 from .models import (
     Incident,
-    IncidentStatus,
     PagerDutyEvent,
     WebhookEvent,
     WebhookEventType,
-    WebhookPayload,
 )
 
 logger = logging.getLogger(__name__)

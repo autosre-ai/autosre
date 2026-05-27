@@ -10,7 +10,6 @@ This connector provides:
 
 from datetime import datetime, timezone, timedelta
 from typing import Any, Optional
-from urllib.parse import urljoin
 
 import httpx
 

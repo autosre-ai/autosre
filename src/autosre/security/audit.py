@@ -9,7 +9,6 @@ Provides comprehensive security audit logging for SRE operations:
 - Real-time security alerting
 """
 
-import asyncio
 import hashlib
 import hmac
 import json

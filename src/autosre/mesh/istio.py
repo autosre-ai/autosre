@@ -8,11 +8,8 @@ Provides comprehensive Istio service mesh integration:
 - Observability and telemetry
 """
 
-import asyncio
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from enum import Enum
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field

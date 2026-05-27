@@ -21,7 +21,7 @@ from autosre.tenancy.isolation import (
     clear_tenant_context,
 )
 from autosre.tenancy.models import Tenant, Workspace, Team, TeamRole, TenantStatus
-from autosre.tenancy.quotas import QuotaManager, QuotaExceededError, QuotaType
+from autosre.tenancy.quotas import QuotaManager, QuotaExceededError
 
 
 class TenantResolver(ABC):

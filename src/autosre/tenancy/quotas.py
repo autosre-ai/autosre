@@ -10,7 +10,6 @@ Enterprise-grade quota management and rate limiting for multi-tenant SaaS:
 
 import asyncio
 import time
-from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum

@@ -198,7 +198,6 @@ def completion(
         source ~/.bashrc   # (or ~/.zshrc for zsh)
     """
     from typer.completion import get_completion_script, install as install_completion
-    import os
     
     # Detect shell if not specified
     if shell is None:

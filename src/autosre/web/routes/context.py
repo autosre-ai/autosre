@@ -8,10 +8,9 @@ Provides:
 - Runbooks
 """
 
-from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Request, Query
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from autosre.foundation.context_store import ContextStore

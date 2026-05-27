@@ -12,7 +12,6 @@ import json
 import logging
 import os
 import signal
-import sys
 import time
 from abc import ABC, abstractmethod
 from datetime import datetime, UTC
@@ -23,12 +22,10 @@ from uuid import uuid4
 import typer
 import yaml
 from rich.console import Console
-from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
-from rich.tree import Tree
 
 logger = logging.getLogger(__name__)
 

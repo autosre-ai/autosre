@@ -8,7 +8,7 @@ baselines using statistical methods and metric thresholds.
 import asyncio
 import statistics
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable, Optional
 

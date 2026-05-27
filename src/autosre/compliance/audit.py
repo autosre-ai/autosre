@@ -11,10 +11,10 @@ from enum import Enum
 from typing import Any
 
 from autosre.logging import get_logger
-from autosre.compliance.soc2 import SOC2Checker, SOC2Report, SOC2Category
-from autosre.compliance.hipaa import HIPAAChecker, HIPAAReport, SafeguardType
-from autosre.compliance.gdpr import GDPRChecker, GDPRReport, GDPRPrinciple
-from autosre.compliance.pci import PCIChecker, PCIReport, PCICategory, PCILevel
+from autosre.compliance.soc2 import SOC2Checker, SOC2Report
+from autosre.compliance.hipaa import HIPAAChecker, HIPAAReport
+from autosre.compliance.gdpr import GDPRChecker, GDPRReport
+from autosre.compliance.pci import PCIChecker, PCIReport
 
 logger = get_logger(__name__)
 

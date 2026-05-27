@@ -14,7 +14,7 @@ import statistics
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Any, NamedTuple, Optional
+from typing import Any, NamedTuple
 
 import typer
 from rich.console import Console
@@ -261,7 +261,7 @@ class Benchmarker:
 
         try:
             from autosre.config import Settings
-            from autosre.llm import LLMRouter, get_router
+            from autosre.llm import LLMRouter
             from autosre.llm.router import LLMConfig, LLMProvider, TaskType
 
             settings = Settings()
@@ -362,7 +362,7 @@ class Benchmarker:
         samples: list[float] = []
 
         try:
-            from autosre.compliance.evidence import EvidenceCollector, EvidenceType
+            from autosre.compliance.evidence import EvidenceCollector
             from autosre.compliance.audit import ComplianceFramework
             from datetime import timedelta
 
@@ -407,7 +407,6 @@ class Benchmarker:
 
         try:
             # Clear any cached settings
-            from autosre import config as config_module
             
             for i in range(self.iterations):
                 # Force reload of settings

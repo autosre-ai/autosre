@@ -11,7 +11,6 @@ Common SRE workflow templates that can be used as starting points:
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
-import yaml
 
 from autosre.workflows.dsl import WorkflowDefinition, WorkflowParser
 

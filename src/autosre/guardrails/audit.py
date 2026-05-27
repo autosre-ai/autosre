@@ -8,16 +8,14 @@ Provides comprehensive audit logging with cryptographic verification:
 - Integrity verification
 """
 
-import asyncio
 import hashlib
 import json
-import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Iterator, Optional
+from typing import Any, Iterator, Optional
 
 from pydantic import BaseModel, Field
 

@@ -11,9 +11,9 @@ Provides comprehensive Flux CD integration for GitOps-driven incident response:
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 import httpx
 from pydantic import BaseModel, Field

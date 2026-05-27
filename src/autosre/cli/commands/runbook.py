@@ -14,7 +14,6 @@ Usage:
 import os
 import re
 import time
-from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -27,7 +26,6 @@ from rich.prompt import Prompt, Confirm
 from rich.markdown import Markdown
 from rich.table import Table
 from rich.syntax import Syntax
-from rich.tree import Tree
 
 app = typer.Typer(
     name="runbook",

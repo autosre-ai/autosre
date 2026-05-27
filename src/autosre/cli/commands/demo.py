@@ -18,23 +18,17 @@ WARNING: This is for demonstration purposes only. All scenarios and data
 are synthetic and do not represent real incidents or infrastructure.
 """
 
-import asyncio
-import json
 import random
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
 import typer
 from rich.console import Console
-from rich.live import Live
-from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.status import Status
 from rich.table import Table
-from rich.tree import Tree
 
 app = typer.Typer(
     name="demo",
@@ -60,6 +54,28 @@ DEMO_WARNING_BANNER = """
 def _print_demo_warning():
     """Print the demo mode warning banner."""
     console.print(DEMO_WARNING_BANNER)
+
+
+# Epic ASCII art logo for the demo
+AUTOSRE_LOGO = """
+[bold cyan]
+    ╔═══════════════════════════════════════════════════════════════════╗
+    ║     █████╗ ██╗   ██╗████████╗ ██████╗ ███████╗██████╗ ███████╗    ║
+    ║    ██╔══██╗██║   ██║╚══██╔══╝██╔═══██╗██╔════╝██╔══██╗██╔════╝    ║
+    ║    ███████║██║   ██║   ██║   ██║   ██║███████╗██████╔╝█████╗      ║
+    ║    ██╔══██║██║   ██║   ██║   ██║   ██║╚════██║██╔══██╗██╔══╝      ║
+    ║    ██║  ██║╚██████╔╝   ██║   ╚██████╔╝███████║██║  ██║███████╗    ║
+    ║    ╚═╝  ╚═╝ ╚═════╝    ╚═╝    ╚═════╝ ╚══════╝╚═╝  ╚═╝╚══════╝    ║
+    ╠═══════════════════════════════════════════════════════════════════╣
+    ║         [white]AI-Powered Incident Investigation[/white]         [yellow]v0.1.0[/yellow]            ║
+    ╚═══════════════════════════════════════════════════════════════════╝
+[/]
+"""
+
+
+def _print_logo():
+    """Print the epic ASCII art logo."""
+    console.print(AUTOSRE_LOGO)
 
 
 class DemoInvestigationRunner:
@@ -146,8 +162,6 @@ class DemoInvestigationRunner:
     def _phase_hypothesis_generation(self):
         """Phase 3: Simulate AI hypothesis generation with streaming effect."""
         import time
-        from rich.live import Live
-        from rich.text import Text
         
         with Status("[bold magenta]🤖 Phase 3: Generating Hypotheses...[/]", spinner="dots", console=console):
             time.sleep(0.5)
@@ -198,13 +212,7 @@ class DemoInvestigationRunner:
     def run(self) -> dict:
         """Run a SIMULATED investigation (no real infrastructure)."""
         import time
-        from rich.text import Text
         from rich.rule import Rule
-        from rich.status import Status
-        from rich.columns import Columns
-        from rich.live import Live
-        from rich.layout import Layout
-        from rich.syntax import Syntax
         
         if not self.stream:
             # Quiet/benchmark mode - just a quick sleep
@@ -218,6 +226,9 @@ class DemoInvestigationRunner:
             }
         
         start_time = time.time()
+        
+        # Epic logo
+        _print_logo()
         
         # Show impressive header
         console.print()
@@ -313,7 +324,7 @@ class DemoInvestigationRunner:
             transient=True,
         ) as progress:
             task = progress.add_task("", total=None)
-            time.sleep(0.8)
+            time.sleep(0.4)  # Faster topology build
         
         # Service topology tree
         tree = Tree(f"🎯 [bold cyan]{self.service}[/]")
@@ -343,11 +354,11 @@ class DemoInvestigationRunner:
                 transient=True,
             ) as progress:
                 task = progress.add_task("", total=None)
-                time.sleep(0.3)
+                time.sleep(0.15)  # Faster - snappy feel
             console.print(f"  [green]✓[/] {result}")
         
         console.print()
-        time.sleep(0.2)
+        time.sleep(0.1)  # Quicker transition
     
     def _phase_evidence_collection(self):
         """Phase 2: Evidence Collection with live metrics."""
@@ -358,10 +369,10 @@ class DemoInvestigationRunner:
         
         # Data sources with simulated queries
         sources = [
-            ("📊 Prometheus", "rate(http_requests_total{service=\"" + self.service + "\",status=~\"5..\"}[5m])", 0.8),
-            ("📜 Elasticsearch", f"service:{self.service} AND level:error | last 15m", 1.0),
-            ("🔗 Jaeger", f"service={self.service} minDuration=1s", 0.6),
-            ("☸️  Kubernetes", f"kubectl get pods -l app={self.service} -o json", 0.5),
+            ("📊 Prometheus", "rate(http_requests_total{service=\"" + self.service + "\",status=~\"5..\"}[5m])", 0.4),
+            ("📜 Elasticsearch", f"service:{self.service} AND level:error | last 15m", 0.5),
+            ("🔗 Jaeger", f"service={self.service} minDuration=1s", 0.3),
+            ("☸️  Kubernetes", f"kubectl get pods -l app={self.service} -o json", 0.25),
         ]
         
         for source_name, query, duration in sources:
@@ -408,7 +419,7 @@ class DemoInvestigationRunner:
         log_panel_lines = []
         for level, ts, msg in logs:
             log_panel_lines.append(f"[dim]{ts}[/] {level} {msg}")
-            time.sleep(0.15)  # Streaming effect
+            time.sleep(0.08)  # Faster streaming effect
         
         console.print(Panel(
             "\n".join(log_panel_lines),
@@ -416,66 +427,63 @@ class DemoInvestigationRunner:
             padding=(0, 1),
         ))
         console.print()
-        time.sleep(0.3)
+        time.sleep(0.15)  # Quicker transition
     
     def _phase_hypothesis_generation(self):
         """Phase 3: AI Hypothesis Generation with streaming effect."""
         import time
+        from rich.table import Table
         
         console.print(f"[bold white on blue] PHASE 3/5 [/] [bold]🧠 Hypothesis Generation[/]")
         console.print("[dim]AI analyzing patterns and generating hypotheses...[/]\n")
         
-        # AI "thinking" animation
+        # AI "thinking" animation with streaming text effect
         thinking_phrases = [
-            "Correlating error patterns with metrics...",
-            "Analyzing temporal relationships...", 
-            "Checking historical incident patterns...",
-            "Evaluating deployment proximity...",
-            "Generating hypothesis candidates...",
+            "Correlating error patterns with metrics",
+            "Analyzing temporal relationships", 
+            "Checking historical incident patterns",
+            "Evaluating deployment proximity",
+            "Running inference on hypothesis model",
         ]
         
         for phrase in thinking_phrases:
             with Progress(
                 SpinnerColumn(spinner_name="dots12"),
-                TextColumn(f"[cyan]{phrase}[/]"),
+                TextColumn(f"[cyan]{phrase}...[/]"),
                 console=console,
                 transient=True,
             ) as progress:
                 task = progress.add_task("", total=None)
-                time.sleep(0.3)
+                time.sleep(0.12)  # Fast thinking
         
-        # Hypotheses with animated confidence bars
+        # Dramatic AI insight reveal
+        console.print("[bold green]🤖 AI Analysis Complete[/]\n")
+        
         hypotheses = [
-            ("Redis connection pool exhaustion", 0.92, "HIGH"),
-            ("Downstream service degradation", 0.15, "LOW"),
-            ("Recent deployment regression", 0.08, "LOW"),
-            ("Database query timeout", 0.05, "RULED OUT"),
+            ("Redis connection pool exhaustion", 0.92, "HIGH", "green"),
+            ("Downstream service degradation", 0.15, "LOW", "yellow"),
+            ("Recent deployment regression", 0.08, "LOW", "dim"),
+            ("Database query timeout", 0.05, "RULED OUT", "dim"),
         ]
         
-        console.print("[bold]Generated Hypotheses:[/]\n")
+        # Build hypothesis table for clean display
+        hyp_table = Table(show_header=False, box=None, padding=(0, 1))
+        hyp_table.add_column("Bar", width=22)
+        hyp_table.add_column("Conf", width=5)
+        hyp_table.add_column("Hypothesis")
+        hyp_table.add_column("Status")
         
-        for title, confidence, status in hypotheses:
-            # Animate confidence bar filling
+        for title, confidence, status, color in hypotheses:
             bar_filled = int(confidence * 20)
             bar_empty = 20 - bar_filled
-            
-            if confidence > 0.7:
-                color = "green"
-                status_color = "green"
-            elif confidence > 0.2:
-                color = "yellow"
-                status_color = "yellow"
-            else:
-                color = "dim"
-                status_color = "dim"
-            
             bar = f"[{color}]{'█' * bar_filled}[/][dim]{'░' * bar_empty}[/]"
-            
-            console.print(f"  {bar} [bold]{confidence:.0%}[/]  {title} [{status_color}]{status}[/]")
-            time.sleep(0.2)
+            status_display = f"[{color}]{status}[/]"
+            hyp_table.add_row(bar, f"[bold]{confidence:.0%}[/]", title, status_display)
+            time.sleep(0.08)  # Small delay for effect
         
+        console.print(hyp_table)
         console.print()
-        time.sleep(0.3)
+        time.sleep(0.1)  # Brief pause before next phase
     
     def _phase_root_cause_analysis(self) -> tuple:
         """Phase 4: Root Cause Analysis with evidence correlation."""
@@ -500,7 +508,7 @@ class DemoInvestigationRunner:
                 transient=True,
             ) as progress:
                 task = progress.add_task("", total=None)
-                time.sleep(0.4)
+                time.sleep(0.2)  # Faster checks
             
             if status == "CONFIRMED":
                 console.print(f"  [green]✓[/] {evidence} [{color}]{status}[/]")
@@ -568,7 +576,7 @@ class DemoInvestigationRunner:
                 transient=True,
             ) as progress:
                 task = progress.add_task("", total=None)
-                time.sleep(0.25)
+                time.sleep(0.12)  # Snappy report generation
             console.print(f"  [green]✓[/] {item}")
         
         console.print()
@@ -729,10 +737,15 @@ def run(
     console.print()
     
     # Final summary panel with stats
+    # Calculate the "wow" multiplier
+    manual_triage_time = 1800  # 30 minutes typical manual triage
+    speed_multiplier = manual_triage_time / max(result['duration_seconds'], 1)
+    
     summary_text = (
         f"[bold green]✅ Investigation Successful[/]\n\n"
         f"[bold]Investigation ID:[/]  [cyan]{result['investigation_id']}[/]\n"
-        f"[bold]Time to Resolution:[/] [yellow]{result['duration_seconds']:.1f}s[/]\n"
+        f"[bold]Time to Resolution:[/] [yellow]{result['duration_seconds']:.1f}s[/] [dim](vs ~30min manual)[/]\n"
+        f"[bold]Speed:[/]             [bold green]⚡ {speed_multiplier:.0f}x FASTER[/]\n"
         f"[bold]Root Cause:[/]        [red]{result['root_cause']}[/]\n\n"
         f"[dim]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]\n\n"
         f"[bold]Next Steps:[/]\n"

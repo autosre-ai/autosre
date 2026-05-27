@@ -1,7 +1,6 @@
 """Config service - manages team and skill configuration."""
 
 from datetime import datetime, timezone
-from typing import Any
 
 import structlog
 

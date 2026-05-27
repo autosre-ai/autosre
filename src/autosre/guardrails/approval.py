@@ -8,7 +8,6 @@ Provides human-in-the-loop approval workflows for high-risk AI actions:
 - Notification integration
 """
 
-import asyncio
 import hashlib
 import secrets
 from dataclasses import dataclass, field

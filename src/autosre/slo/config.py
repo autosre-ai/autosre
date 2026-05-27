@@ -6,7 +6,7 @@ Supports both programmatic and YAML/JSON configuration.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Optional
 from enum import Enum
 import yaml
 import json

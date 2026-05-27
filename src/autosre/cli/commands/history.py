@@ -6,7 +6,6 @@ Browse and manage past incident investigations.
 
 import asyncio
 import json
-import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -17,7 +16,6 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from rich.text import Text
-from rich.markdown import Markdown
 from rich.syntax import Syntax
 
 app = typer.Typer(
@@ -1260,7 +1258,6 @@ def _build_diff_analysis(ep1, ep2) -> dict:
 
 def _display_diff(ep1, ep2, diff_data: dict, fields_only: bool):
     """Display a rich side-by-side diff view."""
-    from rich.columns import Columns
     from rich.box import ROUNDED
     
     console.print()

@@ -2,26 +2,22 @@
 
 import asyncio
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
-from urllib.parse import urljoin, urlencode
+from urllib.parse import urljoin
 
 import httpx
 from pydantic import BaseModel
 
 from .models import (
     Annotation,
-    Dashboard,
-    DashboardMeta,
     DashboardResponse,
     DashboardSearchResult,
     Datasource,
     DatasourceHealth,
     Folder,
     Organization,
-    Panel,
     QueryResponse,
-    QueryResult,
     QueryTarget,
     RenderOptions,
     User,

@@ -9,9 +9,8 @@ Analyzes resource utilization to provide rightsizing recommendations:
 """
 
 import logging
-import statistics
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 

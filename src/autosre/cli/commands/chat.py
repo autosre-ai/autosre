@@ -22,14 +22,13 @@ Configuration:
 import asyncio
 import random
 import time
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Prompt
-from rich.markdown import Markdown
 
 app = typer.Typer(
     name="chat",

@@ -7,12 +7,10 @@ Manage configuration settings for AutoSRE.
 import json
 import os
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
-from rich.syntax import Syntax
 from rich.table import Table
 
 app = typer.Typer(

@@ -13,7 +13,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
-from .data_collector import TrainingExample, DataCollector, CollectionConfig, DataQuality
+from .data_collector import TrainingExample, DataCollector
 
 logger = logging.getLogger(__name__)
 

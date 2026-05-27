@@ -22,7 +22,6 @@ from ..config import (
     build_prompt_config,
     get_available_subagents,
     TeamConfig,
-    SkillsConfig,
 )
 from ..state import InvestigationPlan
 

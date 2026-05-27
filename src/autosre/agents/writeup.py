@@ -3,7 +3,6 @@ Writeup Generator
 
 Generates human-readable incident reports and postmortems.
 """
-from typing import Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 

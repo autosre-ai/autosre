@@ -5,9 +5,7 @@ Provides templating for incident communications with pre-built
 templates for common scenarios.
 """
 
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from enum import Enum
 from typing import Any, Optional
 import re
 import uuid

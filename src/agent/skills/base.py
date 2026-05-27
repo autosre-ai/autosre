@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Optional, TypeVar, ParamSpec
 
 from langchain_core.tools import BaseTool, tool
-from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 

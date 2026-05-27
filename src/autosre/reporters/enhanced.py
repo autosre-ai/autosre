@@ -7,7 +7,7 @@ Generates comprehensive investigation reports with:
 - Time breakdown by phase
 - AI telemetry for postmortem analysis
 """
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List
 from datetime import datetime, timezone
 from dataclasses import dataclass
 import json
@@ -15,11 +15,7 @@ import logging
 
 from ..agents.state import (
     EnhancedInvestigationState,
-    InvestigationPhase,
     Evidence,
-    AIDecision,
-    AIHypothesis,
-    Change,
 )
 
 logger = logging.getLogger(__name__)

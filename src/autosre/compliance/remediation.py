@@ -493,7 +493,6 @@ class RemediationTracker:
             }
 
             # Simulate Jira API call
-            import uuid
 
             issue_key = f"{self.jira_config['project']}-{len(created_issues) + 1}"
             created_issues.append({

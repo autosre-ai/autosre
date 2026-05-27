@@ -5,8 +5,6 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.live import Live
-from rich.layout import Layout
 from rich import box
 
 console = Console()
@@ -55,7 +53,6 @@ def agent_run(interval: int, once: bool, dry_run: bool, model: str, verbose: boo
     """
     import asyncio
     import signal
-    import sys
     
     console.print()
     console.print(Panel.fit(
@@ -83,7 +80,6 @@ def agent_run(interval: int, once: bool, dry_run: bool, model: str, verbose: boo
     
     async def run_agent():
         from autosre.foundation.context_store import ContextStore
-        from autosre.agent import AlertWatcher, Reasoner, Actor
         
         store = ContextStore()
         

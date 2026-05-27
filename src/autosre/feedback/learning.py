@@ -15,10 +15,7 @@ from typing import Optional
 
 from autosre.feedback.tracker import (
     FeedbackTracker,
-    Feedback,
-    IncidentOutcome,
     FeedbackType,
-    OutcomeType,
 )
 
 

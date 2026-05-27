@@ -8,7 +8,6 @@ import yaml
 from .client import AutoSREClient
 from .utils import (
     console,
-    create_table,
     get_formatter,
     spinner,
 )

@@ -8,10 +8,9 @@ management, dependency analysis, and blast radius calculations.
 import logging
 from typing import Any
 
-from .client import Neo4jClient, Neo4jConfig, get_client
+from .client import Neo4jClient, get_client
 from .models import (
     Service,
-    Team,
     Dependency,
     DependencyType,
     Protocol,
@@ -21,7 +20,6 @@ from .models import (
     TopologyUpdate,
     ServiceSearchResult,
     AlertContext,
-    ServiceHealth,
 )
 from . import queries
 

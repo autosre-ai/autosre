@@ -5,8 +5,6 @@ Provides automated status page management for incident communication.
 Supports Statuspage.io API and compatible status page providers.
 """
 
-import asyncio
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional

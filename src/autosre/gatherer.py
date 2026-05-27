@@ -301,7 +301,6 @@ class ContextGatherer:
         """Query live GitHub API for deployment info."""
         import os
         import httpx
-        from datetime import timedelta
         
         github_token = config.get("token") or os.environ.get("GITHUB_TOKEN")
         if not github_token:
@@ -452,8 +451,6 @@ class ContextGatherer:
     def _live_logs(self, service: str, config: dict) -> Optional[LogsData]:
         """Query live log aggregator (Loki, Elasticsearch, or CloudWatch)."""
         import os
-        import httpx
-        from collections import Counter
         
         log_provider = config.get("provider") or os.environ.get("LOG_PROVIDER", "loki")
         

@@ -14,7 +14,7 @@ NOT toil:
 - Overhead (meetings, HR, training)
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Literal
 import re

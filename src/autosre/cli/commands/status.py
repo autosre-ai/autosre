@@ -8,7 +8,6 @@ Enhanced status display showing:
 - Version and environment info
 """
 
-import os
 import platform
 import sqlite3
 import sys

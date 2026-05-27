@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 import structlog
 
-from ..auth import User, require_auth
+from ..auth import User
 from ..auth.jwt import require_scope
 from ..models.memory import (
     Episode,

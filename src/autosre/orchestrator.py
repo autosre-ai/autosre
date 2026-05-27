@@ -10,7 +10,7 @@ Enhanced with Investigation Quality features based on Google SRE book:
 - Changes subagent always runs early
 - Proper phase tracking and enforcement
 """
-from typing import Optional, Any
+from typing import Optional
 from dataclasses import dataclass, field
 from datetime import datetime, UTC
 from enum import Enum

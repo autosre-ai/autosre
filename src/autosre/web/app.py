@@ -4,14 +4,12 @@ AutoSRE Web Application - FastAPI + HTMX + Tailwind
 The main web application that provides the dashboard UI.
 """
 
-import os
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
 
 from autosre.web.routes import dashboard, evals, context, agent, feedback
 from autosre.api.routes.ws import router as ws_router

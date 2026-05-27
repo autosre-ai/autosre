@@ -10,7 +10,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from .client import Neo4jClient, QueryResult
+from .client import Neo4jClient
 from .models import Service, Dependency, DependencyType
 from .queries import CypherQueries
 
@@ -501,7 +501,6 @@ class TopologyService:
     
     def _record_to_service(self, record: dict[str, Any]) -> Service:
         """Convert a Neo4j record to a Service model."""
-        from datetime import datetime
         from .models import ServiceStatus, ServiceTier
         
         # Handle Neo4j node wrapper

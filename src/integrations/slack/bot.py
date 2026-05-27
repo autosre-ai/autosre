@@ -456,7 +456,6 @@ class AutoSRESlackBot:
         
         Supports: service=foo severity=critical description="some text"
         """
-        import re
         import shlex
         
         if not text.strip():

@@ -5,7 +5,6 @@ Provides safety mechanisms to prevent chaos experiments
 from causing unintended damage.
 """
 
-import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum

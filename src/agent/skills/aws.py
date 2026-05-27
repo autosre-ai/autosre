@@ -13,11 +13,11 @@ import os
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional, List
+from typing import Any, Optional
 
 from langchain_core.tools import BaseTool, tool
 
-from .base import BaseSRETool, ToolResult, SREToolError
+from .base import BaseSRETool, SREToolError
 
 logger = logging.getLogger(__name__)
 

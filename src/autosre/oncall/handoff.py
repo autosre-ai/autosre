@@ -9,11 +9,9 @@ Provides shift handoff capabilities including:
 """
 
 import uuid
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Optional
-import json
 from collections import defaultdict
 
 from pydantic import BaseModel, Field

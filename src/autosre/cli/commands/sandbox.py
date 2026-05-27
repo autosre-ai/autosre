@@ -368,7 +368,6 @@ def sandbox_list(as_json: bool):
       $ autosre sandbox list
     """
     import subprocess
-    import json
     
     result = subprocess.run(
         ["kind", "get", "clusters"],

@@ -8,7 +8,7 @@ and formats them as text for injection into agent prompts.
 import logging
 from typing import Optional
 
-from .models import Episode, MemorySearchResult, Strategy
+from .models import Episode, Strategy
 
 logger = logging.getLogger(__name__)
 

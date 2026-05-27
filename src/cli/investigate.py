@@ -1,9 +1,6 @@
 """Investigation commands for AutoSRE CLI."""
 
 import click
-from rich.live import Live
-from rich.panel import Panel
-from rich.text import Text
 
 from .client import AutoSREClient
 from .utils import (
@@ -11,7 +8,6 @@ from .utils import (
     console,
     create_table,
     format_timestamp,
-    format_duration,
     get_formatter,
     print_investigation_panel,
     prompt_choice,

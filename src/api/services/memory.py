@@ -1,7 +1,6 @@
 """Memory service - manages episodes and strategies."""
 
 from datetime import datetime, timedelta, timezone
-from typing import Any
 import uuid
 
 import structlog

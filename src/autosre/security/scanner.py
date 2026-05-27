@@ -9,13 +9,10 @@ Provides comprehensive security vulnerability scanning for SRE:
 - Network exposure analysis
 """
 
-import asyncio
 import hashlib
-import re
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 

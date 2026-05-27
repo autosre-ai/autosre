@@ -2,9 +2,9 @@
 
 import asyncio
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
-from urllib.parse import urljoin, urlencode
+from urllib.parse import urljoin
 
 import httpx
 from pydantic import BaseModel
@@ -13,19 +13,14 @@ from .models import (
     Alert,
     AlertsResponse,
     BuildInfo,
-    DroppedTarget,
-    LabelsResponse,
     MatrixResult,
     MetricMetadata,
     QueryResponse,
     RangeSample,
-    ResultType,
     RuleGroup,
     RulesResponse,
     RuntimeInfo,
     ScalarResult,
-    SeriesResult,
-    StatusResponse,
     Target,
     TargetHealth,
     TargetsResponse,

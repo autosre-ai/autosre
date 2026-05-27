@@ -6,7 +6,6 @@ Stores and retrieves episodes from past investigations, enabling
 the agent to learn from historical context.
 """
 import json
-import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path

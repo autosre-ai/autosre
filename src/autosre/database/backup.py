@@ -10,7 +10,6 @@ Provides comprehensive database backup monitoring and verification:
 """
 
 import asyncio
-import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum

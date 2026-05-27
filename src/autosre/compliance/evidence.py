@@ -9,11 +9,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any
 import hashlib
 import json
 import zipfile
-import io
 
 from autosre.logging import get_logger
 from autosre.compliance.audit import ComplianceFramework

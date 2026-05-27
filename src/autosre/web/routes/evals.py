@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Request, Form, BackgroundTasks
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from autosre.evals import (
@@ -21,7 +21,6 @@ from autosre.evals import (
     load_scenario,
     run_scenario,
     get_results,
-    get_all_scenarios,
 )
 
 

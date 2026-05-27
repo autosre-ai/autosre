@@ -11,13 +11,13 @@ import logging
 import os
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Optional
 from urllib.parse import urljoin, urlencode
 
 from langchain_core.tools import BaseTool, tool
 
-from .base import BaseSRETool, ToolResult, SREToolError, ConnectionError, AuthenticationError
+from .base import BaseSRETool, SREToolError, ConnectionError, AuthenticationError
 
 logger = logging.getLogger(__name__)
 
