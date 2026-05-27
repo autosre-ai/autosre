@@ -205,9 +205,14 @@ DEMO_SCENARIOS = [
 
 @app.command()
 def run(
-    scenario: Optional[str] = typer.Option(None, "--scenario", "-s", help="Scenario ID to run"),
+    scenario_id: Optional[str] = typer.Argument(
+        None, 
+        help="Scenario ID to run (e.g., redis-connection, memory-leak). Default: redis-connection"
+    ),
+    scenario: Optional[str] = typer.Option(None, "--scenario", "-s", help="Scenario ID to run (alternative to positional arg)"),
     list_scenarios: bool = typer.Option(False, "--list", "-l", help="List available scenarios"),
     random_scenario: bool = typer.Option(False, "--random", "-r", help="Run a random scenario"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip all confirmations (non-interactive)"),
     interactive: bool = typer.Option(False, "--interactive/--batch", "-i", help="Interactive mode (prompts for input)"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output, suppress demo warnings"),
 ):
@@ -222,11 +227,20 @@ def run(
     For REAL incident investigations, use: `autosre investigate`
     
     Examples:
-        autosre demo run --list
-        autosre demo run --scenario redis-connection
-        autosre demo run --random
-        autosre demo run -s memory-leak --quiet
+        autosre demo run                           # Run default (redis-connection)
+        autosre demo run redis-connection          # Run specific scenario
+        autosre demo run redis-connection -y       # Skip confirmations
+        autosre demo run --list                    # List available scenarios
+        autosre demo run --random                  # Run random scenario
+        autosre demo run -s memory-leak --quiet    # Quiet mode
     """
+    # Merge scenario from positional arg or option
+    effective_scenario = scenario_id or scenario
+    
+    # -y flag implies non-interactive
+    if yes:
+        interactive = False
+    
     # Show demo warning unless quiet mode
     if not quiet:
         _print_demo_warning()
@@ -238,20 +252,21 @@ def run(
     # Select scenario
     if random_scenario:
         selected = random.choice(DEMO_SCENARIOS)
-    elif scenario:
-        selected = next((s for s in DEMO_SCENARIOS if s["id"] == scenario), None)
+    elif effective_scenario:
+        selected = next((s for s in DEMO_SCENARIOS if s["id"] == effective_scenario), None)
         if not selected:
-            console.print(f"[red][DEMO MODE] Scenario '{scenario}' not found[/]")
+            console.print(f"[red][DEMO MODE] Scenario '{effective_scenario}' not found[/]")
             console.print("[DEMO MODE] Use --list to see available scenarios")
+            _list_scenarios()
             raise typer.Exit(1)
-    elif interactive:
+    elif interactive and not yes:
         # Interactive selection - only in interactive mode
         _list_scenarios()
         console.print()
-        scenario_id = typer.prompt("[DEMO MODE] Select scenario ID", default="redis-connection")
-        selected = next((s for s in DEMO_SCENARIOS if s["id"] == scenario_id), None)
+        selected_id = typer.prompt("[DEMO MODE] Select scenario ID", default="redis-connection")
+        selected = next((s for s in DEMO_SCENARIOS if s["id"] == selected_id), None)
         if not selected:
-            console.print(f"[red][DEMO MODE] Scenario '{scenario_id}' not found[/]")
+            console.print(f"[red][DEMO MODE] Scenario '{selected_id}' not found[/]")
             raise typer.Exit(1)
     else:
         # Default to redis-connection for non-interactive mode
@@ -270,8 +285,8 @@ def run(
         border_style="magenta",
     ))
     
-    # Only prompt in interactive mode
-    if interactive:
+    # Only prompt in interactive mode (and not if -y flag used)
+    if interactive and not yes:
         if not typer.confirm("\n[DEMO MODE] Start simulated investigation?", default=True):
             raise typer.Abort()
     
