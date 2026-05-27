@@ -2,11 +2,27 @@
 AutoSRE Chat Commands
 
 Interactive chat session with the SRE AI assistant.
+
+This command provides an interactive terminal-based chat interface to 
+communicate with the configured LLM provider (Ollama, OpenAI, Anthropic, or Azure).
+
+Usage:
+    autosre chat                    # Start interactive chat
+    autosre chat "Why is CPU high?" # Start with initial question
+    autosre chat --live             # Use live LLM (default is mock mode)
+    
+Configuration:
+    Set OPENSRE_LLM_PROVIDER environment variable to configure the provider:
+    - ollama (default): Local Ollama instance
+    - openai: OpenAI API (requires OPENSRE_OPENAI_API_KEY)
+    - anthropic: Anthropic Claude (requires OPENSRE_ANTHROPIC_API_KEY)
+    - azure: Azure OpenAI (requires OPENSRE_AZURE_OPENAI_* vars)
 """
 
+import asyncio
 import random
 import time
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 
 import typer
 from rich.console import Console
@@ -21,6 +37,25 @@ app = typer.Typer(
 )
 
 console = Console()
+
+# System prompt for SRE assistant
+SRE_SYSTEM_PROMPT = """You are AutoSRE, an expert AI Site Reliability Engineering assistant.
+
+Your capabilities include:
+- Analyzing incidents and finding root causes
+- Interpreting metrics, logs, and traces
+- Providing Kubernetes, cloud infrastructure, and observability guidance
+- Suggesting remediation steps and runbook procedures
+- Explaining SRE best practices (SLOs, error budgets, toil reduction)
+
+Guidelines:
+- Be concise but thorough
+- When providing commands, explain what they do
+- Suggest next steps when appropriate
+- If you need more information to help, ask specific questions
+- Format responses with markdown for clarity (headers, lists, code blocks)
+
+Context: You're helping an on-call engineer troubleshoot and resolve issues."""
 
 
 def _generate_mock_response(message: str, history: List[Dict[str, str]]) -> str:
@@ -220,6 +255,93 @@ You can also:
 - Ask about specific runbooks or procedures"""
 
 
+async def _generate_llm_response(
+    message: str, 
+    history: List[Dict[str, str]], 
+    model: str,
+    temperature: float
+) -> str:
+    """Generate a response using the configured LLM provider."""
+    try:
+        from autosre.config import Settings
+        settings = Settings()
+        
+        provider = settings.llm_provider
+        
+        # Build messages list with history
+        messages = []
+        for msg in history[-10:]:  # Keep last 10 messages for context
+            messages.append({"role": msg["role"], "content": msg["content"]})
+        messages.append({"role": "user", "content": message})
+        
+        if provider == "ollama":
+            import ollama
+            response = ollama.chat(
+                model=model or settings.ollama_model,
+                messages=[{"role": "system", "content": SRE_SYSTEM_PROMPT}] + messages,
+                options={"temperature": temperature},
+            )
+            return response["message"]["content"]
+        
+        elif provider == "openai":
+            from openai import OpenAI
+            client = OpenAI(api_key=settings.openai_api_key)
+            response = client.chat.completions.create(
+                model=model or settings.openai_model,
+                messages=[{"role": "system", "content": SRE_SYSTEM_PROMPT}] + messages,
+                temperature=temperature,
+                max_tokens=2048,
+            )
+            return response.choices[0].message.content
+        
+        elif provider == "anthropic":
+            import anthropic
+            client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+            response = client.messages.create(
+                model=model or settings.anthropic_model,
+                system=SRE_SYSTEM_PROMPT,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=2048,
+            )
+            return response.content[0].text
+        
+        elif provider == "azure":
+            from openai import AzureOpenAI
+            client = AzureOpenAI(
+                azure_endpoint=settings.azure_openai_endpoint,
+                api_key=settings.azure_openai_api_key,
+                api_version=settings.azure_openai_api_version,
+            )
+            response = client.chat.completions.create(
+                model=settings.azure_openai_deployment,
+                messages=[{"role": "system", "content": SRE_SYSTEM_PROMPT}] + messages,
+                temperature=temperature,
+                max_tokens=2048,
+            )
+            return response.choices[0].message.content
+        
+        else:
+            raise ValueError(f"Unknown LLM provider: {provider}")
+            
+    except ImportError as e:
+        return f"Error: Missing required package for LLM provider. Please install it.\n\nDetails: {e}"
+    except Exception as e:
+        return f"Error communicating with LLM: {type(e).__name__}: {e}"
+
+
+def _get_llm_response(
+    message: str, 
+    history: List[Dict[str, str]], 
+    model: str,
+    temperature: float
+) -> str:
+    """Synchronous wrapper for LLM response generation."""
+    return asyncio.get_event_loop().run_until_complete(
+        _generate_llm_response(message, history, model, temperature)
+    )
+
+
 def _stream_text(text: str, delay: float = 0.012) -> None:
     """Stream text character by character for a natural feel."""
     for char in text:
@@ -272,43 +394,68 @@ def start(
         None, "--context", "-c", help="Additional context file or incident ID"
     ),
     model: str = typer.Option(
-        "gpt-4", "--model", "-m", help="LLM model to use"
+        None, "--model", "-m", help="LLM model to use (default: from config)"
     ),
     temperature: float = typer.Option(
         0.7, "--temperature", "-t", help="Response temperature (0.0-1.0)"
     ),
     mock: bool = typer.Option(
-        True, "--mock/--live", help="Use mock responses (default) or live LLM"
+        False, "--mock/--live", help="Use mock responses (demo) or live LLM (default)"
     ),
 ):
     """
     Start an interactive chat session with the SRE assistant.
 
+    Use --live (default) for actual AI responses or --mock for demo mode.
+    
     Ask questions about:
     - System architecture and dependencies
-    - Runbook procedures
+    - Runbook procedures and incident response
     - Past incidents and resolutions
-    - Best practices and recommendations
+    - SRE best practices and recommendations
     
     Examples:
-        autosre chat start
-        autosre chat start "Why is the API slow?"
-        autosre chat start --model gpt-4-turbo --temperature 0.5
+        autosre chat                                    # Start interactive chat
+        autosre chat "Why is the API slow?"             # Start with a question
+        autosre chat --live --model gpt-4-turbo        # Use specific model
+        autosre chat --mock                             # Demo mode with mock responses
     """
     # Conversation history
     history: List[Dict[str, str]] = []
-    current_model = model
     current_temp = temperature
+    
+    # Get provider info for live mode
+    provider_info = "Mock (demo)"
+    default_model = "gpt-4"  # Fallback default
+    if not mock:
+        try:
+            from autosre.config import Settings
+            settings = Settings()
+            provider = settings.llm_provider
+            if provider == "ollama":
+                default_model = settings.ollama_model
+            elif provider == "openai":
+                default_model = settings.openai_model
+            elif provider == "anthropic":
+                default_model = settings.anthropic_model
+            elif provider == "azure":
+                default_model = settings.azure_openai_deployment
+            provider_info = f"{provider.capitalize()} ({default_model})"
+        except Exception:
+            provider_info = "Live LLM"
+    
+    # Use provided model or default from config
+    current_model = model if model else (default_model if not mock else "gpt-4")
     
     # Welcome banner
     console.print()
     console.print(Panel(
         "[bold]Interactive SRE Assistant[/bold]\n\n"
-        f"[dim]Model:[/dim] {current_model}   [dim]Temperature:[/dim] {current_temp}\n"
-        f"[dim]Mode:[/dim] {'Mock (demo)' if mock else 'Live LLM'}\n\n"
+        f"[dim]Provider:[/dim] {provider_info}   [dim]Temperature:[/dim] {current_temp}\n"
+        f"[dim]Model:[/dim] {current_model}\n\n"
         "[dim]Type [bold]/help[/bold] for commands, [bold]/exit[/bold] to quit[/dim]",
         title="💬 AutoSRE Chat",
-        border_style="green",
+        border_style="green" if not mock else "yellow",
     ))
     
     if context:
@@ -326,12 +473,15 @@ def start(
             console=console,
             transient=True,
         ) as progress:
-            progress.add_task("[cyan]Thinking...", total=None)
-            time.sleep(0.6 + random.uniform(0.2, 0.5))
+            task = progress.add_task("[cyan]Thinking...", total=None)
+            if mock:
+                time.sleep(0.6 + random.uniform(0.2, 0.5))
+                response = _generate_mock_response(message, history)
+            else:
+                response = _get_llm_response(message, history, current_model, current_temp)
         
-        response = _generate_mock_response(message, history)
         console.print("[bold green]AutoSRE:[/bold green]")
-        _stream_text(response, delay=0.006)
+        _stream_text(response, delay=0.006 if mock else 0.003)
         history.append({"role": "assistant", "content": response})
     
     # Interactive REPL loop
@@ -433,20 +583,23 @@ def start(
             # Regular message - add to history and get response
             history.append({"role": "user", "content": user_input})
             
-            # Show thinking indicator
+            # Show thinking indicator and generate response
             with Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
                 console=console,
                 transient=True,
             ) as progress:
-                progress.add_task("[cyan]Thinking...", total=None)
-                time.sleep(0.4 + random.uniform(0.2, 0.5))
+                task = progress.add_task("[cyan]Thinking...", total=None)
+                if mock:
+                    time.sleep(0.4 + random.uniform(0.2, 0.5))
+                    response = _generate_mock_response(user_input, history)
+                else:
+                    response = _get_llm_response(user_input, history, current_model, current_temp)
             
-            # Generate and stream response
-            response = _generate_mock_response(user_input, history)
+            # Display response
             console.print("[bold green]AutoSRE:[/bold green]")
-            _stream_text(response, delay=0.006)
+            _stream_text(response, delay=0.006 if mock else 0.003)
             history.append({"role": "assistant", "content": response})
             
         except KeyboardInterrupt:
@@ -466,16 +619,30 @@ def chat_callback(
         None, "--context", "-c", help="Additional context file or incident ID"
     ),
     model: str = typer.Option(
-        "gpt-4", "--model", "-m", help="LLM model to use"
+        None, "--model", "-m", help="LLM model to use (default: from config)"
     ),
     temperature: float = typer.Option(
         0.7, "--temperature", "-t", help="Response temperature (0.0-1.0)"
     ),
     mock: bool = typer.Option(
-        True, "--mock/--live", help="Use mock responses (default) or live LLM"
+        False, "--mock/--live", help="Use mock responses (demo) or live LLM (default)"
     ),
 ):
-    """Interactive chat with the SRE AI assistant."""
+    """
+    Interactive chat with the SRE AI assistant.
+    
+    Start an interactive conversation with an AI assistant specialized in 
+    Site Reliability Engineering. The assistant can help with incident response,
+    troubleshooting, runbook guidance, and SRE best practices.
+    
+    By default, uses your configured LLM provider (see `autosre config show`).
+    Use --mock for a demo mode with pre-configured responses.
+    
+    Environment variables:
+        OPENSRE_LLM_PROVIDER: ollama, openai, anthropic, or azure
+        OPENSRE_OPENAI_API_KEY: Required for OpenAI provider
+        OPENSRE_ANTHROPIC_API_KEY: Required for Anthropic provider
+    """
     if ctx.invoked_subcommand is None:
         # No subcommand provided, run 'start' with the provided arguments
         start(
