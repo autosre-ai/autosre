@@ -6,7 +6,7 @@ This demo shows the investigation flow using mock data.
 No API keys required!
 
 Usage:
-    cd ~/clawd/projects/autosre
+    cd ~/projects/autosre
     python examples/demo_simple.py
     
     # Or with the venv:
@@ -15,22 +15,93 @@ Usage:
 """
 
 import asyncio
-import sys
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
+from enum import Enum
+from typing import List, Dict, Any, Optional
 
-# Add autosre to path if running from examples/
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from autosre.agents import (
-    InvestigationState,
-    InvestigationStatus,
-    InvestigationReport,
-    Hypothesis,
-    Evidence,
-    Priority,
-    SynthesisDecision,
-)
+class InvestigationStatus(str, Enum):
+    """Status of an investigation."""
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+@dataclass
+class MockHypothesis:
+    """A potential root cause hypothesis."""
+    hypothesis: str
+    priority: str = "medium"  # high, medium, low
+    agents_to_test: List[str] = field(default_factory=list)
+
+
+@dataclass
+class MockEvidence:
+    """Evidence gathered by a subagent."""
+    source: str
+    skill: str
+    finding: str
+    confidence: float = 0.5
+
+
+@dataclass
+class MockSynthesis:
+    """Result of the synthesis phase."""
+    sufficient_evidence: bool
+    confidence: float
+    root_cause: str
+    summary: str
+    gaps: List[str] = field(default_factory=list)
+
+
+@dataclass
+class MockInvestigationState:
+    """Complete state of an investigation."""
+    investigation_id: str
+    alert: Dict[str, Any]
+    service_name: str
+    alert_type: str
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    status: str = "running"
+    
+    # Context
+    memory_context: Dict = field(default_factory=dict)
+    topology_context: Dict = field(default_factory=dict)
+    
+    # Planning
+    hypotheses: List[MockHypothesis] = field(default_factory=list)
+    selected_agents: List[str] = field(default_factory=list)
+    
+    # Evidence
+    all_evidence: List[MockEvidence] = field(default_factory=list)
+    
+    # Synthesis
+    synthesis: Optional[MockSynthesis] = None
+    
+    def add_evidence(self, evidence: MockEvidence):
+        self.all_evidence.append(evidence)
+
+
+@dataclass
+class InvestigationReport:
+    """Final investigation report."""
+    id: str
+    created_at: datetime
+    alert: Dict[str, Any]
+    service_name: str
+    alert_type: str
+    status: InvestigationStatus
+    root_cause: str
+    summary: str
+    confidence: float
+    hypotheses: List[MockHypothesis]
+    evidence: List[MockEvidence]
+    iterations: int
+    duration_seconds: float
+    skills_used: List[str]
+    agents_used: List[str]
 
 
 # Create mock alert
@@ -49,18 +120,18 @@ alert = {
 class MockOrchestrator:
     """Demo orchestrator that simulates investigation without LLM calls."""
     
-    async def investigate(self, alert: dict) -> InvestigationReport:
+    async def investigate(self, alert_data: Dict[str, Any]) -> InvestigationReport:
         """Run a simulated investigation."""
         
         # Initialize state
-        state = InvestigationState(
-            alert=alert,
-            thread_id=f"demo-{int(datetime.now().timestamp())}",
-            service_name=alert.get("service", ""),
+        state = MockInvestigationState(
+            investigation_id=f"demo-{int(datetime.now().timestamp())}",
+            alert=alert_data,
+            service_name=alert_data.get("service", ""),
             alert_type="http_5xx",
         )
         
-        print(f"  Thread ID: {state.thread_id}")
+        print(f"  Investigation ID: {state.investigation_id}")
         print(f"  Service: {state.service_name}")
         print(f"  Alert Type: {state.alert_type}")
         
@@ -91,62 +162,59 @@ class MockOrchestrator:
         # Phase 3: Planning
         print("\n🎯 Phase 3: Hypothesis Generation")
         state.hypotheses = [
-            Hypothesis(
+            MockHypothesis(
                 hypothesis="Database connection pool exhausted",
-                priority=Priority.HIGH,
+                priority="high",
                 agents_to_test=["metrics", "logs"],
             ),
-            Hypothesis(
+            MockHypothesis(
                 hypothesis="Upstream payment-service timeout",
-                priority=Priority.MEDIUM,
+                priority="medium",
                 agents_to_test=["metrics", "traces"],
             ),
-            Hypothesis(
+            MockHypothesis(
                 hypothesis="Memory pressure causing OOM kills",
-                priority=Priority.MEDIUM,
+                priority="medium",
                 agents_to_test=["kubernetes", "metrics"],
             ),
         ]
         state.selected_agents = ["metrics", "logs", "kubernetes"]
         
         for h in state.hypotheses:
-            print(f"  • [{h.priority.value.upper()}] {h.hypothesis}")
+            print(f"  • [{h.priority.upper()}] {h.hypothesis}")
         print(f"  Selected agents: {', '.join(state.selected_agents)}")
         
         # Phase 4: Evidence Collection
         print("\n🔎 Phase 4: Evidence Collection")
         
         evidence_items = [
-            Evidence(
+            MockEvidence(
                 source="prometheus",
                 skill="query_metrics",
-                query='rate(http_requests_total{status=~"5.."}[5m])',
-                result="checkout-service: 12.3% error rate (threshold: 5%)",
-                relevance=0.95,
+                finding="checkout-service: 12.3% error rate (threshold: 5%)",
+                confidence=0.95,
             ),
-            Evidence(
+            MockEvidence(
                 source="kubernetes",
                 skill="pod_logs",
-                query="kubectl logs checkout-service-abc123",
-                result="ERROR: Connection refused to postgres:5432 - pool exhausted",
-                relevance=0.98,
+                finding="ERROR: Connection refused to postgres:5432 - pool exhausted",
+                confidence=0.98,
             ),
-            Evidence(
+            MockEvidence(
                 source="postgres",
                 skill="db_connections",
-                query="SELECT count(*) FROM pg_stat_activity",
-                result="Active connections: 200/200 (100% utilized)",
-                relevance=0.99,
+                finding="Active connections: 200/200 (100% utilized)",
+                confidence=0.99,
             ),
         ]
         
         for ev in evidence_items:
             state.add_evidence(ev)
-            print(f"  [{ev.source}] {ev.result[:60]}...")
+            print(f"  [{ev.source}] {ev.finding}")
         
         # Phase 5: Synthesis
         print("\n💡 Phase 5: Synthesis")
-        state.synthesis = SynthesisDecision(
+        state.synthesis = MockSynthesis(
             sufficient_evidence=True,
             confidence=0.95,
             root_cause="Database connection pool exhaustion on postgres-primary",
@@ -156,7 +224,7 @@ class MockOrchestrator:
                     "pool size or investigating long-running queries.",
             gaps=[],
         )
-        state.status = InvestigationStatus.COMPLETED
+        state.status = "completed"
         print(f"  Confidence: {state.synthesis.confidence:.0%}")
         print(f"  Root Cause: {state.synthesis.root_cause}")
         
@@ -164,7 +232,7 @@ class MockOrchestrator:
         report = InvestigationReport(
             id=state.investigation_id,
             created_at=state.created_at,
-            alert=state.alert,
+            alert=alert_data,
             service_name=state.service_name,
             alert_type=state.alert_type,
             status=InvestigationStatus.COMPLETED,

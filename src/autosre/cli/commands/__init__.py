@@ -14,6 +14,8 @@ from autosre.cli.commands import (
     sandbox,
     serve,
     status,
+    team,
+    template,
     tutorial,
     web,
 )
@@ -31,6 +33,8 @@ __all__ = [
     "sandbox",
     "serve",
     "status",
+    "team",
+    "template",
     "tutorial",
     "web",
 ]

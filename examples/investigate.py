@@ -18,15 +18,9 @@ import sys
 from pathlib import Path
 
 # Add parent to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from autosre import (
-    Orchestrator,
-    Settings,
-    load_topology,
-    EpisodicMemory,
-    investigate,
-)
+from autosre import Orchestrator, EpisodicMemory
 
 # Configure logging
 logging.basicConfig(
@@ -75,12 +69,6 @@ EXAMPLE_ALERTS = {
 
 async def run_investigation(alert: dict | str):
     """Run an investigation and display results."""
-    
-    # Load topology if available
-    topology_path = Path(__file__).parent / "topology.yaml"
-    if topology_path.exists():
-        logger.info(f"Loading topology from {topology_path}")
-        load_topology(topology_path)
     
     # Create orchestrator
     orchestrator = Orchestrator()

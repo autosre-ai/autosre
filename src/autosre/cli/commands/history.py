@@ -1068,6 +1068,392 @@ def investigation_stats(
     console.print()
 
 
+@app.command("diff")
+def diff_investigations(
+    id1: str = typer.Argument(..., help="First investigation ID"),
+    id2: str = typer.Argument(..., help="Second investigation ID"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Output as JSON"),
+    fields_only: bool = typer.Option(False, "--fields", "-f", help="Show only field differences"),
+):
+    """
+    Compare two investigations side-by-side.
+    
+    Shows what changed between investigations, identifies similar root causes,
+    and highlights timeline differences.
+    
+    [bold]Examples:[/]
+        autosre history diff abc123 def456     # Compare two investigations
+        autosre history diff abc def --json    # JSON output
+        autosre history diff abc def --fields  # Show only field differences
+    
+    [bold]Use cases:[/]
+        • Compare recurring incidents to identify patterns
+        • Review how root causes evolved over time
+        • Analyze similar issues across different services
+        • Audit investigation effectiveness changes
+    """
+    memory = _get_memory()
+    
+    async def get_episode_by_partial_id(partial_id: str):
+        """Get episode by full or partial ID match."""
+        episode = await memory.get(partial_id)
+        if episode:
+            return episode
+        
+        from autosre.memory import MemoryQuery
+        all_episodes = await memory.retrieve(MemoryQuery(text=""), limit=500)
+        for ep in all_episodes:
+            if ep.id.startswith(partial_id):
+                return ep
+        return None
+    
+    async def get_both():
+        ep1 = await get_episode_by_partial_id(id1)
+        ep2 = await get_episode_by_partial_id(id2)
+        return ep1, ep2
+    
+    ep1, ep2 = asyncio.run(get_both())
+    
+    # Validate both episodes exist
+    if not ep1:
+        console.print(f"[red]✗[/] Investigation [cyan]{id1}[/] not found")
+        raise typer.Exit(1)
+    if not ep2:
+        console.print(f"[red]✗[/] Investigation [cyan]{id2}[/] not found")
+        raise typer.Exit(1)
+    
+    # Build diff analysis
+    diff_data = _build_diff_analysis(ep1, ep2)
+    
+    if json_output:
+        console.print(json.dumps(diff_data, indent=2, default=str))
+        return
+    
+    # Display side-by-side comparison
+    _display_diff(ep1, ep2, diff_data, fields_only)
+
+
+def _build_diff_analysis(ep1, ep2) -> dict:
+    """Build comprehensive diff analysis between two episodes."""
+    
+    # Calculate root cause similarity (simple word overlap)
+    def text_similarity(text1: Optional[str], text2: Optional[str]) -> float:
+        if not text1 or not text2:
+            return 0.0
+        words1 = set(text1.lower().split())
+        words2 = set(text2.lower().split())
+        if not words1 or not words2:
+            return 0.0
+        intersection = words1 & words2
+        union = words1 | words2
+        return len(intersection) / len(union) if union else 0.0
+    
+    # Field comparisons
+    field_changes = {}
+    
+    comparable_fields = [
+        ("alert_type", "Alert Type"),
+        ("service_name", "Service"),
+        ("severity", "Severity"),
+        ("resolved", "Status"),
+        ("root_cause", "Root Cause"),
+        ("resolution", "Resolution"),
+    ]
+    
+    for field, label in comparable_fields:
+        val1 = getattr(ep1, field, None)
+        val2 = getattr(ep2, field, None)
+        if val1 != val2:
+            field_changes[field] = {
+                "label": label,
+                "old": val1,
+                "new": val2,
+            }
+    
+    # Skills comparison
+    skills1 = set(ep1.skills_used or [])
+    skills2 = set(ep2.skills_used or [])
+    skills_added = skills2 - skills1
+    skills_removed = skills1 - skills2
+    skills_common = skills1 & skills2
+    
+    # Steps comparison
+    steps1 = set(ep1.steps_taken or [])
+    steps2 = set(ep2.steps_taken or [])
+    steps_added = steps2 - steps1
+    steps_removed = steps1 - steps2
+    
+    # Findings comparison
+    findings1 = set()
+    findings2 = set()
+    for f in ep1.key_findings or []:
+        if isinstance(f, dict):
+            findings1.add(f.get("finding", f.get("description", str(f))))
+        else:
+            findings1.add(str(f))
+    for f in ep2.key_findings or []:
+        if isinstance(f, dict):
+            findings2.add(f.get("finding", f.get("description", str(f))))
+        else:
+            findings2.add(str(f))
+    findings_added = findings2 - findings1
+    findings_removed = findings1 - findings2
+    findings_common = findings1 & findings2
+    
+    # Timeline analysis
+    time_diff = None
+    if ep1.created_at and ep2.created_at:
+        delta = ep2.created_at - ep1.created_at
+        time_diff = {
+            "days": delta.days,
+            "total_seconds": int(delta.total_seconds()),
+            "direction": "later" if delta.total_seconds() > 0 else "earlier",
+        }
+    
+    # Duration comparison
+    duration_diff = None
+    if ep1.duration_seconds and ep2.duration_seconds:
+        diff = ep2.duration_seconds - ep1.duration_seconds
+        pct_change = (diff / ep1.duration_seconds * 100) if ep1.duration_seconds else 0
+        duration_diff = {
+            "diff_seconds": diff,
+            "pct_change": pct_change,
+            "direction": "longer" if diff > 0 else "shorter",
+        }
+    
+    # Effectiveness comparison
+    eff_diff = None
+    if ep1.effectiveness_score is not None and ep2.effectiveness_score is not None:
+        diff = ep2.effectiveness_score - ep1.effectiveness_score
+        eff_diff = {
+            "diff": diff,
+            "direction": "improved" if diff > 0 else "declined",
+        }
+    
+    return {
+        "id1": ep1.id,
+        "id2": ep2.id,
+        "root_cause_similarity": text_similarity(ep1.root_cause, ep2.root_cause),
+        "summary_similarity": text_similarity(ep1.summary, ep2.summary),
+        "same_service": ep1.service_name == ep2.service_name,
+        "same_alert_type": ep1.alert_type == ep2.alert_type,
+        "field_changes": field_changes,
+        "skills": {
+            "added": list(skills_added),
+            "removed": list(skills_removed),
+            "common": list(skills_common),
+        },
+        "steps": {
+            "added": list(steps_added),
+            "removed": list(steps_removed),
+        },
+        "findings": {
+            "added": list(findings_added),
+            "removed": list(findings_removed),
+            "common": list(findings_common),
+        },
+        "timeline": time_diff,
+        "duration": duration_diff,
+        "effectiveness": eff_diff,
+    }
+
+
+def _display_diff(ep1, ep2, diff_data: dict, fields_only: bool):
+    """Display a rich side-by-side diff view."""
+    from rich.columns import Columns
+    from rich.box import ROUNDED
+    
+    console.print()
+    
+    # Header showing what we're comparing
+    console.print(Panel(
+        f"[bold cyan]{ep1.id}[/] ↔ [bold cyan]{ep2.id}[/]",
+        title="🔄 Investigation Comparison",
+        subtitle=f"Root cause similarity: [{'green' if diff_data['root_cause_similarity'] > 0.5 else 'yellow'}]{diff_data['root_cause_similarity']:.0%}[/]",
+        border_style="cyan",
+    ))
+    
+    # Metadata comparison table
+    console.print()
+    meta_table = Table(
+        title="📋 Metadata Comparison",
+        show_header=True,
+        header_style="bold",
+        border_style="dim",
+        box=ROUNDED,
+    )
+    meta_table.add_column("Field", style="dim", width=15)
+    meta_table.add_column(f"{ep1.id[:8]}...", width=30)
+    meta_table.add_column(f"{ep2.id[:8]}...", width=30)
+    meta_table.add_column("Changed?", justify="center", width=10)
+    
+    # Add metadata rows
+    meta_fields = [
+        ("Alert Type", ep1.alert_type, ep2.alert_type),
+        ("Service", ep1.service_name or "-", ep2.service_name or "-"),
+        ("Severity", ep1.severity.upper(), ep2.severity.upper()),
+        ("Status", "✓ Resolved" if ep1.resolved else "⋯ Open", "✓ Resolved" if ep2.resolved else "⋯ Open"),
+        ("Created", ep1.created_at.strftime("%Y-%m-%d %H:%M") if ep1.created_at else "-",
+                    ep2.created_at.strftime("%Y-%m-%d %H:%M") if ep2.created_at else "-"),
+        ("Duration", _format_duration(ep1.duration_seconds), _format_duration(ep2.duration_seconds)),
+        ("Effectiveness", f"{ep1.effectiveness_score:.0%}", f"{ep2.effectiveness_score:.0%}"),
+    ]
+    
+    for field, val1, val2 in meta_fields:
+        changed = val1 != val2
+        change_icon = "[red]✗[/]" if changed else "[green]=[/]"
+        style1 = "yellow" if changed else ""
+        style2 = "yellow" if changed else ""
+        meta_table.add_row(
+            field,
+            Text(str(val1), style=style1),
+            Text(str(val2), style=style2),
+            change_icon,
+        )
+    
+    console.print(meta_table)
+    
+    if not fields_only:
+        # Root cause comparison
+        if ep1.root_cause or ep2.root_cause:
+            console.print()
+            console.print("[bold]🎯 Root Cause Comparison[/]")
+            console.print()
+            
+            root_table = Table(show_header=True, header_style="bold yellow", border_style="yellow")
+            root_table.add_column(f"{ep1.id[:8]}...", width=45)
+            root_table.add_column(f"{ep2.id[:8]}...", width=45)
+            
+            root1 = ep1.root_cause or "[dim]Not identified[/]"
+            root2 = ep2.root_cause or "[dim]Not identified[/]"
+            root_table.add_row(root1, root2)
+            
+            console.print(root_table)
+            
+            similarity = diff_data["root_cause_similarity"]
+            if similarity > 0.7:
+                console.print(f"[green]  ✓ High similarity ({similarity:.0%}) - likely related issues[/]")
+            elif similarity > 0.3:
+                console.print(f"[yellow]  ⚠ Moderate similarity ({similarity:.0%}) - possibly related[/]")
+            else:
+                console.print(f"[dim]  ○ Low similarity ({similarity:.0%}) - different root causes[/]")
+        
+        # Skills comparison
+        skills_diff = diff_data["skills"]
+        if skills_diff["added"] or skills_diff["removed"] or skills_diff["common"]:
+            console.print()
+            console.print("[bold]🛠️ Skills Used[/]")
+            console.print()
+            
+            if skills_diff["common"]:
+                common_text = " • ".join(f"[cyan]{s}[/]" for s in skills_diff["common"])
+                console.print(f"  [dim]Common:[/] {common_text}")
+            if skills_diff["added"]:
+                added_text = " • ".join(f"[green]+{s}[/]" for s in skills_diff["added"])
+                console.print(f"  [dim]Added in {ep2.id[:8]}:[/] {added_text}")
+            if skills_diff["removed"]:
+                removed_text = " • ".join(f"[red]-{s}[/]" for s in skills_diff["removed"])
+                console.print(f"  [dim]Removed from {ep2.id[:8]}:[/] {removed_text}")
+        
+        # Findings comparison
+        findings_diff = diff_data["findings"]
+        if findings_diff["added"] or findings_diff["removed"]:
+            console.print()
+            console.print("[bold]🔑 Key Findings Differences[/]")
+            console.print()
+            
+            if findings_diff["added"]:
+                console.print(f"  [green]+[/] [bold]New findings in {ep2.id[:8]}:[/]")
+                for f in findings_diff["added"]:
+                    console.print(f"    [green]+ {f[:80]}{'...' if len(f) > 80 else ''}[/]")
+            if findings_diff["removed"]:
+                console.print(f"  [red]-[/] [bold]Findings not in {ep2.id[:8]}:[/]")
+                for f in findings_diff["removed"]:
+                    console.print(f"    [red]- {f[:80]}{'...' if len(f) > 80 else ''}[/]")
+        
+        # Steps comparison
+        steps_diff = diff_data["steps"]
+        if steps_diff["added"] or steps_diff["removed"]:
+            console.print()
+            console.print("[bold]📝 Steps Taken Differences[/]")
+            console.print()
+            
+            if steps_diff["added"]:
+                console.print(f"  [green]+[/] [bold]New steps in {ep2.id[:8]}:[/]")
+                for s in list(steps_diff["added"])[:5]:
+                    console.print(f"    [green]+ {s[:60]}{'...' if len(s) > 60 else ''}[/]")
+                if len(steps_diff["added"]) > 5:
+                    console.print(f"    [dim]... and {len(steps_diff['added']) - 5} more[/]")
+            if steps_diff["removed"]:
+                console.print(f"  [red]-[/] [bold]Steps not in {ep2.id[:8]}:[/]")
+                for s in list(steps_diff["removed"])[:5]:
+                    console.print(f"    [red]- {s[:60]}{'...' if len(s) > 60 else ''}[/]")
+                if len(steps_diff["removed"]) > 5:
+                    console.print(f"    [dim]... and {len(steps_diff['removed']) - 5} more[/]")
+    
+    # Timeline analysis
+    timeline = diff_data["timeline"]
+    duration = diff_data["duration"]
+    effectiveness = diff_data["effectiveness"]
+    
+    if timeline or duration or effectiveness:
+        console.print()
+        console.print("[bold]📊 Timeline & Performance[/]")
+        console.print()
+        
+        if timeline:
+            days = abs(timeline["days"])
+            direction = timeline["direction"]
+            time_desc = f"{days} days" if days > 0 else f"{abs(timeline['total_seconds']) // 3600} hours"
+            console.print(f"  ⏱️  Investigation {ep2.id[:8]} occurred [cyan]{time_desc}[/] [dim]{direction}[/]")
+        
+        if duration:
+            diff_s = abs(duration["diff_seconds"])
+            direction = duration["direction"]
+            pct = abs(duration["pct_change"])
+            duration_str = _format_duration(diff_s)
+            style = "green" if direction == "shorter" else "red"
+            console.print(f"  ⏳  Duration: [{style}]{duration_str} {direction}[/] ({pct:.0f}% change)")
+        
+        if effectiveness:
+            diff = effectiveness["diff"]
+            direction = effectiveness["direction"]
+            style = "green" if direction == "improved" else "red"
+            console.print(f"  📈  Effectiveness: [{style}]{abs(diff):.0%} {direction}[/]")
+    
+    # Summary panel
+    console.print()
+    summary_lines = []
+    
+    if diff_data["same_alert_type"] and diff_data["same_service"]:
+        summary_lines.append("[green]✓[/] Same service and alert type - [bold]recurring incident pattern[/]")
+    elif diff_data["same_alert_type"]:
+        summary_lines.append("[yellow]⚠[/] Same alert type, different service - [bold]cross-service pattern[/]")
+    elif diff_data["same_service"]:
+        summary_lines.append("[yellow]⚠[/] Same service, different alert type - [bold]service-specific issues[/]")
+    else:
+        summary_lines.append("[dim]○[/] Different service and alert type")
+    
+    if diff_data["root_cause_similarity"] > 0.5:
+        summary_lines.append("[green]✓[/] Similar root causes - consider common remediation")
+    
+    num_field_changes = len(diff_data["field_changes"])
+    if num_field_changes == 0:
+        summary_lines.append("[green]✓[/] Core fields unchanged")
+    else:
+        summary_lines.append(f"[yellow]⚠[/] {num_field_changes} field(s) changed")
+    
+    console.print(Panel(
+        "\n".join(summary_lines),
+        title="[bold]Summary[/]",
+        border_style="dim",
+    ))
+    
+    console.print()
+    console.print("[dim]Tip: Use [cyan]autosre history show <id>[/] to view full investigation details[/]")
+    console.print()
+
+
 @app.callback(invoke_without_command=True)
 def history_callback(ctx: typer.Context):
     """
@@ -1081,6 +1467,7 @@ def history_callback(ctx: typer.Context):
         autosre history list                 # List recent investigations
         autosre history show <id>            # View specific investigation
         autosre history search "redis"       # Search investigations
+        autosre history diff <id1> <id2>     # Compare two investigations
         autosre history export <id>          # Export to file
         autosre history stats                # Show statistics
     """

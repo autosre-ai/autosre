@@ -46,9 +46,9 @@ class RuleHealth(str, Enum):
 
 class MetricLabels(BaseModel):
     """Labels for a metric."""
-    __name__: str | None = Field(default=None, alias="__name__", description="Metric name")
+    metric_name: str | None = Field(default=None, alias="__name__", description="Metric name")
     
-    model_config = {"extra": "allow"}
+    model_config = {"extra": "allow", "populate_by_name": True}
     
     def get(self, key: str, default: str | None = None) -> str | None:
         """Get a label value."""
@@ -59,8 +59,8 @@ class MetricLabels(BaseModel):
         result = []
         for key, value in self.model_extra.items():
             result.append((key, value))
-        if self.__name__:
-            result.append(("__name__", self.__name__))
+        if self.metric_name:
+            result.append(("__name__", self.metric_name))
         return result
     
     def to_selector(self) -> str:
@@ -70,8 +70,8 @@ class MetricLabels(BaseModel):
             if key != "__name__":
                 parts.append(f'{key}="{value}"')
         
-        metric_name = self.__name__ or ""
-        return f"{metric_name}{{{','.join(parts)}}}"
+        name = self.metric_name or ""
+        return f"{name}{{{','.join(parts)}}}"
 
 
 class Sample(BaseModel):
@@ -372,10 +372,10 @@ class RulesResponse(BaseModel):
 
 class TargetDiscoveredLabels(BaseModel):
     """Discovered labels for a target."""
-    __address__: str | None = Field(default=None, alias="__address__", description="Target address")
-    __scheme__: str | None = Field(default=None, alias="__scheme__", description="Scrape scheme")
-    __scrape_interval__: str | None = Field(default=None, alias="__scrape_interval__", description="Scrape interval")
-    __scrape_timeout__: str | None = Field(default=None, alias="__scrape_timeout__", description="Scrape timeout")
+    address: str | None = Field(default=None, alias="__address__", description="Target address")
+    scheme: str | None = Field(default=None, alias="__scheme__", description="Scrape scheme")
+    scrape_interval: str | None = Field(default=None, alias="__scrape_interval__", description="Scrape interval")
+    scrape_timeout: str | None = Field(default=None, alias="__scrape_timeout__", description="Scrape timeout")
     
     model_config = {"extra": "allow", "populate_by_name": True}
 

@@ -6,13 +6,13 @@ This directory contains examples, tutorials, and reference configurations for Au
 
 ```bash
 # Run the simplest demo (mock mode, no external dependencies)
-python examples/demo_simple.py --mock
+python examples/demo_simple.py
 
 # Run with your LLM configured
-python examples/quickstart.py
+python examples/quickstart.py --no-input
 
 # Test an investigation scenario
-autosre investigate "high latency on api-gateway" --dry-run
+autosre investigate run "high latency on api-gateway" --demo
 ```
 
 ## Directory Structure
@@ -118,7 +118,7 @@ Perfect for evaluation - no external services needed:
 
 ```bash
 cd /path/to/autosre
-python examples/demo_simple.py --mock
+python examples/demo_simple.py
 ```
 
 ### 2. With Local LLM (Ollama)

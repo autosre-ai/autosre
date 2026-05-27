@@ -8,6 +8,25 @@ Provides specialized skills for SRE operations including:
 - Latency metrics with proper percentiles (no avg!)
 """
 
+# Re-export base classes from autosre.skills module
+# This allows `from autosre.skills import Skill, ActionResult, action` to work
+import sys
+import os
+# Import the skills.py module directly
+_skills_module_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'skills.py')
+if os.path.exists(_skills_module_path):
+    import importlib.util
+    _spec = importlib.util.spec_from_file_location("autosre._skills_base", _skills_module_path)
+    if _spec and _spec.loader:
+        _skills_module = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_skills_module)
+        Skill = _skills_module.Skill
+        ActionResult = _skills_module.ActionResult
+        action = _skills_module.action
+        ActionDefinition = _skills_module.ActionDefinition
+        SkillRegistry = _skills_module.SkillRegistry
+        registry = _skills_module.registry
+
 from .cascading_failure import (
     CascadingFailureAnalyzer,
     CascadePattern,
@@ -39,6 +58,13 @@ from .metrics import (
 )
 
 __all__ = [
+    # Base classes from skills.py module
+    "Skill",
+    "ActionResult",
+    "action",
+    "ActionDefinition",
+    "SkillRegistry",
+    "registry",
     # Cascading Failure
     "CascadingFailureAnalyzer",
     "CascadePattern",

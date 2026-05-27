@@ -53,7 +53,7 @@ def main_callback(
 
 
 # Import and register command groups
-from autosre.cli.commands import investigate, memory, config, demo, chat, doctor, runbook, tutorial, serve, benchmark, model, plugin, history
+from autosre.cli.commands import investigate, memory, config, demo, chat, doctor, runbook, tutorial, serve, benchmark, model, plugin, history, team, template
 
 app.add_typer(investigate.app, name="investigate", help="Investigation commands")
 app.add_typer(memory.app, name="memory", help="Episodic memory management")
@@ -68,6 +68,8 @@ app.add_typer(serve.app, name="serve", help="Webhook server for alert-driven inv
 app.add_typer(benchmark.app, name="benchmark", help="Performance benchmarking")
 app.add_typer(model.app, name="model", help="Configure AI model settings")
 app.add_typer(plugin.app, name="plugin", help="Manage AutoSRE plugins")
+app.add_typer(team.app, name="team", help="Team collaboration")
+app.add_typer(template.app, name="template", help="Investigation templates for common incidents")
 
 
 # Quick access to investigate run
@@ -96,6 +98,33 @@ def quick_run(
         demo=False,
         watch=False,
         watch_interval=60,
+    )
+
+
+@app.command("diff")
+def quick_diff(
+    id1: str = typer.Argument(..., help="First investigation ID"),
+    id2: str = typer.Argument(..., help="Second investigation ID"),
+    json_output: bool = typer.Option(False, "--json", "-j", help="Output as JSON"),
+    fields_only: bool = typer.Option(False, "--fields", "-f", help="Show only field differences"),
+):
+    """
+    Compare two investigations side-by-side (alias for 'history diff').
+    
+    Shows what changed between investigations, identifies similar root causes,
+    and highlights timeline differences.
+    
+    Examples:
+        autosre diff abc123 def456       # Compare two investigations
+        autosre diff abc def --json      # JSON output
+        autosre diff abc def --fields    # Show only field differences
+    """
+    from autosre.cli.commands.history import diff_investigations
+    diff_investigations(
+        id1=id1,
+        id2=id2,
+        json_output=json_output,
+        fields_only=fields_only,
     )
 
 
