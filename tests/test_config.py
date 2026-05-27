@@ -15,7 +15,9 @@ class TestSettings:
         """Test default settings values."""
         from autosre.config import Settings
         
-        settings = Settings()
+        # Use _env_file=None to prevent loading .env and patch to clear env vars
+        with patch.dict(os.environ, {}, clear=True):
+            settings = Settings(_env_file=None)
         
         assert settings.version == "0.1.0"
         assert settings.llm_provider == "ollama"
