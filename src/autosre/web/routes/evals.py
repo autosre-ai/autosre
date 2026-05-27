@@ -10,11 +10,13 @@ Provides:
 
 import asyncio
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Request, Form, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
+import yaml
 
 from autosre.evals import (
     list_scenarios,
@@ -221,15 +223,70 @@ async def create_scenario(
     """Create a new scenario (form submission)."""
     templates = get_templates(request)
     
-    # TODO: Actually create the scenario file
-    # For now, return success message
+    # Create the custom scenarios directory
+    custom_dir = Path.home() / ".autosre" / "scenarios"
+    custom_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Sanitize name for filename
+    filename = name.replace(" ", "_").lower()
+    filename = "".join(c for c in filename if c.isalnum() or c == "_")
+    scenario_path = custom_dir / f"{filename}.yaml"
+    
+    # Check if scenario already exists
+    if scenario_path.exists():
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/scenario_created.html",
+            context={
+                "name": name,
+                "message": f"Scenario '{name}' already exists",
+                "error": True,
+            }
+        )
+    
+    # Build minimal scenario structure
+    scenario_data = {
+        "name": name,
+        "description": description,
+        "difficulty": difficulty,
+        "setup_steps": [],
+        "alert": {
+            "name": f"{name}Alert",
+            "severity": "medium",
+            "service_name": expected_service or "unknown-service",
+            "namespace": "production",
+            "summary": description,
+            "description": description,
+        },
+        "services": [],
+        "changes": [],
+        "metrics": {},
+        "expected_root_cause": expected_root_cause,
+        "expected_service": expected_service,
+        "max_time_seconds": 300,
+    }
+    
+    # Write the scenario file
+    try:
+        with open(scenario_path, "w") as f:
+            yaml.safe_dump(scenario_data, f, default_flow_style=False, sort_keys=False)
+    except Exception as e:
+        return templates.TemplateResponse(
+            request=request,
+            name="partials/scenario_created.html",
+            context={
+                "name": name,
+                "message": f"Failed to create scenario: {e}",
+                "error": True,
+            }
+        )
     
     return templates.TemplateResponse(
         request=request,
         name="partials/scenario_created.html",
         context={
             "name": name,
-            "message": f"Scenario '{name}' created successfully",
+            "message": f"Scenario '{name}' created successfully at {scenario_path}",
         }
     )
 
