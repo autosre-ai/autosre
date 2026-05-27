@@ -298,10 +298,10 @@ class QueryRequest(BaseModel):
 
 class QueryResultFrame(BaseModel):
     """A data frame in query results."""
-    schema: dict[str, Any] = Field(default_factory=dict, description="Frame schema")
+    frame_schema: dict[str, Any] = Field(default_factory=dict, alias="schema", description="Frame schema")
     data: dict[str, Any] = Field(default_factory=dict, description="Frame data")
     
-    model_config = {"extra": "allow"}
+    model_config = {"extra": "allow", "populate_by_name": True}
 
 
 class QueryResult(BaseModel):
