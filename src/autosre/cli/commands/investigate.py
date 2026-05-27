@@ -6,10 +6,13 @@ Connects to real infrastructure (Prometheus, Kubernetes, Elasticsearch).
 """
 
 import asyncio
+import difflib
 import json
 import logging
 import os
+import signal
 import sys
+import time
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any, Optional
@@ -97,6 +100,64 @@ def _format_hypothesis(hypothesis: dict, index: int) -> str:
             lines.append(f"   • {ev}")
     
     return "\n".join(lines)
+
+
+def _result_to_text(result: dict) -> str:
+    """Convert investigation result to text for diff comparison."""
+    lines = []
+    lines.append(f"Alert: {result.get('alert', '')}")
+    lines.append(f"Service: {result.get('service', '')}")
+    lines.append(f"Severity: {result.get('severity', '')}")
+    lines.append("")
+    lines.append("=== Evidence ===")
+    for ev in result.get("evidence", []):
+        source = ev.get("source", "unknown")
+        confidence = ev.get("confidence", 0.0)
+        lines.append(f"  {source} (confidence: {confidence:.0%})")
+        data = ev.get("data", {})
+        if isinstance(data, dict):
+            for k, v in sorted(data.items()):
+                lines.append(f"    {k}: {v}")
+    lines.append("")
+    lines.append("=== Hypotheses ===")
+    for i, hyp in enumerate(result.get("hypotheses", []), 1):
+        title = hyp.get("title", f"Hypothesis {i}")
+        likelihood = hyp.get("likelihood", 0.0)
+        lines.append(f"  {i}. {title} ({likelihood:.0%})")
+    lines.append("")
+    lines.append(f"Root Cause: {result.get('root_cause', 'Unknown')}")
+    return "\n".join(lines)
+
+
+def _show_diff(prev_result: dict, curr_result: dict) -> bool:
+    """Show diff between two investigation results. Returns True if there are changes."""
+    prev_text = _result_to_text(prev_result).splitlines(keepends=True)
+    curr_text = _result_to_text(curr_result).splitlines(keepends=True)
+    
+    diff = list(difflib.unified_diff(
+        prev_text, 
+        curr_text, 
+        fromfile="previous", 
+        tofile="current",
+        lineterm=""
+    ))
+    
+    if not diff:
+        console.print("[dim]No changes from previous run[/]")
+        return False
+    
+    console.print("\n[bold yellow]Changes from previous run:[/]")
+    for line in diff:
+        line = line.rstrip('\n')
+        if line.startswith('+') and not line.startswith('+++'):
+            console.print(f"[green]{line}[/]")
+        elif line.startswith('-') and not line.startswith('---'):
+            console.print(f"[red]{line}[/]")
+        elif line.startswith('@@'):
+            console.print(f"[cyan]{line}[/]")
+        else:
+            console.print(line)
+    return True
 
 
 class InvestigationRunner:
@@ -905,6 +966,8 @@ def run(
     stream: bool = typer.Option(True, "--stream/--no-stream", help="Stream output in real-time"),
     save: Optional[Path] = typer.Option(None, "--save", help="Save report to file"),
     demo: bool = typer.Option(False, "--demo", "-d", help="Run with simulated data (no infrastructure required)"),
+    watch: bool = typer.Option(False, "--watch", "-w", help="Continuously monitor (re-run every 60s, show diff)"),
+    watch_interval: int = typer.Option(60, "--watch-interval", help="Interval between watch runs in seconds"),
 ):
     """
     Start an AI-powered investigation using real infrastructure.
@@ -917,42 +980,93 @@ def run(
         autosre investigate run "API latency spike" --service api-gateway
         autosre investigate run "Redis connection errors" --output json --save report.json
         autosre investigate run "API latency spike" --demo  # Run without infrastructure
+        autosre investigate run "High error rate" --watch  # Continuous monitoring
+        autosre investigate run "High error rate" --demo --watch  # Demo mode with continuous monitoring
     """
+    # Handle Ctrl+C gracefully in watch mode
+    stop_watch = False
+    
+    def handle_sigint(signum, frame):
+        nonlocal stop_watch
+        stop_watch = True
+        console.print("\n[yellow]Stopping watch mode...[/]")
+    
+    if watch:
+        signal.signal(signal.SIGINT, handle_sigint)
+    
     try:
-        runner = InvestigationRunner(
-            alert=alert,
-            service=service,
-            severity=severity,
-            output_format=output,
-            stream=stream,
-            demo=demo,
-        )
+        prev_result = None
+        iteration = 0
         
-        result = runner.run()
-        
-        # Output formatting
-        if output == "json":
-            json_output = json.dumps(result, indent=2, default=str)
-            if save:
-                save.write_text(json_output)
-                console.print(f"[green]✓[/] Report saved to {save}")
-            else:
-                console.print(json_output)
-        
-        elif output == "markdown":
-            if save:
-                save.write_text(result["report"])
-                console.print(f"[green]✓[/] Report saved to {save}")
-            else:
-                console.print()
-                console.print(Markdown(result["report"]))
-        
-        else:  # text
-            if save:
-                save.write_text(result["report"])
-                console.print(f"[green]✓[/] Report saved to {save}")
-            elif not stream:
-                console.print(Markdown(result["report"]))
+        while True:
+            iteration += 1
+            
+            if watch and iteration > 1:
+                console.print(Panel(
+                    f"[bold cyan]🔄 Watch Mode - Iteration {iteration}[/]\n"
+                    f"[dim]Interval: {watch_interval}s | Press Ctrl+C to stop[/]",
+                    border_style="cyan",
+                ))
+            
+            runner = InvestigationRunner(
+                alert=alert,
+                service=service,
+                severity=severity,
+                output_format=output,
+                stream=stream if iteration == 1 else False,  # Only stream first run
+                demo=demo,
+            )
+            
+            result = runner.run()
+            
+            # Show diff if we have a previous result
+            if watch and prev_result is not None:
+                _show_diff(prev_result, result)
+            
+            # Output formatting (only on first iteration or if not in watch mode)
+            if not watch or iteration == 1:
+                if output == "json":
+                    json_output = json.dumps(result, indent=2, default=str)
+                    if save:
+                        save.write_text(json_output)
+                        console.print(f"[green]✓[/] Report saved to {save}")
+                    else:
+                        console.print(json_output)
+                
+                elif output == "markdown":
+                    if save:
+                        save.write_text(result["report"])
+                        console.print(f"[green]✓[/] Report saved to {save}")
+                    else:
+                        console.print()
+                        console.print(Markdown(result["report"]))
+                
+                else:  # text
+                    if save:
+                        save.write_text(result["report"])
+                        console.print(f"[green]✓[/] Report saved to {save}")
+                    elif not stream:
+                        console.print(Markdown(result["report"]))
+            
+            # If not in watch mode, exit after first run
+            if not watch:
+                break
+            
+            # Store result for diff comparison
+            prev_result = result
+            
+            # Sleep until next iteration
+            console.print(f"\n[dim]Next check in {watch_interval} seconds... (Ctrl+C to stop)[/]")
+            
+            # Sleep in small increments to allow for interrupt handling
+            for _ in range(watch_interval):
+                if stop_watch:
+                    break
+                time.sleep(1)
+            
+            if stop_watch:
+                console.print("[green]✓[/] Watch mode stopped.")
+                break
                 
     except ConfigurationError as e:
         console.print(f"[red]Configuration Error:[/] {e}")
