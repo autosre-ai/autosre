@@ -557,6 +557,18 @@ class ContextStore:
                 incidents.append(self._row_to_incident(row))
         return incidents
     
+    def get_all_incidents(self, limit: int = 100) -> list[Incident]:
+        """Get all incidents (open and closed), ordered by most recent first."""
+        incidents = []
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            for row in conn.execute(
+                "SELECT * FROM incidents ORDER BY started_at DESC LIMIT ?",
+                (limit,)
+            ):
+                incidents.append(self._row_to_incident(row))
+        return incidents
+    
     def _row_to_incident(self, row: sqlite3.Row) -> Incident:
         """Convert a database row to an Incident model."""
         return Incident(

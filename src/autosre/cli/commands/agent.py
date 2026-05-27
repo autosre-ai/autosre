@@ -456,7 +456,11 @@ def agent_history(limit: int, service: str, as_json: bool):
     from autosre.foundation.context_store import ContextStore
     
     store = ContextStore()
-    incidents = store.get_open_incidents()  # TODO: Get closed incidents too
+    incidents = store.get_all_incidents(limit=limit)
+    
+    # Filter by service if specified
+    if service:
+        incidents = [i for i in incidents if service.lower() in [s.lower() for s in i.services]]
     
     if as_json:
         console.print_json(data=[i.model_dump() for i in incidents])
@@ -480,7 +484,7 @@ def agent_history(limit: int, service: str, as_json: bool):
     table.add_column("Status", justify="center")
     table.add_column("Time", style="dim")
     
-    for inc in incidents[:limit]:
+    for inc in incidents:
         services = ", ".join(inc.services[:2])
         if len(inc.services) > 2:
             services += f" (+{len(inc.services) - 2})"
