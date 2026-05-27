@@ -88,9 +88,71 @@ class LLMRouter:
         return await self._call_provider(config, prompt, system_prompt, **kwargs)
     
     async def embed(self, text: str) -> List[float]:
-        """Generate embeddings for text."""
-        # TODO: Implement embedding
-        return []
+        """Generate embeddings for text.
+        
+        Routes to the provider configured for EMBEDDING task type,
+        falling back to OpenAI if available (best embedding models).
+        """
+        # Prefer provider configured for embeddings
+        provider = self._task_routing.get(TaskType.EMBEDDING)
+        
+        # Fallback order: OpenAI > Ollama > first available
+        if not provider:
+            if LLMProvider.OPENAI in self._provider_map:
+                provider = LLMProvider.OPENAI
+            elif LLMProvider.OLLAMA in self._provider_map:
+                provider = LLMProvider.OLLAMA
+            else:
+                provider = self._get_default_provider()
+        
+        config = self._provider_map.get(provider)
+        if not config:
+            raise ValueError(f"No configuration for embedding provider {provider}")
+        
+        if provider == LLMProvider.OPENAI:
+            return await self._embed_openai(config, text)
+        elif provider == LLMProvider.OLLAMA:
+            return await self._embed_ollama(config, text)
+        else:
+            raise ValueError(f"Provider {provider} does not support embeddings")
+    
+    async def _embed_openai(self, config: LLMConfig, text: str) -> List[float]:
+        """Generate embeddings using OpenAI."""
+        try:
+            import openai
+            
+            client = openai.OpenAI(api_key=config.api_key)
+            
+            response = client.embeddings.create(
+                model="text-embedding-3-small",
+                input=text,
+            )
+            
+            return response.data[0].embedding
+        except ImportError:
+            raise RuntimeError("openai package not installed")
+    
+    async def _embed_ollama(self, config: LLMConfig, text: str) -> List[float]:
+        """Generate embeddings using Ollama via HTTP API."""
+        try:
+            import httpx
+            
+            base_url = config.base_url or "http://localhost:11434"
+            # Use nomic-embed-text for embeddings (common Ollama embedding model)
+            embedding_model = "nomic-embed-text"
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{base_url}/api/embeddings",
+                    json={"model": embedding_model, "prompt": text},
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+                data = response.json()
+            
+            return data["embedding"]
+        except ImportError:
+            raise RuntimeError("httpx package not installed")
     
     def _get_default_provider(self) -> LLMProvider:
         """Get the default provider."""
