@@ -72,10 +72,3 @@ class TestQuickRun:
         result = runner.invoke(app, ["run", "--help"])
         assert result.exit_code == 0
         assert "ALERT" in result.output or "alert" in result.output.lower()
-    
-    def test_run_mock(self, runner):
-        """Test quick run with mock mode."""
-        result = runner.invoke(app, ["run", "Test alert message", "--mock"])
-        assert result.exit_code == 0
-        # Should show investigation output
-        assert "Investigation" in result.output or "Report" in result.output

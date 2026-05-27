@@ -61,7 +61,6 @@ def quick_run(
     alert: str = typer.Argument(..., help="Alert or incident description"),
     service: str = typer.Option(None, "--service", "-s", help="Service name"),
     severity: str = typer.Option("high", "--severity", help="Severity level"),
-    mock: bool = typer.Option(False, "--mock", "-m", help="Use mock LLM"),
     output: str = typer.Option("text", "--output", "-o", help="Output format: text|json|markdown"),
 ):
     """
@@ -76,7 +75,6 @@ def quick_run(
         alert=alert,
         service=service,
         severity=severity,
-        mock=mock,
         output=output,
         stream=True,
         save=None,
