@@ -39,13 +39,17 @@ autosre run ALERT [OPTIONS]
 |--------|-------------|---------|
 | `--service`, `-s` | Service name | None |
 | `--severity` | Severity level: low\|medium\|high\|critical | `high` |
-| `--output`, `-o` | Output format: text\|json\|markdown | `text` |
+| `--output`, `-o` | Output format: text\|json\|markdown\|html | `text` |
+| `--demo`, `-d` | Run with simulated data (no infrastructure required) | False |
+| `--watch`, `-w` | Continuously monitor (re-run every 60s, show diff) | False |
 
 **Examples:**
 ```bash
 autosre run "High error rate on checkout"
 autosre run "API latency spike" --service api-gateway
 autosre run "Database timeout errors" -s payment --severity critical
+autosre run "Memory leak" --demo        # Run without infrastructure
+autosre run "High error rate" --watch   # Continuous monitoring
 ```
 
 ---

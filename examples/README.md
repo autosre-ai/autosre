@@ -161,8 +161,8 @@ kubectl apply -f examples/oom-pod.yaml
 # Configure agent
 cp examples/kubernetes-remediation/agent.yaml agents/
 
-# Start AutoSRE
-autosre start
+# Start AutoSRE webhook server to receive alerts
+autosre serve start
 
 # Watch for OOM events
 kubectl get events -w
