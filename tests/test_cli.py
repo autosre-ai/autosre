@@ -82,6 +82,18 @@ class TestQuickRun:
         result = runner.invoke(app, ["run", "--help"])
         assert result.exit_code == 0
         assert "ALERT" in result.output or "alert" in result.output.lower()
+        # Quick run should support the same flags as investigate run
+        assert "--demo" in result.output
+        assert "--watch" in result.output
+    
+    def test_run_demo_mode(self, runner):
+        """Test run --demo produces same output as investigate run --demo."""
+        result = runner.invoke(app, ["run", "High error rate on checkout", "--demo"])
+        assert result.exit_code == 0
+        # Should show investigation output
+        assert "Investigation" in result.output
+        assert "Demo" in result.output or "demo" in result.output.lower()
+        assert "Evidence" in result.output or "evidence" in result.output.lower()
 
 
 class TestCompletion:

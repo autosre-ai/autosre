@@ -78,7 +78,9 @@ def quick_run(
     alert: str = typer.Argument(..., help="Alert or incident description"),
     service: str = typer.Option(None, "--service", "-s", help="Service name"),
     severity: str = typer.Option("high", "--severity", help="Severity level"),
-    output: str = typer.Option("text", "--output", "-o", help="Output format: text|json|markdown"),
+    output: str = typer.Option("text", "--output", "-o", help="Output format: text|json|markdown|html"),
+    demo: bool = typer.Option(False, "--demo", "-d", help="Run with simulated data (no infrastructure required)"),
+    watch: bool = typer.Option(False, "--watch", "-w", help="Continuously monitor (re-run every 60s, show diff)"),
 ):
     """
     Quick start an investigation (alias for 'investigate run').
@@ -86,6 +88,8 @@ def quick_run(
     Examples:
         autosre run "High error rate on checkout"
         autosre run "API latency spike" --service api-gateway
+        autosre run "API latency spike" --demo  # Run without infrastructure
+        autosre run "High error rate" --watch   # Continuous monitoring
     """
     from autosre.cli.commands.investigate import run as investigate_run
     investigate_run(
@@ -95,8 +99,8 @@ def quick_run(
         output=output,
         stream=True,
         save=None,
-        demo=False,
-        watch=False,
+        demo=demo,
+        watch=watch,
         watch_interval=60,
     )
 
