@@ -11,6 +11,7 @@ from autosre.cli.commands import (
     investigate,
     sandbox,
     status,
+    tutorial,
     web,
 )
 
@@ -24,5 +25,6 @@ __all__ = [
     "investigate",
     "sandbox",
     "status",
+    "tutorial",
     "web",
 ]
