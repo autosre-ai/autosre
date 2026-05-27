@@ -21,6 +21,7 @@
   <a href="#-features">Features</a> •
   <a href="#-how-it-works">How It Works</a> •
   <a href="#-integrations">Integrations</a> •
+  <a href="#-cli-reference">CLI Reference</a> •
   <a href="docs/">Docs</a>
 </p>
 
@@ -56,10 +57,10 @@
 Try it yourself:
 ```bash
 # Mock mode (no external dependencies)
-python examples/demo_simple.py --mock
+python examples/demo_simple.py
 
 # With your LLM configured
-autosre investigate "payment service 500 errors" --service payment-service
+autosre investigate run "payment service 500 errors" --service payment-service
 ```
 
 </details>
@@ -76,7 +77,7 @@ pip install autosre-ai
 autosre config init
 
 # Investigate your first incident
-autosre investigate "checkout service 500 errors" --service checkout-service
+autosre investigate run "checkout service 500 errors" --service checkout-service
 ```
 
 Or with Docker:
@@ -94,7 +95,7 @@ docker run -it --rm -v ~/.autosre:/root/.autosre ghcr.io/autosre-ai/autosre inve
 Multi-agent investigation that works like your best SRE: triage → contain → investigate → resolve → learn.
 
 ```bash
-$ autosre investigate "payment failures spiking"
+$ autosre investigate run "payment failures spiking"
 
 [Triage] Confirmed: payment-service 5xx rate at 12% (normally <0.1%)
 [Scope] Affected: checkout-service, order-service (downstream)
@@ -116,12 +117,11 @@ Found 3 similar incidents:
 └── inv_ghi789: Network partition to RDS (resolved in 23m)
 ```
 
-### 📊 **SLO-Driven Operations**
+### 📊 **SLO-Driven Operations** *(Coming Soon)*
 Error budgets, multi-window burn rates, deployment gating — all built-in.
 
-```bash
-$ autosre slo status --service checkout-service
-
+```
+# Example output (planned feature):
 checkout-service SLO Status
 ├── Availability: 99.92% (target: 99.9%) ✓
 ├── Latency p99: 245ms (target: 300ms) ✓
@@ -220,6 +220,106 @@ Blameless postmortems with auto-generated timelines, metrics snapshots, and acti
 
 ---
 
+## 💻 CLI Reference
+
+AutoSRE provides a powerful CLI for investigations and management.
+
+### Quick Commands
+
+```bash
+# Start an investigation
+autosre run "High error rate on checkout" --service checkout
+
+# Check system status
+autosre status
+
+# Interactive chat
+autosre chat "What causes high p99 latency?"
+
+# Run health check
+autosre doctor
+```
+
+### Investigation Commands
+
+```bash
+# Full investigation with real infrastructure
+autosre investigate run "API latency spike" --service api-gateway
+
+# Demo mode (no infrastructure required)
+autosre investigate run "Memory leak detected" --demo
+
+# Continuous monitoring
+autosre investigate run "High error rate" --watch --watch-interval 120
+
+# Save report to HTML
+autosre investigate run "DB connection errors" --format html --save report.html
+```
+
+### Memory & Learning
+
+```bash
+# Search past incidents
+autosre memory search "database timeout"
+
+# List recent investigations
+autosre memory list --limit 10
+
+# Show memory statistics
+autosre memory stats
+```
+
+### Model Configuration
+
+```bash
+# List available models
+autosre model list
+
+# Switch providers
+autosre model use anthropic claude-3-5-sonnet-20241022
+autosre model use openai gpt-4o
+autosre model use ollama llama3.1:8b
+
+# Test connection
+autosre model test
+```
+
+### Webhook Server
+
+```bash
+# Start alert webhook server
+autosre serve start --port 8080
+
+# With Slack notifications
+autosre serve start --notification-webhook https://hooks.slack.com/...
+```
+
+📚 **Full CLI documentation:** [docs/COMMANDS.md](docs/COMMANDS.md)
+
+---
+
+## ⚙️ Configuration
+
+AutoSRE is configured via environment variables or YAML:
+
+```bash
+# Set LLM provider
+export OPENSRE_LLM_PROVIDER=anthropic
+export OPENSRE_ANTHROPIC_API_KEY=sk-ant-...
+
+# Configure infrastructure
+export OPENSRE_PROMETHEUS_URL=http://prometheus:9090
+export OPENSRE_K8S_NAMESPACES=production,staging
+
+# Or use the CLI
+autosre config init
+autosre config set llm_provider openai
+```
+
+📚 **Full configuration reference:** [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
+
+---
+
 ## 📈 Why AutoSRE?
 
 | Before AutoSRE | After AutoSRE |
@@ -274,11 +374,11 @@ make health
 
 ## 🤝 Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+We welcome contributions! See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the full development guide.
 
 ```bash
 # Development setup
-git clone https://github.com/autosre-ai/autosre.git
+git clone https://github.com/opensre/autosre.git
 cd autosre
 pip install -e ".[dev]"
 pytest  # Run the test suite
@@ -289,6 +389,17 @@ pytest  # Run the test suite
 - 📊 Investigation scenarios for evaluation
 - 📚 Documentation and examples — see [examples/](examples/)
 - 🐛 Bug reports and fixes
+
+---
+
+## 📚 Documentation
+
+| Document | Description |
+|----------|-------------|
+| [CLI Commands](docs/COMMANDS.md) | Complete CLI reference with all commands and options |
+| [Configuration](docs/CONFIGURATION.md) | All configuration options and environment variables |
+| [Development](docs/DEVELOPMENT.md) | Development setup, testing, and contribution guide |
+| [Examples](examples/) | Example scripts and integrations |
 
 ---
 
