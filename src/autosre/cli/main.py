@@ -53,10 +53,11 @@ def main_callback(
 
 
 # Import and register command groups
-from autosre.cli.commands import investigate, memory, config, demo, chat, doctor, runbook, tutorial, serve, benchmark, model
+from autosre.cli.commands import investigate, memory, config, demo, chat, doctor, runbook, tutorial, serve, benchmark, model, plugin, history
 
 app.add_typer(investigate.app, name="investigate", help="Investigation commands")
 app.add_typer(memory.app, name="memory", help="Episodic memory management")
+app.add_typer(history.app, name="history", help="Browse past investigations")
 app.add_typer(config.app, name="config", help="Configuration management")
 app.add_typer(demo.app, name="demo", help="Demo and testing scenarios")
 app.add_typer(chat.app, name="chat", help="Interactive AI chat assistant")
@@ -66,6 +67,7 @@ app.add_typer(tutorial.app, name="tutorial", help="Interactive onboarding tutori
 app.add_typer(serve.app, name="serve", help="Webhook server for alert-driven investigations")
 app.add_typer(benchmark.app, name="benchmark", help="Performance benchmarking")
 app.add_typer(model.app, name="model", help="Configure AI model settings")
+app.add_typer(plugin.app, name="plugin", help="Manage AutoSRE plugins")
 
 
 # Quick access to investigate run
