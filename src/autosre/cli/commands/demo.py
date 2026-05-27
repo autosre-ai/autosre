@@ -208,7 +208,8 @@ def run(
     scenario: Optional[str] = typer.Option(None, "--scenario", "-s", help="Scenario ID to run"),
     list_scenarios: bool = typer.Option(False, "--list", "-l", help="List available scenarios"),
     random_scenario: bool = typer.Option(False, "--random", "-r", help="Run a random scenario"),
-    interactive: bool = typer.Option(True, "--interactive/--batch", help="Interactive mode"),
+    interactive: bool = typer.Option(False, "--interactive/--batch", "-i", help="Interactive mode (prompts for input)"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output, suppress demo warnings"),
 ):
     """
     [DEMO MODE] Run a demo investigation with SIMULATED data.
@@ -224,9 +225,11 @@ def run(
         autosre demo run --list
         autosre demo run --scenario redis-connection
         autosre demo run --random
+        autosre demo run -s memory-leak --quiet
     """
-    # Always show demo warning first
-    _print_demo_warning()
+    # Show demo warning unless quiet mode
+    if not quiet:
+        _print_demo_warning()
     
     if list_scenarios:
         _list_scenarios()
@@ -241,8 +244,8 @@ def run(
             console.print(f"[red][DEMO MODE] Scenario '{scenario}' not found[/]")
             console.print("[DEMO MODE] Use --list to see available scenarios")
             raise typer.Exit(1)
-    else:
-        # Interactive selection
+    elif interactive:
+        # Interactive selection - only in interactive mode
         _list_scenarios()
         console.print()
         scenario_id = typer.prompt("[DEMO MODE] Select scenario ID", default="redis-connection")
@@ -250,6 +253,9 @@ def run(
         if not selected:
             console.print(f"[red][DEMO MODE] Scenario '{scenario_id}' not found[/]")
             raise typer.Exit(1)
+    else:
+        # Default to redis-connection for non-interactive mode
+        selected = DEMO_SCENARIOS[0]  # redis-connection
     
     # Show scenario info
     console.print()
@@ -264,6 +270,7 @@ def run(
         border_style="magenta",
     ))
     
+    # Only prompt in interactive mode
     if interactive:
         if not typer.confirm("\n[DEMO MODE] Start simulated investigation?", default=True):
             raise typer.Abort()

@@ -8,12 +8,25 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from autosre.memory import EpisodicMemory
+from autosre.memory.models import MemoryQuery
+
 app = typer.Typer(
     name="autosre",
     help="AI SRE Agent - Investigate production incidents autonomously",
     no_args_is_help=True,
 )
 console = Console()
+
+# Shared memory instance
+_memory: EpisodicMemory | None = None
+
+def get_memory() -> EpisodicMemory:
+    """Get or create the shared memory instance."""
+    global _memory
+    if _memory is None:
+        _memory = EpisodicMemory()
+    return _memory
 
 
 @app.command()
@@ -44,11 +57,43 @@ def history(
     limit: int = typer.Option(10, "--limit", "-n", help="Number of results"),
 ):
     """Show investigation history."""
+    import asyncio
+    
+    memory = get_memory()
     console.print("[bold]📜 Investigation History[/]")
     if service:
         console.print(f"[dim]Filtering by service:[/] {service}")
-    console.print(f"[dim]Showing up to {limit} results[/]")
-    # TODO: Query memory and display
+    console.print(f"[dim]Showing up to {limit} results[/]\n")
+    
+    # Query all episodes, optionally filtered by service
+    mq = MemoryQuery(text="*", service=service)
+    episodes = asyncio.run(memory.retrieve(mq, limit=limit))
+    
+    if not episodes:
+        console.print("[yellow]No investigation history found[/]")
+        return
+    
+    # Display as a table
+    table = Table()
+    table.add_column("Date", style="dim")
+    table.add_column("Alert", style="cyan")
+    table.add_column("Service", style="yellow")
+    table.add_column("Status", justify="center")
+    table.add_column("Score", justify="right")
+    
+    for ep in episodes:
+        date_str = ep.created_at.strftime("%Y-%m-%d %H:%M")
+        status = "[green]✅[/]" if ep.resolved else "[red]❌[/]"
+        score = f"{ep.effectiveness_score:.2f}"
+        table.add_row(
+            date_str,
+            ep.alert_type[:30],
+            ep.service_name or "—",
+            status,
+            score
+        )
+    
+    console.print(table)
 
 
 # Memory subcommand group
@@ -59,15 +104,34 @@ app.add_typer(memory_app, name="memory")
 @memory_app.command("stats")
 def memory_stats():
     """Show memory statistics."""
-    console.print("[bold]🧠 Memory Statistics[/]")
-    # TODO: Get stats from EpisodicMemory
-    table = Table(title="Memory Stats")
+    memory = get_memory()
+    stats = memory.get_stats()
+    
+    console.print("[bold]🧠 Memory Statistics[/]\n")
+    
+    # Main stats table
+    table = Table(title="Overview")
     table.add_column("Metric", style="cyan")
     table.add_column("Value", style="green")
-    table.add_row("Episodes", "0")
-    table.add_row("Services", "0")
-    table.add_row("Total Queries", "0")
+    table.add_row("Total Episodes", str(stats['total_episodes']))
+    table.add_row("Resolved", str(stats['resolved_count']))
+    table.add_row("Resolution Rate", f"{stats['resolution_rate']:.1%}")
+    table.add_row("Avg Effectiveness", f"{stats['avg_effectiveness_score']:.2f}")
+    if stats['avg_resolution_seconds']:
+        minutes = stats['avg_resolution_seconds'] / 60
+        table.add_row("Avg Resolution Time", f"{minutes:.1f} min")
+    table.add_row("Strategies", str(stats['total_strategies']))
     console.print(table)
+    
+    # Top alert types
+    if stats['top_alert_types']:
+        console.print()
+        alert_table = Table(title="Top Alert Types")
+        alert_table.add_column("Alert Type", style="yellow")
+        alert_table.add_column("Count", style="magenta", justify="right")
+        for item in stats['top_alert_types']:
+            alert_table.add_row(item['alert_type'], str(item['count']))
+        console.print(alert_table)
 
 
 @memory_app.command("search")
@@ -76,10 +140,36 @@ def memory_search(
     limit: int = typer.Option(5, "--limit", "-n"),
 ):
     """Search past investigations."""
+    import asyncio
+    
+    memory = get_memory()
     console.print(f"[bold]🔎 Searching:[/] {query}")
-    console.print(f"[dim]Limit: {limit} results[/]")
-    # TODO: Search memory
-    console.print("[yellow]No results found (memory search not yet implemented)[/]")
+    console.print(f"[dim]Limit: {limit} results[/]\n")
+    
+    # Create a memory query - treat the query as alert_type for matching
+    mq = MemoryQuery(
+        text=query,
+        alert_type=query,
+        service=None,
+    )
+    
+    # Run the async retrieve method
+    episodes = asyncio.run(memory.retrieve(mq, limit=limit))
+    
+    if not episodes:
+        console.print("[yellow]No results found[/]")
+        return
+    
+    # Display results
+    for i, ep in enumerate(episodes, 1):
+        console.print(f"\n[bold cyan]#{i}[/] [bold]{ep.alert_type}[/] on [yellow]{ep.service_name or 'unknown'}[/]")
+        console.print(f"   [dim]ID: {ep.id}[/]")
+        console.print(f"   [dim]Date: {ep.created_at.strftime('%Y-%m-%d %H:%M')}[/]")
+        if ep.summary:
+            console.print(f"   {ep.summary[:100]}{'...' if len(ep.summary) > 100 else ''}")
+        if ep.root_cause:
+            console.print(f"   [green]Root cause:[/] {ep.root_cause[:80]}{'...' if len(ep.root_cause) > 80 else ''}")
+        console.print(f"   [dim]Resolved: {'✅' if ep.resolved else '❌'} | Effectiveness: {ep.effectiveness_score:.2f}[/]")
 
 
 @memory_app.command("clear")
@@ -87,10 +177,21 @@ def memory_clear(
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
 ):
     """Clear all memory (use with caution)."""
+    memory = get_memory()
+    stats = memory.get_stats()
+    
+    if stats['total_episodes'] == 0:
+        console.print("[yellow]Memory is already empty[/]")
+        return
+    
+    console.print(f"[bold red]⚠️  This will delete {stats['total_episodes']} episodes and {stats['total_strategies']} strategies![/]")
+    
     if not force:
         confirm = typer.confirm("Are you sure you want to clear all memory?")
         if not confirm:
             raise typer.Abort()
+    
+    memory.clear()
     console.print("[red]🗑️ Memory cleared[/]")
 
 
