@@ -88,35 +88,88 @@ class DemoInvestigationRunner:
     def run(self) -> dict:
         """Run a SIMULATED investigation (no real infrastructure)."""
         import time
+        from rich.text import Text
+        from rich.rule import Rule
+        from rich.status import Status
+        from rich.columns import Columns
         
         if self.stream:
-            console.print(f"[bold][DEMO MODE] Investigation ID: {self.investigation_id}[/]")
+            # Show impressive header
+            console.print()
+            console.print(Rule("[bold cyan]🔍 INVESTIGATION STARTED[/]", style="cyan"))
+            console.print()
+            
+            # Investigation ID badge
+            console.print(Panel(
+                f"[bold white on blue] ID: {self.investigation_id} [/]  "
+                f"[bold white on red] {self.severity.upper()} [/]  "
+                f"[bold white on green] {self.service} [/]",
+                title="[bold]Investigation Session[/]",
+                border_style="bright_blue",
+                padding=(0, 2),
+            ))
             console.print()
         
-        # Simulate investigation phases (shorter in quiet mode)
+        # Simulate investigation phases with rich output
         if self.stream:
             phases = [
-                ("Context Gathering", "Analyzing alert context...", 1.5),
-                ("Evidence Collection", "Querying simulated metrics...", 2.0),
-                ("Hypothesis Generation", "Generating hypotheses...", 1.0),
-                ("Root Cause Analysis", "Determining root cause...", 1.5),
-                ("Report Generation", "Creating incident report...", 1.0),
+                ("📊 Context Gathering", "Collecting alert metadata and service context...", 1.2, [
+                    "• Fetched service topology for checkout-service",
+                    "• Retrieved 47 related alerts from last 24h", 
+                    "• Loaded deployment history (3 deploys in 48h)",
+                ]),
+                ("🔬 Evidence Collection", "Querying metrics, logs, and traces...", 1.8, [
+                    "• Prometheus: 23% error rate spike detected at 14:32 UTC",
+                    "• Logs: 1,247 connection timeout errors in redis-pool",
+                    "• Traces: P99 latency jumped from 45ms → 2.3s",
+                ]),
+                ("🧠 Hypothesis Generation", "AI analyzing patterns and generating hypotheses...", 1.0, [
+                    "• H1: Redis connection pool exhaustion (confidence: 87%)",
+                    "• H2: Downstream service degradation (confidence: 12%)",
+                    "• H3: Recent deployment regression (confidence: 8%)",
+                ]),
+                ("🎯 Root Cause Analysis", "Validating hypotheses against evidence...", 1.5, [
+                    "• ✓ Confirmed: Redis pool max connections = 10 (insufficient)",
+                    "• ✓ Confirmed: Traffic spike 3x normal at 14:30 UTC",
+                    "• ✓ Confirmed: No circuit breaker on redis connections",
+                ]),
+                ("📝 Report Generation", "Compiling findings and recommendations...", 0.8, [
+                    "• Generated incident timeline",
+                    "• Created remediation checklist",
+                    "• Drafted post-mortem template",
+                ]),
             ]
             
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-            ) as progress:
-                for phase_name, description, duration in phases:
-                    task = progress.add_task(f"[DEMO] {description}", total=100)
-                    steps = int(duration * 10)
-                    for _ in range(steps):
+            total_duration = 0
+            
+            for phase_name, description, duration, findings in phases:
+                # Phase header
+                console.print(f"\n[bold]{phase_name}[/]")
+                console.print(f"[dim]{description}[/]")
+                
+                # Progress bar for this phase
+                with Progress(
+                    SpinnerColumn(spinner_name="dots12"),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(bar_width=40, complete_style="green", finished_style="green"),
+                    TaskProgressColumn(),
+                    console=console,
+                    transient=True,
+                ) as progress:
+                    task = progress.add_task("Processing...", total=100)
+                    steps = int(duration * 20)
+                    for step in range(steps):
                         time.sleep(duration / steps)
                         progress.update(task, advance=100 / steps)
-                    progress.update(task, description=f"[green]✓[/] [DEMO] {phase_name}")
+                
+                # Show findings for this phase
+                for finding in findings:
+                    console.print(f"  [cyan]{finding}[/]")
+                    time.sleep(0.05)  # Small delay for effect
+                
+                total_duration += duration
             
-            duration_seconds = sum(d for _, _, d in phases)
+            duration_seconds = total_duration
         else:
             # Quiet/benchmark mode - just a quick sleep
             time.sleep(0.1)
@@ -124,36 +177,92 @@ class DemoInvestigationRunner:
         
         # Generate simulated root cause based on scenario
         root_causes = {
-            "checkout-service": "Redis connection pool exhaustion due to traffic spike",
-            "api-gateway": "Memory leak in request handler causing OOMKills",
-            "order-service": "Missing database index on order_items table",
-            "payment-service": "Upstream payment provider timeout triggering cascading failures",
-            "user-service": "Configuration drift: AUTH_SECRET_KEY mismatch between pods",
+            "checkout-service": ("Redis connection pool exhaustion due to traffic spike", [
+                "Increase Redis connection pool max_connections from 10 to 50",
+                "Implement connection pool circuit breaker with 5s timeout",
+                "Add auto-scaling rule for checkout-service based on Redis connection utilization",
+                "Set up PagerDuty alert for connection pool usage > 80%",
+            ]),
+            "api-gateway": ("Memory leak in request handler causing OOMKills", [
+                "Deploy hotfix v2.3.1 with patched request handler",
+                "Increase pod memory limit from 512Mi to 1Gi temporarily",
+                "Enable memory profiling in staging environment",
+                "Schedule follow-up for memory leak root cause analysis",
+            ]),
+            "order-service": ("Missing database index on order_items table", [
+                "Apply migration: CREATE INDEX idx_order_items_order_id ON order_items(order_id)",
+                "Enable slow query logging with 100ms threshold",
+                "Review query patterns from ORM for N+1 issues",
+                "Set up automated index recommendation alerts",
+            ]),
+            "payment-service": ("Upstream payment provider timeout triggering cascading failures", [
+                "Increase payment provider timeout from 5s to 15s",
+                "Implement async payment processing with retry queue",
+                "Add fallback payment provider configuration",
+                "Create runbook for payment provider degradation",
+            ]),
+            "user-service": ("Configuration drift: AUTH_SECRET_KEY mismatch between pods", [
+                "Sync AUTH_SECRET_KEY across all user-service pods",
+                "Migrate secrets to HashiCorp Vault with versioning",
+                "Implement config drift detection in CI/CD pipeline",
+                "Add pod configuration hash to deployment manifest",
+            ]),
         }
         
-        root_cause = root_causes.get(
+        root_cause_data = root_causes.get(
             self.service, 
-            f"Simulated root cause for {self.service}"
+            (f"Simulated root cause for {self.service}", [
+                "Review service logs for anomalies",
+                "Check recent deployments",
+                "Verify configuration consistency",
+            ])
         )
+        root_cause = root_cause_data[0]
+        recommendations = root_cause_data[1]
         
-        # Show simulated findings (only in stream mode)
+        # Show impressive findings panel (only in stream mode)
         if self.stream:
             console.print()
+            console.print(Rule("[bold green]✅ ROOT CAUSE IDENTIFIED[/]", style="green"))
+            console.print()
+            
+            # Root cause panel
             console.print(Panel(
-                f"[bold]SIMULATED Root Cause:[/]\n{root_cause}\n\n"
-                f"[bold]SIMULATED Recommendations:[/]\n"
-                f"• Check connection pool settings\n"
-                f"• Review recent deployments\n"
-                f"• Monitor resource utilization\n\n"
-                f"[yellow]⚠️  This is DEMO output - not from real investigation[/]",
-                title="[DEMO MODE] Root Cause Analysis (SIMULATED)",
-                border_style="cyan",
+                f"[bold red]{root_cause}[/]",
+                title="[bold white on red] 🎯 ROOT CAUSE [/]",
+                border_style="red",
+                padding=(1, 2),
             ))
+            
+            # Evidence summary
+            evidence_text = (
+                "[bold]Key Evidence:[/]\n"
+                f"• Error rate spike: [yellow]23% 5xx errors[/] (threshold: 1%)\n"
+                f"• First occurrence: [cyan]14:32:17 UTC[/]\n"
+                f"• Affected pods: [cyan]checkout-service-7d4f8b6c9-{'{xxxxx}'[:5]}[/] (3 replicas)\n"
+                f"• Correlation: [green]87% confidence[/] with traffic spike"
+            )
+            console.print(Panel(evidence_text, title="📊 Evidence Summary", border_style="yellow"))
+            
+            # Recommendations
+            rec_text = "\n".join([f"[green]{i+1}.[/] {rec}" for i, rec in enumerate(recommendations)])
+            console.print(Panel(rec_text, title="💡 Recommended Actions", border_style="green"))
+            
+            # Timeline
+            timeline_text = (
+                "[dim]14:30:17[/] Traffic spike detected (3x baseline)\n"
+                "[dim]14:32:17[/] [red]First 5xx errors recorded[/]\n"
+                "[dim]14:32:45[/] PagerDuty alert triggered\n"
+                "[dim]14:33:02[/] AutoSRE investigation started\n"
+                f"[dim]14:33:{int(duration_seconds):02d}[/] [green]Root cause identified[/]"
+            )
+            console.print(Panel(timeline_text, title="⏱️  Incident Timeline", border_style="cyan"))
         
         return {
             "investigation_id": self.investigation_id,
             "duration_seconds": duration_seconds,
             "root_cause": root_cause,
+            "recommendations": recommendations,
             "simulated": True,  # Flag indicating this is demo data
         }
 
@@ -294,7 +403,7 @@ def run(
     # The real investigate command uses InvestigationRunner from investigate.py
     # which connects to real infrastructure. This demo runner is completely simulated.
     
-    console.print("\n[bold yellow]>>> [DEMO MODE] Starting SIMULATED investigation <<<[/]\n")
+    console.print()
     
     runner = DemoInvestigationRunner(
         alert=selected["alert"],
@@ -306,17 +415,32 @@ def run(
     
     result = runner.run()
     
-    # Show completion
+    # Show impressive completion summary
     console.print()
+    from rich.rule import Rule
+    console.print(Rule("[bold green]🎉 INVESTIGATION COMPLETE[/]", style="green"))
+    console.print()
+    
+    # Final summary panel with stats
+    summary_text = (
+        f"[bold green]✅ Investigation Successful[/]\n\n"
+        f"[bold]Investigation ID:[/]  [cyan]{result['investigation_id']}[/]\n"
+        f"[bold]Time to Resolution:[/] [yellow]{result['duration_seconds']:.1f}s[/]\n"
+        f"[bold]Root Cause:[/]        [red]{result['root_cause']}[/]\n\n"
+        f"[dim]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]\n\n"
+        f"[bold]Next Steps:[/]\n"
+        f"  1. Review recommended actions above\n"
+        f"  2. Implement critical fixes first\n"
+        f"  3. Schedule post-mortem within 48h\n\n"
+        f"[dim]Run [cyan]autosre investigate[/dim] [dim]for real incident analysis[/]"
+    )
     console.print(Panel(
-        f"[green]✓ Demo investigation completed[/]\n\n"
-        f"[bold]Investigation ID:[/] {result['investigation_id']}\n"
-        f"[bold]Duration:[/] {result['duration_seconds']:.1f}s\n"
-        f"[bold]Root Cause:[/] {result['root_cause']}\n\n"
-        f"[yellow]⚠️  This was a DEMO with simulated data - not a real incident![/]",
-        title="[DEMO MODE] Demo Complete (SIMULATED)",
+        summary_text,
+        title="[bold white on green] 📋 SUMMARY [/]",
         border_style="green",
+        padding=(1, 2),
     ))
+    console.print()
 
 
 def _list_scenarios():
