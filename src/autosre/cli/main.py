@@ -83,56 +83,27 @@ def quick_run(
 
 
 @app.command()
-def status():
-    """Show AutoSRE status and configuration."""
-    from rich.table import Table
-    from rich.panel import Panel
-    from pathlib import Path
+def status(
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output, just show readiness"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show additional details"),
+):
+    """
+    Show comprehensive AutoSRE status and configuration.
     
-    try:
-        from autosre import __version__
-    except ImportError:
-        __version__ = "0.2.0"
+    Displays:
+    - Current configuration (provider, model)
+    - Memory stats (investigations, episodes)
+    - Last investigation summary
+    - Connected services status
+    - Version and environment info
     
-    # Create status table
-    table = Table(title="AutoSRE Status", show_header=True, header_style="bold cyan")
-    table.add_column("Component", style="cyan", width=20)
-    table.add_column("Status", style="green")
-    table.add_column("Details", style="dim")
-    
-    # Version
-    table.add_row("Version", __version__, "")
-    
-    # Config file
-    config_path = Path("~/.autosre/config.yaml").expanduser()
-    if config_path.exists():
-        table.add_row("Config", "✓ Found", str(config_path))
-    else:
-        table.add_row("Config", "[yellow]Not found[/]", str(config_path))
-    
-    # Memory database
-    memory_path = Path("~/.autosre/memory.db").expanduser()
-    if memory_path.exists():
-        size_kb = memory_path.stat().st_size / 1024
-        table.add_row("Memory", "✓ Available", f"{size_kb:.1f} KB")
-    else:
-        table.add_row("Memory", "[yellow]Not initialized[/]", "")
-    
-    # LLM Configuration
-    try:
-        from autosre.config import Settings
-        settings = Settings()
-        table.add_row("LLM Provider", settings.llm_provider, settings.anthropic_model if settings.llm_provider == "anthropic" else settings.openai_model if settings.llm_provider == "openai" else settings.ollama_model)
-    except Exception:
-        table.add_row("LLM", "[yellow]Not configured[/]", "Set OPENSRE_LLM_PROVIDER")
-    
-    # Environment
-    import os
-    table.add_row("Python", os.sys.version.split()[0], "")
-    
-    console.print()
-    console.print(Panel(table, title="[bold]🤖 AutoSRE[/]", border_style="cyan"))
-    console.print()
+    Examples:
+        autosre status           # Full status display
+        autosre status -q        # Quick readiness check
+        autosre status -v        # Verbose with extra details
+    """
+    from autosre.cli.commands.status import run_status
+    run_status(quiet=quiet, verbose=verbose)
 
 
 def main():
