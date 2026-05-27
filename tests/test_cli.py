@@ -82,3 +82,45 @@ class TestQuickRun:
         result = runner.invoke(app, ["run", "--help"])
         assert result.exit_code == 0
         assert "ALERT" in result.output or "alert" in result.output.lower()
+
+
+class TestCompletion:
+    """Test shell completion command."""
+    
+    def test_completion_help(self, runner):
+        """Test completion --help."""
+        result = runner.invoke(app, ["completion", "--help"])
+        assert result.exit_code == 0
+        assert "bash" in result.output.lower()
+        assert "zsh" in result.output.lower()
+        assert "fish" in result.output.lower()
+    
+    def test_completion_bash(self, runner):
+        """Test bash completion script generation."""
+        result = runner.invoke(app, ["completion", "bash"])
+        assert result.exit_code == 0
+        assert "_autosre_completion" in result.output
+        assert "COMPREPLY" in result.output
+        assert "_AUTOSRE_COMPLETE" in result.output
+    
+    def test_completion_zsh(self, runner):
+        """Test zsh completion script generation."""
+        result = runner.invoke(app, ["completion", "zsh"])
+        assert result.exit_code == 0
+        assert "#compdef autosre" in result.output
+        assert "_autosre_completion" in result.output
+        assert "_AUTOSRE_COMPLETE" in result.output
+    
+    def test_completion_fish(self, runner):
+        """Test fish completion script generation."""
+        result = runner.invoke(app, ["completion", "fish"])
+        assert result.exit_code == 0
+        assert "complete --command autosre" in result.output
+        assert "_AUTOSRE_COMPLETE" in result.output
+    
+    def test_completion_without_shell_arg(self, runner):
+        """Test completion without shell argument (should prompt or auto-detect)."""
+        result = runner.invoke(app, ["completion"])
+        # Should either auto-detect or ask for shell
+        # In test environment, it typically can't detect, so should exit with message
+        assert "shell" in result.output.lower() or result.exit_code == 0

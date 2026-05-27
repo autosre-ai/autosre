@@ -2,9 +2,16 @@
 AutoSRE CLI - AI SRE Agent command-line interface.
 
 Production CLI built with Typer and Rich for beautiful output.
+
+Shell Completion Support:
+    AutoSRE supports shell completion for bash, zsh, and fish.
+    Use the built-in --install-completion or --show-completion options,
+    or use the dedicated 'completion' command for more control.
 """
 
 import typer
+from enum import Enum
+from typing import Optional
 from rich.console import Console
 
 # Create main Typer app
@@ -109,6 +116,95 @@ def status(
     """
     from autosre.cli.commands.status import run_status
     run_status(quiet=quiet, verbose=verbose)
+
+
+class ShellType(str, Enum):
+    """Supported shell types for completion."""
+    bash = "bash"
+    zsh = "zsh"
+    fish = "fish"
+
+
+@app.command()
+def completion(
+    shell: Optional[ShellType] = typer.Argument(
+        None,
+        help="Shell type: bash, zsh, or fish. Auto-detects if not specified.",
+    ),
+    install: bool = typer.Option(
+        False,
+        "--install",
+        "-i",
+        help="Install completion script to shell config file.",
+    ),
+):
+    """
+    Shell completion for bash, zsh, and fish.
+    
+    [bold]Show completion script:[/]
+        autosre completion bash     # Output bash completion script
+        autosre completion zsh      # Output zsh completion script
+        autosre completion fish     # Output fish completion script
+    
+    [bold]Install completion:[/]
+        autosre completion bash --install
+        autosre completion zsh --install
+        autosre completion fish --install
+    
+    [bold]Manual installation:[/]
+        Bash:  autosre completion bash >> ~/.bashrc
+        Zsh:   autosre completion zsh >> ~/.zshrc
+        Fish:  autosre completion fish > ~/.config/fish/completions/autosre.fish
+    
+    After installation, restart your shell or run:
+        source ~/.bashrc   # (or ~/.zshrc for zsh)
+    """
+    from typer.completion import get_completion_script, install as install_completion
+    import os
+    
+    # Detect shell if not specified
+    if shell is None:
+        try:
+            import shellingham
+            detected_shell, _ = shellingham.detect_shell()
+            shell_name = detected_shell.lower()
+            if shell_name in ["bash", "zsh", "fish"]:
+                shell = ShellType(shell_name)
+            else:
+                console.print(f"[yellow]Detected shell '{detected_shell}' is not supported.[/]")
+                console.print("Please specify: [cyan]autosre completion bash|zsh|fish[/]")
+                raise typer.Exit(1)
+        except Exception:
+            console.print("[yellow]Could not detect shell.[/]")
+            console.print("Please specify: [cyan]autosre completion bash|zsh|fish[/]")
+            raise typer.Exit(1)
+    
+    shell_value = shell.value
+    
+    if install:
+        # Use Typer's built-in installation mechanism
+        try:
+            install_completion(shell_value)
+            console.print(f"[green]✓[/] Completion installed for {shell_value}")
+            console.print("[dim]Restart your shell or source your config file to activate.[/]")
+        except Exception as e:
+            console.print(f"[red]Installation failed:[/] {e}")
+            console.print(f"\n[yellow]Manual installation:[/]")
+            if shell_value == "bash":
+                console.print("  autosre completion bash >> ~/.bashrc")
+            elif shell_value == "zsh":
+                console.print("  autosre completion zsh >> ~/.zshrc")
+            else:
+                console.print("  autosre completion fish > ~/.config/fish/completions/autosre.fish")
+            raise typer.Exit(1)
+    else:
+        # Output the completion script
+        script = get_completion_script(
+            prog_name="autosre",
+            complete_var="_AUTOSRE_COMPLETE",
+            shell=shell_value,
+        )
+        console.print(script, highlight=False)
 
 
 def main():
