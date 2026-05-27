@@ -109,12 +109,14 @@ class InvestigationRunner:
         severity: str = "high",
         output_format: str = "text",
         stream: bool = True,
+        demo: bool = False,
     ):
         self.alert = alert
         self.service = service
         self.severity = severity
         self.output_format = output_format
         self.stream = stream
+        self.demo = demo
         self.investigation_id = str(uuid4())[:8]
         self.start_time = datetime.now(UTC)
         
@@ -124,8 +126,14 @@ class InvestigationRunner:
         self.root_cause: Optional[str] = None
         self.report: Optional[str] = None
         
-        # Load configuration
-        self.config = load_config()
+        # Load configuration (allow missing in demo mode)
+        try:
+            self.config = load_config()
+        except ConfigurationError:
+            if demo:
+                self.config = {}
+            else:
+                raise
         
         # Initialize skill instances (lazy loading)
         self._prometheus_skill = None
@@ -211,6 +219,7 @@ class InvestigationRunner:
         memory = EpisodicMemory()
         
         # Phase 1: Context Gathering
+        mode_text = "Demo (Simulated Data)" if self.demo else "Live (Real Infrastructure)"
         if self.stream:
             console.print()
             console.print(Panel(
@@ -218,7 +227,7 @@ class InvestigationRunner:
                 f"[bold]Alert:[/] {self.alert}\n"
                 f"[bold]Service:[/] {self.service or 'auto-detect'}\n"
                 f"[bold]Severity:[/] {self.severity}\n"
-                f"[bold]Mode:[/] Live (Real Infrastructure)",
+                f"[bold]Mode:[/] {mode_text}",
                 title="Investigation Started",
                 border_style="cyan",
             ))
@@ -322,6 +331,10 @@ class InvestigationRunner:
     
     async def _collect_real_evidence(self) -> list:
         """Collect real evidence from configured infrastructure sources."""
+        # In demo mode, return simulated evidence
+        if self.demo:
+            return self._generate_demo_evidence()
+        
         evidence = []
         errors = []
         
@@ -365,8 +378,91 @@ class InvestigationRunner:
             raise ConfigurationError(
                 f"No evidence could be collected. Infrastructure errors:\n" +
                 "\n".join(f"  - {err}" for err in errors) +
-                "\n\nPlease configure at least one data source in ~/.autosre/config.yaml"
+                "\n\nPlease configure at least one data source in ~/.autosre/config.yaml\n"
+                "Or use --demo flag to run with simulated data."
             )
+        
+        return evidence
+    
+    def _generate_demo_evidence(self) -> list:
+        """Generate simulated evidence for demo mode based on alert type."""
+        import random
+        evidence = []
+        alert_type = self._classify_alert()
+        service = self.service or "api-gateway"
+        
+        # Prometheus-like metrics evidence
+        prom_data = {}
+        if alert_type == "latency":
+            prom_data = {
+                "p99_latency": f"{random.uniform(1.5, 5.0):.2f}s",
+                "p50_latency": f"{random.uniform(0.3, 0.8):.2f}s",
+                "request_rate": f"{random.randint(100, 500)}/s",
+                "active_alerts": random.randint(1, 3),
+            }
+        elif alert_type == "error_rate":
+            prom_data = {
+                "error_rate": f"{random.uniform(5.0, 25.0):.1f}%",
+                "5xx_count": random.randint(50, 500),
+                "request_rate": f"{random.randint(200, 800)}/s",
+                "active_alerts": random.randint(2, 5),
+            }
+        elif alert_type == "resource_exhaustion":
+            prom_data = {
+                "cpu_usage": f"{random.uniform(85, 98):.1f}%",
+                "memory_usage": f"{random.uniform(80, 95):.1f}%",
+                "container_restarts": random.randint(1, 10),
+            }
+        else:
+            prom_data = {
+                "request_rate": f"{random.randint(100, 500)}/s",
+                "error_rate": f"{random.uniform(0.5, 5.0):.1f}%",
+                "p99_latency": f"{random.uniform(0.5, 2.0):.2f}s",
+            }
+        
+        evidence.append({
+            "source": "prometheus (demo)",
+            "confidence": 0.85,
+            "data": prom_data,
+        })
+        
+        # Kubernetes-like evidence
+        k8s_data = {
+            "pod_status": f"{random.randint(2, 4)}/{random.randint(3, 5)} Running",
+            "restarts": random.randint(0, 8),
+        }
+        if alert_type == "resource_exhaustion":
+            k8s_data["warning_events"] = random.randint(3, 10)
+            k8s_data["top_event"] = random.choice(["OOMKilled", "FailedScheduling", "BackOff"])
+        elif alert_type in ["error_rate", "latency"]:
+            k8s_data["warning_events"] = random.randint(1, 5)
+            k8s_data["top_event"] = random.choice(["Unhealthy", "FailedLiveness", "BackOff"])
+        
+        evidence.append({
+            "source": "kubernetes (demo)",
+            "confidence": 0.80,
+            "data": k8s_data,
+        })
+        
+        # Logs-like evidence
+        logs_data = {
+            "error_count": random.randint(50, 500),
+            "pattern_matches": random.randint(100, 1000),
+        }
+        if alert_type == "latency":
+            logs_data["sample_error"] = f"Connection timeout after 30s connecting to upstream service"
+        elif alert_type == "error_rate":
+            logs_data["sample_error"] = f"NullPointerException in RequestHandler.process()"
+        elif alert_type == "resource_exhaustion":
+            logs_data["sample_error"] = f"OutOfMemoryError: Java heap space"
+        else:
+            logs_data["sample_error"] = f"Service {service} returned error: connection refused"
+        
+        evidence.append({
+            "source": "logs (demo)",
+            "confidence": 0.75,
+            "data": logs_data,
+        })
         
         return evidence
     
@@ -655,13 +751,14 @@ Respond in JSON format:
     def _generate_fallback_hypotheses(self) -> list:
         """Generate rule-based hypotheses when LLM is unavailable."""
         hypotheses = []
+        alert_type = self._classify_alert()
         
         # Analyze evidence to generate hypotheses
         for ev in self.evidence:
-            source = ev.get("source", "")
+            source = ev.get("source", "").lower()
             data = ev.get("data", {})
             
-            if source == "prometheus":
+            if "prometheus" in source:
                 if data.get("error_rate"):
                     hypotheses.append({
                         "title": "Elevated error rate indicating application issues",
@@ -671,8 +768,26 @@ Respond in JSON format:
                             "Prometheus metrics show increased failures"
                         ]
                     })
+                if data.get("p99_latency"):
+                    hypotheses.append({
+                        "title": "High latency indicating performance degradation",
+                        "likelihood": 0.75,
+                        "supporting_evidence": [
+                            f"P99 latency: {data['p99_latency']}",
+                            "Response times exceed normal thresholds"
+                        ]
+                    })
+                if data.get("cpu_usage") or data.get("memory_usage"):
+                    hypotheses.append({
+                        "title": "Resource exhaustion causing service degradation",
+                        "likelihood": 0.8,
+                        "supporting_evidence": [
+                            f"CPU: {data.get('cpu_usage', 'N/A')}, Memory: {data.get('memory_usage', 'N/A')}",
+                            "Container may need more resources or has a leak"
+                        ]
+                    })
             
-            if source == "kubernetes":
+            if "kubernetes" in source:
                 if data.get("restarts", 0) > 0:
                     hypotheses.append({
                         "title": "Pod instability causing service disruption",
@@ -682,8 +797,17 @@ Respond in JSON format:
                             f"Pod status: {data.get('pod_status', 'unknown')}"
                         ]
                     })
+                if data.get("top_event"):
+                    hypotheses.append({
+                        "title": f"Kubernetes event: {data['top_event']}",
+                        "likelihood": 0.6,
+                        "supporting_evidence": [
+                            f"Warning events: {data.get('warning_events', 0)}",
+                            f"Most common event: {data['top_event']}"
+                        ]
+                    })
             
-            if source == "logs":
+            if "logs" in source:
                 if data.get("error_count", 0) > 0:
                     hypotheses.append({
                         "title": "Application errors detected in logs",
@@ -693,6 +817,27 @@ Respond in JSON format:
                             data.get("sample_error", "")[:100] if data.get("sample_error") else ""
                         ]
                     })
+        
+        # Add alert-type specific hypotheses if we don't have enough
+        if len(hypotheses) < 3:
+            if alert_type == "latency":
+                hypotheses.append({
+                    "title": "Upstream dependency experiencing slowdown",
+                    "likelihood": 0.55,
+                    "supporting_evidence": [
+                        f"Alert indicates: {self.alert}",
+                        "Check downstream service dependencies"
+                    ]
+                })
+            elif alert_type == "error_rate":
+                hypotheses.append({
+                    "title": "Recent deployment may have introduced bugs",
+                    "likelihood": 0.5,
+                    "supporting_evidence": [
+                        "Check recent deployments and config changes",
+                        "Review error patterns for root cause"
+                    ]
+                })
         
         # Sort by likelihood
         hypotheses.sort(key=lambda x: x["likelihood"], reverse=True)
@@ -759,6 +904,7 @@ def run(
     output: str = typer.Option("text", "--output", "-o", help="Output format: text|json|markdown"),
     stream: bool = typer.Option(True, "--stream/--no-stream", help="Stream output in real-time"),
     save: Optional[Path] = typer.Option(None, "--save", help="Save report to file"),
+    demo: bool = typer.Option(False, "--demo", "-d", help="Run with simulated data (no infrastructure required)"),
 ):
     """
     Start an AI-powered investigation using real infrastructure.
@@ -770,6 +916,7 @@ def run(
         autosre investigate run "High error rate on checkout"
         autosre investigate run "API latency spike" --service api-gateway
         autosre investigate run "Redis connection errors" --output json --save report.json
+        autosre investigate run "API latency spike" --demo  # Run without infrastructure
     """
     try:
         runner = InvestigationRunner(
@@ -778,6 +925,7 @@ def run(
             severity=severity,
             output_format=output,
             stream=stream,
+            demo=demo,
         )
         
         result = runner.run()

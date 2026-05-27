@@ -57,6 +57,16 @@ class TestInvestigateCommands:
         result = runner.invoke(app, ["investigate", "run", "--help"])
         assert result.exit_code == 0
         assert "--service" in result.output or "ALERT" in result.output
+        assert "--demo" in result.output
+    
+    def test_investigate_run_demo_mode(self, runner):
+        """Test investigate run --demo produces output."""
+        result = runner.invoke(app, ["investigate", "run", "API latency spike", "--demo", "--no-stream"])
+        assert result.exit_code == 0
+        # Check for expected demo output
+        assert "Investigation" in result.output
+        assert "Demo" in result.output or "demo" in result.output.lower()
+        assert "Evidence" in result.output or "evidence" in result.output.lower()
     
     def test_investigate_history_help(self, runner):
         """Test investigate history --help."""
