@@ -81,6 +81,9 @@ def quick_run(
         output=output,
         stream=True,
         save=None,
+        demo=False,
+        watch=False,
+        watch_interval=60,
     )
 
 
