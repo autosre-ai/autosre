@@ -11,7 +11,7 @@ Example: 99.9% monthly SLO
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Optional
 import logging
@@ -72,7 +72,7 @@ class ErrorBudget:
     
     # Metadata
     service: str
-    calculated_at: datetime = field(default_factory=datetime.utcnow)
+    calculated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     window_start: Optional[datetime] = None
     window_end: Optional[datetime] = None
 

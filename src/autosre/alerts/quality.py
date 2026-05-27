@@ -7,7 +7,7 @@ Key principle: Pages must be clear failure, actionable, user-visible impact.
 
 from dataclasses import dataclass, field
 from typing import Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 
@@ -53,7 +53,7 @@ class AlertQualityResult:
     warnings: list[str] = field(default_factory=list)
     suggestions: list[str] = field(default_factory=list)
     field_scores: dict[str, float] = field(default_factory=dict)
-    validated_at: datetime = field(default_factory=datetime.utcnow)
+    validated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""

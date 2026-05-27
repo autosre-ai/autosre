@@ -12,7 +12,7 @@ import os
 import subprocess
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from urllib.parse import urljoin, urlencode
 
@@ -213,7 +213,7 @@ class LogsTools(BaseSRETool):
                     headers["Authorization"] = f"Basic {encoded}"
                 
                 # Calculate time range
-                now = datetime.utcnow()
+                now = datetime.now(timezone.utc)
                 duration_map = {"m": "minutes", "h": "hours", "d": "days"}
                 unit = time_range[-1]
                 value = int(time_range[:-1])

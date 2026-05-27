@@ -313,14 +313,14 @@ async def refresh_stale_strategies(
     Returns:
         List of refreshed strategies
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     from . import store
     
     # Get strategies expiring within 24 hours
     strategies = await store.list_strategies(org_id, include_expired=True)
     
     refreshed = []
-    threshold = datetime.utcnow() + timedelta(hours=24)
+    threshold = datetime.now(timezone.utc) + timedelta(hours=24)
     
     for strategy in strategies:
         if strategy.expires_at and strategy.expires_at < threshold:

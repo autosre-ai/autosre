@@ -10,7 +10,7 @@ Provides centralized plugin management:
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable, Optional, Type
 
@@ -49,7 +49,7 @@ class PluginEntry:
     """Internal entry for a registered plugin."""
     
     plugin: Plugin
-    registered_at: datetime = field(default_factory=datetime.utcnow)
+    registered_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     load_order: int = 0
     enabled: bool = True
     error_count: int = 0

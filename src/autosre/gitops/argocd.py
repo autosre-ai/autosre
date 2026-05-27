@@ -14,7 +14,7 @@ import hashlib
 import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Callable, Optional
 
@@ -438,7 +438,7 @@ class ArgoCDWebhook:
     resource_namespace: Optional[str] = None
     
     # Timestamps
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Raw event data
     raw_data: dict[str, Any] = field(default_factory=dict)
@@ -687,7 +687,7 @@ class ArgoCDClient:
             success=True,
             message="Sync initiated",
             revision=data.get("spec", {}).get("source", {}).get("targetRevision"),
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
     
     async def rollback_application(
@@ -722,7 +722,7 @@ class ArgoCDClient:
         return SyncOperationResult(
             success=True,
             message=f"Rollback to revision {revision_id} initiated",
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
     
     async def terminate_operation(self, name: str) -> bool:
@@ -828,9 +828,9 @@ class ArgoCDClient:
         Raises:
             TimeoutError: If target health not reached within timeout
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
-        while (datetime.utcnow() - start_time).total_seconds() < timeout:
+        while (datetime.now(timezone.utc) - start_time).total_seconds() < timeout:
             status = await self.get_health_status(name)
             
             if status.health == target_health:
@@ -858,9 +858,9 @@ class ArgoCDClient:
         Returns:
             Final application status
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
-        while (datetime.utcnow() - start_time).total_seconds() < timeout:
+        while (datetime.now(timezone.utc) - start_time).total_seconds() < timeout:
             status = await self.get_health_status(name)
             
             if status.is_synced():

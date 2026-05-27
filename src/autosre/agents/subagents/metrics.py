@@ -209,7 +209,7 @@ class MetricsSubagent(BaseSubagent):
             step: str = "1m",
         ) -> str:
             """Execute range PromQL query over a time window."""
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             
             # Parse duration
             duration_map = {

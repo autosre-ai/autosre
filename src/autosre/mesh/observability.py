@@ -11,7 +11,7 @@ Provides unified observability for service mesh:
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -124,7 +124,7 @@ class LatencyMetrics:
     """Latency metrics for a service."""
     
     histogram: LatencyHistogram
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     window_seconds: int = 60
 
 
@@ -144,7 +144,7 @@ class ErrorMetrics:
     # By status code
     errors_by_code: dict[int, int] = field(default_factory=dict)
     
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass 
@@ -155,7 +155,7 @@ class ErrorRateMetric:
     namespace: str
     error_rate: float
     category: ErrorCategory
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -167,7 +167,7 @@ class ThroughputMetrics:
     bytes_out_per_second: float
     active_connections: int
     
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -183,7 +183,7 @@ class RequestMetrics:
     by_path: dict[str, int] = field(default_factory=dict)
     by_status_code: dict[int, int] = field(default_factory=dict)
     
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -205,7 +205,7 @@ class ServiceMetrics:
     requests: RequestMetrics
     
     # Metadata
-    collected_at: datetime = field(default_factory=datetime.utcnow)
+    collected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     window_seconds: int = 60
 
 
@@ -247,7 +247,7 @@ class GoldenSignals:
     latency_trend: str = "stable"  # increasing, decreasing, stable
     traffic_trend: str = "stable"
     error_trend: str = "stable"
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     def is_healthy(
         self,
@@ -296,7 +296,7 @@ class SLOCompliance:
     time_until_budget_exhausted: Optional[timedelta] = None
     
     # Window
-    window_start: datetime = field(default_factory=datetime.utcnow)
+    window_start: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     window_end: Optional[datetime] = None
     
     def to_dict(self) -> dict[str, Any]:
@@ -445,7 +445,7 @@ class ServiceTopology:
     
     # Metadata
     namespace: Optional[str] = None
-    collected_at: datetime = field(default_factory=datetime.utcnow)
+    collected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     def get_upstream(self, service_name: str) -> list[str]:
         """Get services that call this service."""
@@ -468,7 +468,7 @@ class TopologySnapshot:
     
     id: str
     topology: ServiceTopology
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     description: str = ""
 
 
@@ -490,7 +490,7 @@ class HealthCheckResult:
     message: str = ""
     
     # Timing
-    checked_at: datetime = field(default_factory=datetime.utcnow)
+    checked_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Metadata
     endpoint: str = ""

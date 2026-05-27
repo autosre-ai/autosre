@@ -152,8 +152,8 @@ class EscalationPolicy(BaseModel):
     on_resolution_webhook: Optional[str] = None
     
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     def add_level(
         self,
@@ -174,7 +174,7 @@ class EscalationPolicy(BaseModel):
         )
         
         self.levels.append(level)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
         return level
     
     def get_level(self, level_num: int) -> Optional[EscalationLevel]:
@@ -274,7 +274,7 @@ class ActiveEscalation(BaseModel):
     events: list[dict] = Field(default_factory=list)  # EscalationEvent as dict
     
     # Timing
-    started_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     last_escalation_at: Optional[datetime] = None
     last_notification_at: Optional[datetime] = None
     timeout_at: Optional[datetime] = None

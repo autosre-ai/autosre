@@ -22,7 +22,7 @@ import logging
 import time
 from typing import Any, Callable, Optional, Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +72,7 @@ class Tool(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
     
     # The actual callable - not serialized
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     
     _executor: Optional[Callable[..., str]] = None
     

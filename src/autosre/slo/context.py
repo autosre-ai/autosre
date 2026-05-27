@@ -103,7 +103,7 @@ class SLOContext:
     # Recommendations
     recommendations: list[str] = field(default_factory=list)
     
-    generated_at: datetime = field(default_factory=datetime.utcnow)
+    generated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     def to_dict(self) -> dict[str, Any]:
         return {

@@ -5,7 +5,7 @@ Tests cascading failure detection, pattern analysis, and recovery planning.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from autosre.skills.cascading_failure import (
     CascadingFailureAnalyzer,
@@ -421,7 +421,7 @@ class TestRecoveryPlanner:
         )
         
         assert plan.estimated_completion is not None
-        assert plan.estimated_completion > datetime.utcnow()
+        assert plan.estimated_completion > datetime.now(timezone.utc)
     
     def test_plan_progress_tracking(self):
         """Test progress tracking."""

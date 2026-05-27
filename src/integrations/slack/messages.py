@@ -8,7 +8,7 @@ with the Slack API.
 Block Kit Reference: https://api.slack.com/block-kit
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 
@@ -82,7 +82,7 @@ def format_investigation_start(
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": f"⏱️ Started at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC | "
+                    "text": f"⏱️ Started at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC | "
                             f"React with 👍/👎 to provide feedback on results",
                 },
             ],

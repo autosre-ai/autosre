@@ -99,7 +99,7 @@ class UserAvailabilityWindow(BaseModel):
     end: datetime
     reason: str = ""
     created_by: str = ""
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     def is_active_at(self, dt: datetime) -> bool:
         """Check if this availability window is active."""
@@ -205,15 +205,15 @@ class Rotation(BaseModel):
     # State
     current_index: int = Field(default=0)
     current_oncall: Optional[str] = None
-    rotation_start: datetime = Field(default_factory=datetime.utcnow)
+    rotation_start: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     last_rotation: Optional[datetime] = None
     
     # Constraints
     constraints: Optional[RotationConstraint] = None
     
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     def add_member(
         self,
@@ -230,7 +230,7 @@ class Rotation(BaseModel):
             role=role,
         )
         self.members.append(member)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
         return member
     
     def remove_member(self, user_id: str) -> bool:
@@ -242,7 +242,7 @@ class Rotation(BaseModel):
             # Adjust index if needed
             if self.current_index >= len(self.members):
                 self.current_index = 0
-            self.updated_at = datetime.utcnow()
+            self.updated_at = datetime.now(timezone.utc)
             return True
         return False
     
@@ -280,7 +280,7 @@ class Rotation(BaseModel):
         self.current_index = (self.current_index + 1) % len(available)
         selected = available[self.current_index]
         self.current_oncall = selected.user_id
-        self.last_rotation = datetime.utcnow()
+        self.last_rotation = datetime.now(timezone.utc)
         return selected
     
     def _advance_weighted(self, available: list[RotationMember]) -> RotationMember:
@@ -298,7 +298,7 @@ class Rotation(BaseModel):
             cumulative += member.weight
             if rand_val <= cumulative:
                 self.current_oncall = member.user_id
-                self.last_rotation = datetime.utcnow()
+                self.last_rotation = datetime.now(timezone.utc)
                 return member
         
         # Fallback
@@ -313,7 +313,7 @@ class Rotation(BaseModel):
         )
         selected = sorted_members[0]
         self.current_oncall = selected.user_id
-        self.last_rotation = datetime.utcnow()
+        self.last_rotation = datetime.now(timezone.utc)
         return selected
     
     def get_rotation_schedule(self, days: int = 30) -> list[dict[str, Any]]:
@@ -636,7 +636,7 @@ class RotationManager:
         report = {
             "rotation_id": rotation_id,
             "rotation_name": rotation.name,
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "members": [],
             "summary": {},
         }

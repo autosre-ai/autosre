@@ -76,9 +76,9 @@ class HandoffItem(BaseModel):
     service_affected: str = ""
     
     # Tracking
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     created_by: str = ""
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Action items
     action_required: str = ""
@@ -90,12 +90,12 @@ class HandoffItem(BaseModel):
     
     def add_note(self, note: str, by: str = "") -> None:
         """Add a note to the item."""
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(timezone.utc).isoformat()
         prefix = f"[{timestamp}]"
         if by:
             prefix = f"[{timestamp} - {by}]"
         self.notes = f"{self.notes}\n{prefix} {note}".strip()
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
 
 class IncidentSummary(BaseModel):
@@ -202,13 +202,13 @@ class Handoff(BaseModel):
     acknowledgment_time: Optional[datetime] = None
     
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     def add_incident(self, incident: IncidentSummary) -> None:
         """Add an incident to the handoff."""
         self.incidents.append(incident)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
     
     def add_item(
         self,
@@ -228,7 +228,7 @@ class Handoff(BaseModel):
             **kwargs,
         )
         self.handoff_items.append(item)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
         return item
     
     def acknowledge(self, by: str) -> bool:
@@ -237,21 +237,21 @@ class Handoff(BaseModel):
             return False
         
         self.acknowledged_by_incoming = True
-        self.acknowledgment_time = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        self.acknowledgment_time = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
         return True
     
     def start(self) -> None:
         """Start the handoff process."""
         self.status = HandoffStatus.IN_PROGRESS
-        self.started_at = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        self.started_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
     
     def complete(self) -> None:
         """Complete the handoff."""
         self.status = HandoffStatus.COMPLETED
-        self.completed_at = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        self.completed_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
     
     def get_critical_items(self) -> list[HandoffItem]:
         """Get critical priority items."""
@@ -497,7 +497,7 @@ class HandoffManager:
                 title=inc_data.get("title", ""),
                 severity=inc_data.get("severity", "medium"),
                 status=inc_data.get("status", "open"),
-                started_at=datetime.fromisoformat(inc_data["started_at"]) if "started_at" in inc_data else datetime.utcnow(),
+                started_at=datetime.fromisoformat(inc_data["started_at"]) if "started_at" in inc_data else datetime.now(timezone.utc),
                 description=inc_data.get("description", ""),
                 resolution=inc_data.get("resolution", ""),
                 services_affected=inc_data.get("services", []),
@@ -523,8 +523,8 @@ class HandoffManager:
         if shift_stats:
             handoff.shift_summary = ShiftSummary(
                 on_call_user=handoff.outgoing_user,
-                shift_start=datetime.fromisoformat(shift_stats.get("start", datetime.utcnow().isoformat())),
-                shift_end=datetime.fromisoformat(shift_stats.get("end", datetime.utcnow().isoformat())),
+                shift_start=datetime.fromisoformat(shift_stats.get("start", datetime.now(timezone.utc).isoformat())),
+                shift_end=datetime.fromisoformat(shift_stats.get("end", datetime.now(timezone.utc).isoformat())),
                 total_incidents=shift_stats.get("total_incidents", len(incidents)),
                 critical_incidents=shift_stats.get("critical_incidents", 0),
                 high_incidents=shift_stats.get("high_incidents", 0),
@@ -533,7 +533,7 @@ class HandoffManager:
             )
         
         handoff.status = HandoffStatus.READY
-        handoff.updated_at = datetime.utcnow()
+        handoff.updated_at = datetime.now(timezone.utc)
         
         return handoff
     
@@ -726,7 +726,7 @@ def create_quick_handoff(
                 title=inc.get("title", ""),
                 severity=inc.get("severity", "medium"),
                 status=inc.get("status", "open"),
-                started_at=datetime.utcnow(),
+                started_at=datetime.now(timezone.utc),
                 description=inc.get("description", ""),
             )
             handoff.add_incident(summary)

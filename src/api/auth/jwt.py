@@ -1,7 +1,7 @@
 """JWT Authentication middleware."""
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Security, status
@@ -41,7 +41,7 @@ class JWTAuth:
         team_id: str | None = None,
     ) -> str:
         """Create a new JWT token."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         expires = now + timedelta(hours=self.expiration_hours)
 
         payload = {
@@ -162,8 +162,8 @@ def require_scope(scope: str):
     ) -> User:
         token_data = TokenData(
             sub=user.user_id,
-            exp=datetime.utcnow() + timedelta(hours=1),  # Placeholder
-            iat=datetime.utcnow(),
+            exp=datetime.now(timezone.utc) + timedelta(hours=1),  # Placeholder
+            iat=datetime.now(timezone.utc),
             scopes=user.scopes,
             team_id=user.team_id,
         )

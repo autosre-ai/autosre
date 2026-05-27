@@ -11,7 +11,7 @@ Provides comprehensive database health monitoring:
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -136,7 +136,7 @@ class CheckResult(BaseModel):
     value: Optional[float] = None
     threshold: Optional[float] = None
     details: dict[str, Any] = Field(default_factory=dict)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     duration_ms: float = Field(default=0.0, description="Check execution time in ms")
 
 
@@ -197,7 +197,7 @@ class HealthAlert(BaseModel):
     check_type: CheckType
     message: str
     details: dict[str, Any] = Field(default_factory=dict)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     acknowledged: bool = False
 
 
@@ -216,7 +216,7 @@ class DatabaseHealthReport(BaseModel):
     long_running_queries: list[LongRunningQuery] = Field(default_factory=list)
     recent_deadlocks: list[DeadlockInfo] = Field(default_factory=list)
     alerts: list[HealthAlert] = Field(default_factory=list)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     check_duration_ms: float = Field(default=0.0, description="Total check duration")
 
 
@@ -251,7 +251,7 @@ class DatabaseHealthChecker:
     
     async def check_health(self) -> DatabaseHealthReport:
         """Perform all configured health checks."""
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         check_results = []
         alerts = []
         
@@ -273,7 +273,7 @@ class DatabaseHealthChecker:
         # Determine overall status
         overall_status = self._calculate_overall_status(check_results)
         
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         duration_ms = (end_time - start_time).total_seconds() * 1000
         
         report = DatabaseHealthReport(
@@ -299,7 +299,7 @@ class DatabaseHealthChecker:
     
     async def _run_check(self, check_type: CheckType) -> CheckResult:
         """Run a specific health check."""
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         try:
             if check_type == CheckType.CONNECTIVITY:
@@ -343,7 +343,7 @@ class DatabaseHealthChecker:
                 message=f"Check failed: {str(e)}",
             )
         finally:
-            end_time = datetime.utcnow()
+            end_time = datetime.now(timezone.utc)
             duration_ms = (end_time - start_time).total_seconds() * 1000
     
     async def _check_connectivity(self) -> CheckResult:
@@ -591,7 +591,7 @@ class DatabaseHealthChecker:
         level = AlertLevel.CRITICAL if result.status == HealthStatus.UNHEALTHY else AlertLevel.WARNING
         
         return HealthAlert(
-            alert_id=f"{result.check_type.value}_{datetime.utcnow().timestamp()}",
+            alert_id=f"{result.check_type.value}_{datetime.now(timezone.utc).timestamp()}",
             level=level,
             check_type=result.check_type,
             message=result.message,

@@ -6,7 +6,7 @@ State machine for tracking investigation progress.
 from enum import Enum, auto
 from typing import List, Optional
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class InvestigationState(Enum):
@@ -28,7 +28,7 @@ class StateTransition:
     """Record of a state transition."""
     from_state: InvestigationState
     to_state: InvestigationState
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     reason: Optional[str] = None
 
 

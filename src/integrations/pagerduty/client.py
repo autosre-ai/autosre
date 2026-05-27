@@ -6,7 +6,7 @@ See: https://developer.pagerduty.com/api-reference/
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlencode
 
@@ -774,7 +774,7 @@ class PagerDutyClient:
         Returns:
             List of OnCall objects for the specified level
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         oncalls = await self.list_oncalls(
             escalation_policy_ids=[escalation_policy_id],
             since=now - timedelta(minutes=1),
@@ -924,7 +924,7 @@ class PagerDutyClient:
             return []
         
         # Get incidents for the same service
-        since = datetime.utcnow() - timedelta(hours=lookback_hours)
+        since = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
         incidents = await self.list_incidents(
             service_ids=[service_id],
             since=since,

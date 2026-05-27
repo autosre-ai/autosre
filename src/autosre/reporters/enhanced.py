@@ -8,7 +8,7 @@ Generates comprehensive investigation reports with:
 - AI telemetry for postmortem analysis
 """
 from typing import Optional, Dict, List, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass
 import json
 import logging
@@ -448,7 +448,7 @@ class EnhancedReporter:
         if state.completed_at:
             duration = (state.completed_at - state.started_at).total_seconds()
         else:
-            duration = (datetime.utcnow() - state.started_at).total_seconds()
+            duration = (datetime.now(timezone.utc) - state.started_at).total_seconds()
         
         if duration < 60:
             return f"{duration:.0f} seconds"
@@ -562,7 +562,7 @@ class PostmortemGenerator:
     
     def _calculate_duration(self, state: EnhancedInvestigationState) -> str:
         """Calculate human-readable duration."""
-        end = state.completed_at or datetime.utcnow()
+        end = state.completed_at or datetime.now(timezone.utc)
         duration = (end - state.started_at).total_seconds()
         
         hours = int(duration // 3600)

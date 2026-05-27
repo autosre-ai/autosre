@@ -14,7 +14,7 @@ import json
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, UTC, timezone
 from enum import Enum
 from typing import Any, Callable, Optional, Pattern
 
@@ -92,7 +92,7 @@ class ValidationResult:
     
     # Metadata
     validator_id: str = ""
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     duration_ms: float = 0.0
     
     # Remediation
@@ -506,7 +506,7 @@ class InputValidator(Validator):
         context: Optional[dict] = None,
     ) -> ValidationResult:
         """Validate input content."""
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         context = context or {}
         issues: list[dict] = []
         
@@ -556,7 +556,7 @@ class InputValidator(Validator):
         if self.config.detect_injections:
             is_injection, detections = self.injection_detector.detect(content)
             if is_injection:
-                duration = (datetime.utcnow() - start_time).total_seconds() * 1000
+                duration = (datetime.now(UTC) - start_time).total_seconds() * 1000
                 return self._create_result(
                     valid=False,
                     severity=ValidationSeverity.CRITICAL,
@@ -571,7 +571,7 @@ class InputValidator(Validator):
         sanitized, changes = self.sanitizer.sanitize(content, context)
         
         # Build result
-        duration = (datetime.utcnow() - start_time).total_seconds() * 1000
+        duration = (datetime.now(UTC) - start_time).total_seconds() * 1000
         
         if issues:
             return self._create_result(
@@ -682,7 +682,7 @@ class OutputValidator(Validator):
         context: Optional[dict] = None,
     ) -> ValidationResult:
         """Validate output content."""
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         context = context or {}
         
         # Length validation
@@ -700,7 +700,7 @@ class OutputValidator(Validator):
         )
         
         if action == FilterAction.BLOCK:
-            duration = (datetime.utcnow() - start_time).total_seconds() * 1000
+            duration = (datetime.now(UTC) - start_time).total_seconds() * 1000
             return self._create_result(
                 valid=False,
                 severity=ValidationSeverity.CRITICAL,
@@ -728,7 +728,7 @@ class OutputValidator(Validator):
                     # This is a warning since code in responses might be intentional
                     pass
         
-        duration = (datetime.utcnow() - start_time).total_seconds() * 1000
+        duration = (datetime.now(UTC) - start_time).total_seconds() * 1000
         
         return self._create_result(
             valid=True,
@@ -766,7 +766,7 @@ class PromptValidator(Validator):
         context: Optional[dict] = None,
     ) -> ValidationResult:
         """Validate a prompt."""
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         
         # Length check
         if len(content) > self.max_prompt_length:
@@ -780,7 +780,7 @@ class PromptValidator(Validator):
         # Injection detection
         is_injection, detections = self.injection_detector.detect(content)
         
-        duration = (datetime.utcnow() - start_time).total_seconds() * 1000
+        duration = (datetime.now(UTC) - start_time).total_seconds() * 1000
         
         if is_injection:
             return self._create_result(
@@ -806,7 +806,7 @@ class PromptValidator(Validator):
         messages: list[dict[str, str]],
     ) -> ValidationResult:
         """Validate a conversation (list of messages)."""
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         
         if len(messages) > self.max_messages:
             return self._create_result(
@@ -840,7 +840,7 @@ class PromptValidator(Validator):
                         d["message_index"] = i
                     all_detections.extend(detections)
         
-        duration = (datetime.utcnow() - start_time).total_seconds() * 1000
+        duration = (datetime.now(UTC) - start_time).total_seconds() * 1000
         
         if all_detections:
             max_confidence = max(d["confidence"] for d in all_detections)
@@ -882,7 +882,7 @@ class SchemaValidator(Validator):
         context: Optional[dict] = None,
     ) -> ValidationResult:
         """Validate content against schema."""
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         
         if not self.config:
             return self._create_result(
@@ -895,7 +895,7 @@ class SchemaValidator(Validator):
         try:
             data = json.loads(content)
         except json.JSONDecodeError as e:
-            duration = (datetime.utcnow() - start_time).total_seconds() * 1000
+            duration = (datetime.now(UTC) - start_time).total_seconds() * 1000
             return self._create_result(
                 valid=False,
                 severity=ValidationSeverity.ERROR,
@@ -908,7 +908,7 @@ class SchemaValidator(Validator):
         # Validate against schema
         errors = self._validate_schema(data, self.config.json_schema)
         
-        duration = (datetime.utcnow() - start_time).total_seconds() * 1000
+        duration = (datetime.now(UTC) - start_time).total_seconds() * 1000
         
         if errors:
             if self.config.strict:

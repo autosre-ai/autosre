@@ -5,12 +5,12 @@ This module defines the core data structures for storing and retrieving
 investigation episodes, learned strategies, and key findings.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Severity(str, Enum):
@@ -49,16 +49,15 @@ class KeyFinding(BaseModel):
     skill: str = Field(..., description="Skill or tool that produced this finding")
     query: str = Field(..., description="Query or command executed", max_length=500)
     finding: str = Field(..., description="The significant output or discovery", max_length=2000)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "skill": "prometheus",
-                "query": "rate(http_requests_total{status=~'5..'}[5m])",
-                "finding": "Error rate spiked to 45% starting at 14:32 UTC"
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "skill": "prometheus",
+            "query": "rate(http_requests_total{status=~'5..'}[5m])",
+            "finding": "Error rate spiked to 45% starting at 14:32 UTC"
         }
+    })
 
 
 class Episode(BaseModel):
@@ -97,27 +96,26 @@ class Episode(BaseModel):
     duration_seconds: Optional[float] = Field(None, ge=0.0, description="Investigation duration")
     
     # Timestamps
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Embedding for similarity search (stored separately in practice)
     embedding: Optional[list[float]] = Field(None, exclude=True, description="Vector embedding for similarity search")
     
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "id": "550e8400-e29b-41d4-a716-446655440000",
-                "alert_type": "high_latency",
-                "alert_description": "API response time exceeded 2s threshold",
-                "severity": "warning",
-                "services": ["api-gateway", "user-service"],
-                "skills_used": ["prometheus", "logs", "kubernetes"],
-                "resolved": True,
-                "root_cause": "Connection pool exhaustion due to slow downstream service",
-                "effectiveness_score": 0.85,
-                "confidence": 0.9
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "alert_type": "high_latency",
+            "alert_description": "API response time exceeded 2s threshold",
+            "severity": "warning",
+            "services": ["api-gateway", "user-service"],
+            "skills_used": ["prometheus", "logs", "kubernetes"],
+            "resolved": True,
+            "root_cause": "Connection pool exhaustion due to slow downstream service",
+            "effectiveness_score": 0.85,
+            "confidence": 0.9
         }
+    })
 
 
 class Strategy(BaseModel):
@@ -152,22 +150,21 @@ class Strategy(BaseModel):
     avg_resolution_time: Optional[float] = Field(None, ge=0.0, description="Average resolution time in seconds")
     
     # Timestamps
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     expires_at: Optional[datetime] = Field(None, description="When this strategy should be regenerated")
     
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "alert_type": "high_latency",
-                "service_name": "api-gateway",
-                "strategy_text": "## Common Root Causes\n- Connection pool exhaustion\n...",
-                "common_root_causes": ["Connection pool exhaustion", "Downstream service degradation"],
-                "recommended_steps": ["Check Prometheus latency metrics", "Review recent deployments"],
-                "episode_count": 5,
-                "success_rate": 0.8
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "alert_type": "high_latency",
+            "service_name": "api-gateway",
+            "strategy_text": "## Common Root Causes\\n- Connection pool exhaustion\\n...",
+            "common_root_causes": ["Connection pool exhaustion", "Downstream service degradation"],
+            "recommended_steps": ["Check Prometheus latency metrics", "Review recent deployments"],
+            "episode_count": 5,
+            "success_rate": 0.8
         }
+    })
 
 
 class MemorySearchResult(BaseModel):
@@ -181,14 +178,13 @@ class MemorySearchResult(BaseModel):
     similarity_score: float = Field(..., ge=0.0, le=1.0, description="Cosine similarity score")
     match_reasons: list[str] = Field(default_factory=list, description="Why this episode matched")
     
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "episode": {"id": "...", "alert_type": "high_latency"},
-                "similarity_score": 0.92,
-                "match_reasons": ["Same alert type", "Same service", "Similar symptoms"]
-            }
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "episode": {"id": "...", "alert_type": "high_latency"},
+            "similarity_score": 0.92,
+            "match_reasons": ["Same alert type", "Same service", "Similar symptoms"]
         }
+    })
 
 
 class MemoryStats(BaseModel):

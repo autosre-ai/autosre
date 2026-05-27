@@ -13,7 +13,7 @@ Provides comprehensive query performance monitoring and analysis:
 import hashlib
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -108,8 +108,8 @@ class QueryFingerprint(BaseModel):
     normalized_query: str = Field(description="Query with parameters replaced")
     query_type: QueryType
     tables: list[str] = Field(default_factory=list, description="Tables involved")
-    first_seen: datetime = Field(default_factory=datetime.utcnow)
-    last_seen: datetime = Field(default_factory=datetime.utcnow)
+    first_seen: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_seen: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class QueryExecution(BaseModel):
@@ -168,7 +168,7 @@ class QueryPlan(BaseModel):
     missing_indexes: list[str] = Field(default_factory=list)
     row_estimate_errors: list[dict] = Field(default_factory=list)
     
-    captured_at: datetime = Field(default_factory=datetime.utcnow)
+    captured_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class QueryStatistics(BaseModel):
@@ -205,8 +205,8 @@ class QueryStatistics(BaseModel):
     performance_level: PerformanceLevel = PerformanceLevel.GOOD
     
     # Time range
-    period_start: datetime = Field(default_factory=datetime.utcnow)
-    period_end: datetime = Field(default_factory=datetime.utcnow)
+    period_start: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    period_end: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class SlowQueryReport(BaseModel):
@@ -231,7 +231,7 @@ class SlowQueryReport(BaseModel):
     total_time_consumed_ms: float = 0.0
     pct_of_total_query_time: float = 0.0
     
-    reported_at: datetime = Field(default_factory=datetime.utcnow)
+    reported_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class IndexRecommendation(BaseModel):
@@ -270,7 +270,7 @@ class PerformanceRegression(BaseModel):
     regression_pct: float
     
     # Detection info
-    detected_at: datetime = Field(default_factory=datetime.utcnow)
+    detected_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     baseline_period: str
     current_period: str
     
@@ -383,7 +383,7 @@ class QueryPerformanceAnalyzer:
                 query_type=execution.query_type,
             )
         
-        self._fingerprints[execution.fingerprint_id].last_seen = datetime.utcnow()
+        self._fingerprints[execution.fingerprint_id].last_seen = datetime.now(timezone.utc)
         
         # Store execution
         self._executions.append(execution)
@@ -434,7 +434,7 @@ class QueryPerformanceAnalyzer:
         
         # Update performance level
         stats.performance_level = self._classify_performance(stats.mean_time_ms)
-        stats.period_end = datetime.utcnow()
+        stats.period_end = datetime.now(timezone.utc)
     
     async def _analyze_slow_query(self, execution: QueryExecution):
         """Perform detailed analysis of a slow query."""
@@ -507,7 +507,7 @@ class QueryPerformanceAnalyzer:
             if query.query_plan and query.query_plan.seq_scans_on_large_tables:
                 for table in query.query_plan.seq_scans_on_large_tables:
                     rec = IndexRecommendation(
-                        recommendation_id=f"idx_{table}_{datetime.utcnow().timestamp()}",
+                        recommendation_id=f"idx_{table}_{datetime.now(timezone.utc).timestamp()}",
                         recommendation_type=OptimizationType.ADD_INDEX,
                         table_name=table,
                         columns=[],  # Would be extracted from query analysis

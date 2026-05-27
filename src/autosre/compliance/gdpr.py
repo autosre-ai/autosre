@@ -13,7 +13,7 @@ Implements General Data Protection Regulation checks for:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable
 
@@ -74,7 +74,7 @@ class GDPRFinding:
     description: str
     evidence: dict[str, Any] = field(default_factory=dict)
     remediation: str | None = None
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -708,7 +708,7 @@ class GDPRChecker:
 
         return GDPRReport(
             report_id=str(uuid.uuid4()),
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
             data_controller=self.data_controller,
             data_processor=self.data_processor,
             findings=findings,

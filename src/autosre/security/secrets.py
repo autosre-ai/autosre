@@ -17,7 +17,7 @@ import re
 import secrets as stdlib_secrets
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, Optional, TypeVar, Generic
 from uuid import uuid4
@@ -171,7 +171,7 @@ class SecretVersion(BaseModel):
     """Version of a secret."""
     
     version_id: str = Field(description="Version identifier")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     created_by: str = Field(description="Who created this version")
     
     # Status
@@ -200,8 +200,8 @@ class SecretMetadata(BaseModel):
     versions: list[SecretVersion] = Field(default_factory=list, description="Version history")
     
     # Lifecycle
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     expires_at: Optional[datetime] = Field(default=None, description="Expiration time")
     
     # Rotation
@@ -222,14 +222,14 @@ class SecretMetadata(BaseModel):
         """Check if secret is expired."""
         if self.expires_at is None:
             return False
-        return datetime.utcnow() > self.expires_at
+        return datetime.now(timezone.utc) > self.expires_at
     
     @property
     def days_until_rotation(self) -> Optional[int]:
         """Days until next rotation."""
         if self.next_rotation_at is None:
             return None
-        delta = self.next_rotation_at - datetime.utcnow()
+        delta = self.next_rotation_at - datetime.now(timezone.utc)
         return max(0, delta.days)
 
 
@@ -264,7 +264,7 @@ class RotationResult(BaseModel):
     secret_name: str = Field(description="Rotated secret name")
     
     status: RotationStatus = Field(description="Rotation status")
-    started_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = Field(default=None)
     
     # Versions
@@ -284,7 +284,7 @@ class SecretScanResult(BaseModel):
     """Result of scanning for exposed secrets."""
     
     scan_id: str = Field(default_factory=lambda: str(uuid4())[:12])
-    scanned_at: datetime = Field(default_factory=datetime.utcnow)
+    scanned_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     # What was scanned
     scan_type: str = Field(description="Type of scan (repo, config, logs)")
@@ -460,7 +460,7 @@ class SecretsManager:
         # Check cache first
         if self.config.enable_caching and name in self._cache:
             secret, cached_at = self._cache[name]
-            if datetime.utcnow() - cached_at < timedelta(seconds=self.config.cache_ttl_seconds):
+            if datetime.now(timezone.utc) - cached_at < timedelta(seconds=self.config.cache_ttl_seconds):
                 self._log_access(name, accessor, "read", "cache_hit")
                 return secret
         
@@ -479,7 +479,7 @@ class SecretsManager:
         
         # Update cache
         if self.config.enable_caching:
-            self._cache[name] = (secret, datetime.utcnow())
+            self._cache[name] = (secret, datetime.now(timezone.utc))
         
         return secret
     
@@ -522,7 +522,7 @@ class SecretsManager:
         )
         
         # Get or create metadata
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if name in self._secrets:
             # Update existing
             existing = self._secrets[name]
@@ -598,7 +598,7 @@ class SecretsManager:
             secret = self._secrets[name]
             for version in secret.metadata.versions:
                 version.is_deprecated = True
-            secret.metadata.expires_at = datetime.utcnow()
+            secret.metadata.expires_at = datetime.now(timezone.utc)
         else:
             del self._secrets[name]
         
@@ -659,17 +659,17 @@ class SecretsManager:
             
             # Update rotation tracking
             updated_secret = self._secrets[name]
-            updated_secret.metadata.last_rotated_at = datetime.utcnow()
+            updated_secret.metadata.last_rotated_at = datetime.now(timezone.utc)
             if updated_secret.metadata.rotation_config:
                 updated_secret.metadata.next_rotation_at = (
-                    datetime.utcnow() +
+                    datetime.now(timezone.utc) +
                     timedelta(days=updated_secret.metadata.rotation_config.rotation_days)
                 )
             updated_secret.metadata.rotation_status = RotationStatus.COMPLETED
             
             result.status = RotationStatus.COMPLETED
             result.new_version = updated_secret.metadata.current_version
-            result.completed_at = datetime.utcnow()
+            result.completed_at = datetime.now(timezone.utc)
             
         except Exception as e:
             result.status = RotationStatus.FAILED
@@ -731,7 +731,7 @@ class SecretsManager:
         Returns:
             List of secrets needing rotation
         """
-        threshold = datetime.utcnow() + timedelta(days=days_ahead)
+        threshold = datetime.now(timezone.utc) + timedelta(days=days_ahead)
         results = []
         
         for secret in self._secrets.values():
@@ -842,7 +842,7 @@ class SecretsManager:
     ) -> None:
         """Log secret access for auditing."""
         self._access_log.append({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "secret_name": secret_name,
             "accessor": accessor,
             "action": action,

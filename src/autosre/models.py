@@ -1,11 +1,11 @@
 """
 SRE Agent - Data Models
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Severity(str, Enum):
@@ -108,7 +108,7 @@ class PodStatus(BaseModel):
 class KubernetesData(BaseModel):
     pods: List[PodStatus] = []
     replica_count: Dict[str, int] = {}
-    recent_events: List[Dict[str, Any]] = []
+    recent_events: List[str] = []
     resource_pressure: bool = False
 
 
@@ -137,7 +137,7 @@ class IncidentContext(BaseModel):
     kubernetes: Optional[KubernetesData] = None
     traffic: Optional[TrafficData] = None
     dependencies: List[DependencyStatus] = []
-    gathered_at: datetime = datetime.utcnow()
+    gathered_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class RootCauseSignal(BaseModel):
@@ -174,4 +174,4 @@ class SituationReport(BaseModel):
 
     raw_context: Optional[IncidentContext] = None
     analysis_reasoning: Optional[str] = None
-    generated_at: datetime = datetime.utcnow()
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

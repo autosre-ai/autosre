@@ -8,7 +8,7 @@ that capture expert SRE reasoning patterns, tool usage, and decision-making.
 import json
 import logging
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
@@ -345,7 +345,7 @@ class DataCollector:
             alert_description=alert_description,
             service=service,
             environment=environment,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             initial_context=initial_context,
             reasoning_steps=reasoning_steps,
             hypothesis=hypothesis,

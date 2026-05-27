@@ -16,7 +16,7 @@ to timeout on the client side.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Optional
 import logging
@@ -75,7 +75,7 @@ class ServiceMetrics:
     # Circuit breaker
     circuit_breaker_open: bool = False
     
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     @property
     def accept_reject_ratio(self) -> float:
@@ -113,7 +113,7 @@ class CascadeDetection:
     recovery_load_multiplier: float = 0.5  # Start recovery at this load
     estimated_recovery_minutes: float = 0
     
-    detected_at: datetime = field(default_factory=datetime.utcnow)
+    detected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     def to_dict(self) -> dict[str, Any]:
         return {

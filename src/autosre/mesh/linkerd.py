@@ -10,7 +10,7 @@ Provides Linkerd 2.x service mesh integration:
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -472,7 +472,7 @@ class LinkerdClient:
             name=name,
             namespace=namespace,
             spec=spec,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
     
     async def get_service_profile(
@@ -491,7 +491,7 @@ class LinkerdClient:
         self, profile: ServiceProfile
     ) -> ServiceProfile:
         """Update an existing ServiceProfile."""
-        profile.updated_at = datetime.utcnow()
+        profile.updated_at = datetime.now(timezone.utc)
         return profile
     
     async def delete_service_profile(self, name: str, namespace: str) -> bool:
@@ -544,7 +544,7 @@ class LinkerdClient:
             name=name,
             namespace=namespace,
             spec=spec,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
     
     async def get_traffic_split(
@@ -563,7 +563,7 @@ class LinkerdClient:
         self, traffic_split: TrafficSplit
     ) -> TrafficSplit:
         """Update an existing TrafficSplit."""
-        traffic_split.updated_at = datetime.utcnow()
+        traffic_split.updated_at = datetime.now(timezone.utc)
         return traffic_split
     
     async def delete_traffic_split(self, name: str, namespace: str) -> bool:
@@ -717,8 +717,8 @@ class LinkerdClient:
         return LinkerdIdentity(
             identity=f"*.{namespace}.serviceaccount.identity.linkerd.cluster.local",
             issuer="identity.linkerd.cluster.local",
-            not_before=datetime.utcnow(),
-            not_after=datetime.utcnow(),
+            not_before=datetime.now(timezone.utc),
+            not_after=datetime.now(timezone.utc),
             is_valid=True,
         )
     

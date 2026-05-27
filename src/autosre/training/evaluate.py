@@ -13,7 +13,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -76,7 +76,7 @@ class EvaluationResult:
     metrics: dict[str, float]  # All metrics
     samples: list[dict[str, Any]]  # Sample predictions
     metadata: dict[str, Any] = field(default_factory=dict)
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -758,7 +758,7 @@ class ModelEvaluator:
         summary = {
             "benchmark": benchmark_name,
             "model": str(self.config.model_path),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "results": [r.to_dict() for r in results],
         }
         
@@ -797,7 +797,7 @@ class ModelEvaluator:
             lines.append("# Model Evaluation Report")
             lines.append("")
             lines.append(f"**Model:** `{self.config.model_path}`")
-            lines.append(f"**Date:** {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
+            lines.append(f"**Date:** {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
             lines.append("")
             lines.append("## Summary")
             lines.append("")
@@ -826,7 +826,7 @@ class ModelEvaluator:
             lines.append("Model Evaluation Report")
             lines.append("=" * 50)
             lines.append(f"Model: {self.config.model_path}")
-            lines.append(f"Date: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
+            lines.append(f"Date: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
             lines.append("")
             
             for result in results:

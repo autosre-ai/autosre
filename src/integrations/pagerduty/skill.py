@@ -5,7 +5,7 @@ and on-call information during investigations.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from autosre.skills import ActionResult, Skill, action
@@ -434,7 +434,7 @@ class PagerDutySkill(Skill):
         try:
             since = None
             if since_hours:
-                since = datetime.utcnow() - timedelta(hours=since_hours)
+                since = datetime.now(timezone.utc) - timedelta(hours=since_hours)
             
             incidents = await self._client.list_incidents(
                 status=status,

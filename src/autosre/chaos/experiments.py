@@ -9,11 +9,11 @@ import uuid
 import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Callable, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ExperimentType(str, Enum):
@@ -209,7 +209,7 @@ class ExperimentResult:
     def add_event(self, event_type: str, message: str, data: Optional[dict] = None) -> None:
         """Add an event to the experiment log."""
         self.events.append({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "type": event_type,
             "message": message,
             "data": data or {},
@@ -233,8 +233,8 @@ class ChaosExperiment(BaseModel):
     
     # State
     state: ExperimentState = ExperimentState.PENDING
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Ownership
     created_by: str = Field(default="system")
@@ -245,8 +245,7 @@ class ChaosExperiment(BaseModel):
     # Results
     result: Optional[dict[str, Any]] = None
     
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
     
     def to_chaos_mesh_manifest(self) -> dict[str, Any]:
         """Convert to Chaos Mesh CRD manifest."""
@@ -405,7 +404,7 @@ class LocalExperimentRunner(ExperimentRunner):
         result = ExperimentResult(
             experiment_id=experiment.id,
             state=ExperimentState.RUNNING,
-            start_time=datetime.utcnow(),
+            start_time=datetime.now(timezone.utc),
         )
         self._results[experiment.id] = result
         
@@ -421,7 +420,7 @@ class LocalExperimentRunner(ExperimentRunner):
             
             # Simulate completion
             result.state = ExperimentState.COMPLETED
-            result.end_time = datetime.utcnow()
+            result.end_time = datetime.now(timezone.utc)
             result.duration_seconds = (result.end_time - result.start_time).total_seconds()
             result.steady_state_maintained = True
             result.affected_pods = ["simulated-pod-1", "simulated-pod-2"]
@@ -436,7 +435,7 @@ class LocalExperimentRunner(ExperimentRunner):
             
         except asyncio.CancelledError:
             result.state = ExperimentState.ABORTED
-            result.end_time = datetime.utcnow()
+            result.end_time = datetime.now(timezone.utc)
             result.add_event("aborted", "Experiment was aborted")
             experiment.state = ExperimentState.ABORTED
             
@@ -497,7 +496,7 @@ class KubernetesExperimentRunner(ExperimentRunner):
         result = ExperimentResult(
             experiment_id=experiment.id,
             state=ExperimentState.RUNNING,
-            start_time=datetime.utcnow(),
+            start_time=datetime.now(timezone.utc),
         )
         
         try:
@@ -526,7 +525,7 @@ class KubernetesExperimentRunner(ExperimentRunner):
             await asyncio.sleep(min(duration, 5))  # Cap at 5s for demo
             
             result.state = ExperimentState.COMPLETED
-            result.end_time = datetime.utcnow()
+            result.end_time = datetime.now(timezone.utc)
             result.duration_seconds = (result.end_time - result.start_time).total_seconds()
             result.add_event("completed", "Experiment completed")
             

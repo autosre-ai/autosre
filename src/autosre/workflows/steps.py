@@ -11,7 +11,7 @@ Defines the building blocks of workflows:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Union
 import asyncio
@@ -282,7 +282,7 @@ class ActionStep(Step):
 
     async def execute(self, context: WorkflowContext) -> StepResult:
         """Execute the action."""
-        started_at = datetime.utcnow()
+        started_at = datetime.now(timezone.utc)
         
         try:
             # Resolve input expressions
@@ -300,7 +300,7 @@ class ActionStep(Step):
                     status=StepStatus.FAILED,
                     error=f"No handler registered for action: {self.action}",
                     started_at=started_at,
-                    completed_at=datetime.utcnow(),
+                    completed_at=datetime.now(timezone.utc),
                 )
 
             # Execute with timeout
@@ -314,7 +314,7 @@ class ActionStep(Step):
                     status=StepStatus.TIMED_OUT,
                     error=f"Action timed out after {self.timeout_seconds}s",
                     started_at=started_at,
-                    completed_at=datetime.utcnow(),
+                    completed_at=datetime.now(timezone.utc),
                 )
 
             # Store outputs in context
@@ -327,7 +327,7 @@ class ActionStep(Step):
                 status=StepStatus.COMPLETED,
                 output=output,
                 started_at=started_at,
-                completed_at=datetime.utcnow(),
+                completed_at=datetime.now(timezone.utc),
             )
 
         except Exception as e:
@@ -335,7 +335,7 @@ class ActionStep(Step):
                 status=StepStatus.FAILED,
                 error=str(e),
                 started_at=started_at,
-                completed_at=datetime.utcnow(),
+                completed_at=datetime.now(timezone.utc),
             )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -377,7 +377,7 @@ class ConditionStep(Step):
 
     async def execute(self, context: WorkflowContext) -> StepResult:
         """Execute the appropriate branch based on conditions."""
-        started_at = datetime.utcnow()
+        started_at = datetime.now(timezone.utc)
         
         try:
             # Check primary condition
@@ -415,14 +415,14 @@ class ConditionStep(Step):
                             output={"branch": branch_taken, "results": results},
                             error=f"Step {step.name} failed: {result.error}",
                             started_at=started_at,
-                            completed_at=datetime.utcnow(),
+                            completed_at=datetime.now(timezone.utc),
                         )
 
             return StepResult(
                 status=StepStatus.COMPLETED,
                 output={"branch": branch_taken, "step_count": len(results)},
                 started_at=started_at,
-                completed_at=datetime.utcnow(),
+                completed_at=datetime.now(timezone.utc),
             )
 
         except Exception as e:
@@ -430,7 +430,7 @@ class ConditionStep(Step):
                 status=StepStatus.FAILED,
                 error=str(e),
                 started_at=started_at,
-                completed_at=datetime.utcnow(),
+                completed_at=datetime.now(timezone.utc),
             )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -487,7 +487,7 @@ class LoopStep(Step):
 
     async def execute(self, context: WorkflowContext) -> StepResult:
         """Execute the loop."""
-        started_at = datetime.utcnow()
+        started_at = datetime.now(timezone.utc)
         iteration_results = []
         
         try:
@@ -563,14 +563,14 @@ class LoopStep(Step):
                     output={"iterations": len(iteration_results), "failed": len(failed_iterations)},
                     error=f"Loop failed at iteration {len(iteration_results) - 1}",
                     started_at=started_at,
-                    completed_at=datetime.utcnow(),
+                    completed_at=datetime.now(timezone.utc),
                 )
 
             return StepResult(
                 status=StepStatus.COMPLETED,
                 output={"iterations": len(iteration_results)},
                 started_at=started_at,
-                completed_at=datetime.utcnow(),
+                completed_at=datetime.now(timezone.utc),
             )
 
         except Exception as e:
@@ -578,7 +578,7 @@ class LoopStep(Step):
                 status=StepStatus.FAILED,
                 error=str(e),
                 started_at=started_at,
-                completed_at=datetime.utcnow(),
+                completed_at=datetime.now(timezone.utc),
             )
 
     async def _run_iteration(self, context: WorkflowContext, iteration: int) -> StepResult:
@@ -634,7 +634,7 @@ class ParallelStep(Step):
 
     async def execute(self, context: WorkflowContext) -> StepResult:
         """Execute steps in parallel."""
-        started_at = datetime.utcnow()
+        started_at = datetime.now(timezone.utc)
         
         try:
             # Filter steps that should run
@@ -645,7 +645,7 @@ class ParallelStep(Step):
                     status=StepStatus.COMPLETED,
                     output={"executed": 0},
                     started_at=started_at,
-                    completed_at=datetime.utcnow(),
+                    completed_at=datetime.now(timezone.utc),
                 )
 
             # Create semaphore for concurrency control
@@ -694,7 +694,7 @@ class ParallelStep(Step):
                         },
                         error=f"{len(failed_results)} parallel steps failed",
                         started_at=started_at,
-                        completed_at=datetime.utcnow(),
+                        completed_at=datetime.now(timezone.utc),
                     )
 
             return StepResult(
@@ -704,7 +704,7 @@ class ParallelStep(Step):
                     "results": {k: v.status.value for k, v in results.items()},
                 },
                 started_at=started_at,
-                completed_at=datetime.utcnow(),
+                completed_at=datetime.now(timezone.utc),
             )
 
         except Exception as e:
@@ -712,7 +712,7 @@ class ParallelStep(Step):
                 status=StepStatus.FAILED,
                 error=str(e),
                 started_at=started_at,
-                completed_at=datetime.utcnow(),
+                completed_at=datetime.now(timezone.utc),
             )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -751,7 +751,7 @@ class SubWorkflowStep(Step):
 
     async def execute(self, context: WorkflowContext) -> StepResult:
         """Execute the sub-workflow."""
-        started_at = datetime.utcnow()
+        started_at = datetime.now(timezone.utc)
         
         try:
             # Resolve input expressions
@@ -769,7 +769,7 @@ class SubWorkflowStep(Step):
                     status=StepStatus.FAILED,
                     error="No workflow executor registered",
                     started_at=started_at,
-                    completed_at=datetime.utcnow(),
+                    completed_at=datetime.now(timezone.utc),
                 )
 
             # Execute sub-workflow
@@ -785,7 +785,7 @@ class SubWorkflowStep(Step):
                 output=result,
                 error=result.get("error"),
                 started_at=started_at,
-                completed_at=datetime.utcnow(),
+                completed_at=datetime.now(timezone.utc),
             )
 
         except Exception as e:
@@ -793,7 +793,7 @@ class SubWorkflowStep(Step):
                 status=StepStatus.FAILED,
                 error=str(e),
                 started_at=started_at,
-                completed_at=datetime.utcnow(),
+                completed_at=datetime.now(timezone.utc),
             )
 
     def to_dict(self) -> Dict[str, Any]:

@@ -11,7 +11,7 @@ Provides high-level traffic management abstractions:
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Callable, Optional, Union
 
@@ -183,7 +183,7 @@ class CanaryMetrics:
     latency_p50_ms: float
     latency_p99_ms: float
     request_count: int
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     def is_healthy(self, config: CanaryConfig) -> bool:
         """Check if metrics indicate healthy canary."""
@@ -575,7 +575,7 @@ class TrafficManager:
             phase=DeploymentPhase.PENDING,
             current_weight=config.initial_weight,
             stable_weight=100 - config.initial_weight,
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
         
         canary = CanaryDeployment(
@@ -647,12 +647,12 @@ class TrafficManager:
         canary.status.current_weight = new_canary_weight
         canary.status.stable_weight = new_stable_weight
         canary.status.promotion_count += 1
-        canary.status.last_promotion = datetime.utcnow()
+        canary.status.last_promotion = datetime.now(timezone.utc)
         
         # Check if complete
         if new_canary_weight >= canary.config.max_weight:
             canary.status.phase = DeploymentPhase.COMPLETED
-            canary.status.completed_at = datetime.utcnow()
+            canary.status.completed_at = datetime.now(timezone.utc)
         
         # Apply new weights
         await self._apply_traffic_weights(
@@ -688,7 +688,7 @@ class TrafficManager:
         
         canary.status.phase = DeploymentPhase.FAILED
         canary.status.failure_reason = reason
-        canary.status.completed_at = datetime.utcnow()
+        canary.status.completed_at = datetime.now(timezone.utc)
         canary.status.current_weight = 0
         canary.status.stable_weight = 100
         
@@ -711,7 +711,7 @@ class TrafficManager:
         metrics = await self._fetch_canary_metrics(canary)
         
         canary.status.metrics_history.append(metrics)
-        canary.status.last_analysis = datetime.utcnow()
+        canary.status.last_analysis = datetime.now(timezone.utc)
         
         is_healthy = metrics.is_healthy(canary.config)
         canary.status.analysis_result = "healthy" if is_healthy else "unhealthy"
@@ -779,7 +779,7 @@ class TrafficManager:
             phase=DeploymentPhase.PENDING,
             active_environment=config.blue_subset,
             inactive_environment=config.green_subset,
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
         
         deployment = BlueGreenDeployment(
@@ -802,7 +802,7 @@ class TrafficManager:
         
         # Swap environments
         deployment.status.phase = DeploymentPhase.PROMOTING
-        deployment.status.promotion_started_at = datetime.utcnow()
+        deployment.status.promotion_started_at = datetime.now(timezone.utc)
         
         old_active = deployment.status.active_environment
         deployment.status.active_environment = deployment.status.inactive_environment
@@ -816,7 +816,7 @@ class TrafficManager:
         )
         
         deployment.status.phase = DeploymentPhase.COMPLETED
-        deployment.status.completed_at = datetime.utcnow()
+        deployment.status.completed_at = datetime.now(timezone.utc)
         
         return deployment
     
@@ -858,7 +858,7 @@ class TrafficManager:
         import uuid
         
         test_id = str(uuid.uuid4())[:8]
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         test = ABTest(
             id=test_id,
@@ -925,7 +925,7 @@ class TrafficManager:
         test.status = DeploymentPhase.COMPLETED
         
         if test.current_results:
-            test.current_results.ended_at = datetime.utcnow()
+            test.current_results.ended_at = datetime.now(timezone.utc)
         
         if winner:
             # Route all traffic to winner
@@ -985,7 +985,7 @@ class TrafficManager:
             current_weights=current_weights,
             strategy=strategy,
             steps=weight_steps,
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
             step_interval_seconds=interval_seconds,
         )
         
@@ -1003,7 +1003,7 @@ class TrafficManager:
         for i, step_weights in enumerate(shift.steps):
             shift.current_step = i
             shift.current_weights = step_weights
-            shift.last_step_at = datetime.utcnow()
+            shift.last_step_at = datetime.now(timezone.utc)
             
             await self._apply_traffic_weights(
                 shift.service_name,
@@ -1015,7 +1015,7 @@ class TrafficManager:
                 await asyncio.sleep(shift.step_interval_seconds)
         
         shift.phase = DeploymentPhase.COMPLETED
-        shift.completed_at = datetime.utcnow()
+        shift.completed_at = datetime.now(timezone.utc)
         
         return shift
     
@@ -1097,7 +1097,7 @@ class TrafficManager:
             weights={},
             routes=[],
             destination_rules=[],
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             created_by=created_by,
             description=description,
         )

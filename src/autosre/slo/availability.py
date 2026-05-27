@@ -38,7 +38,7 @@ class EndpointAvailability:
     p50_latency_ms: Optional[float] = None
     p99_latency_ms: Optional[float] = None
     
-    calculated_at: datetime = field(default_factory=datetime.utcnow)
+    calculated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -83,7 +83,7 @@ class ServiceAvailability:
     slo_met: Optional[bool] = None
     slo_margin: Optional[float] = None  # How much above/below SLO
     
-    calculated_at: datetime = field(default_factory=datetime.utcnow)
+    calculated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     def to_dict(self) -> dict[str, Any]:
         result = {

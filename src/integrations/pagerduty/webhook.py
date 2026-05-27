@@ -7,7 +7,7 @@ See: https://developer.pagerduty.com/docs/webhooks/v3-overview/
 import hashlib
 import hmac
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from .models import (
@@ -167,7 +167,7 @@ class PagerDutyWebhook:
                 pd_event = PagerDutyEvent(
                     event=v3_event_type,
                     created_on=datetime.fromisoformat(
-                        message.get("created_on", datetime.utcnow().isoformat())
+                        message.get("created_on", datetime.now(timezone.utc).isoformat())
                     ),
                     data={"incident": incident},
                     id=message.get("id", ""),

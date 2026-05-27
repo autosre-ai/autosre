@@ -6,7 +6,7 @@ Supports SOC2, HIPAA, GDPR, and PCI-DSS evidence requirements.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -275,7 +275,7 @@ class EvidenceCollector:
                 framework=framework,
                 title=f"Access Logs ({start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')})",
                 description="Kubernetes audit logs and application access logs",
-                collected_at=datetime.utcnow(),
+                collected_at=datetime.now(timezone.utc),
                 source="kubernetes-audit-logs",
                 content=content,
                 content_type="application/json",
@@ -323,7 +323,7 @@ class EvidenceCollector:
                 framework=framework,
                 title="Encryption Configuration",
                 description="Current encryption settings for data at rest and in transit",
-                collected_at=datetime.utcnow(),
+                collected_at=datetime.now(timezone.utc),
                 source="infrastructure-config",
                 content=content,
                 content_type="application/json",
@@ -383,7 +383,7 @@ class EvidenceCollector:
                 framework=framework,
                 title="Security Policy Documentation",
                 description="Current security policies and employee acknowledgments",
-                collected_at=datetime.utcnow(),
+                collected_at=datetime.now(timezone.utc),
                 source="policy-management-system",
                 content=content,
                 content_type="application/json",
@@ -439,7 +439,7 @@ class EvidenceCollector:
             frameworks=frameworks,
             period_start=start_date,
             period_end=end_date,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             items=all_items,
         )
 

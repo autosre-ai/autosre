@@ -10,7 +10,7 @@ Implements Trust Services Criteria (TSC) checks for:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable
 
@@ -53,7 +53,7 @@ class SOC2Finding:
     description: str
     evidence: dict[str, Any] = field(default_factory=dict)
     remediation: str | None = None
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -512,7 +512,7 @@ class SOC2Checker:
 
         return SOC2Report(
             report_id=str(uuid.uuid4()),
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
             period_start=period_start,
             period_end=period_end,
             findings=findings,

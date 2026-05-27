@@ -14,7 +14,7 @@ import json
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Iterator, Optional
@@ -210,7 +210,7 @@ class HashChain:
     
     def _create_genesis_hash(self) -> str:
         """Create genesis block hash."""
-        genesis_data = f"genesis:{datetime.utcnow().isoformat()}"
+        genesis_data = f"genesis:{datetime.now(timezone.utc).isoformat()}"
         return hashlib.sha256(genesis_data.encode()).hexdigest()
     
     def add_entry(self, entry: AuditEntry) -> str:
@@ -247,7 +247,7 @@ class IntegrityCheck:
     broken_chain_at: Optional[str] = None
     
     # Timestamps
-    check_start: datetime = field(default_factory=datetime.utcnow)
+    check_start: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     check_end: Optional[datetime] = None
     
     # Details
@@ -339,7 +339,7 @@ class AuditReport(BaseModel):
     compliance_gaps: list[str] = Field(default_factory=list)
     
     # Metadata
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     generated_by: str = ""
     
     # Integrity
@@ -373,7 +373,7 @@ class ComplianceReport(BaseModel):
     evidence_summary: dict[str, int] = Field(default_factory=dict)
     
     # Metadata
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     generated_by: str = ""
     valid_until: Optional[datetime] = None
 
@@ -612,7 +612,7 @@ class FileAuditStorage(AuditStorage):
     
     def _get_current_file(self) -> Path:
         """Get current file for writing."""
-        today = datetime.utcnow().strftime("%Y%m%d")
+        today = datetime.now(timezone.utc).strftime("%Y%m%d")
         file_path = self.base_path / f"audit_{today}.jsonl"
         
         # Check rotation
@@ -620,7 +620,7 @@ class FileAuditStorage(AuditStorage):
             size_mb = file_path.stat().st_size / (1024 * 1024)
             if size_mb >= self.rotation_size_mb:
                 # Rotate
-                hour = datetime.utcnow().strftime("%H%M%S")
+                hour = datetime.now(timezone.utc).strftime("%H%M%S")
                 file_path = self.base_path / f"audit_{today}_{hour}.jsonl"
         
         return file_path
@@ -641,7 +641,7 @@ class AuditVerifier:
         check = IntegrityCheck(
             valid=True,
             checked_entries=0,
-            check_start=datetime.utcnow(),
+            check_start=datetime.now(timezone.utc),
         )
         
         previous_hash = ""
@@ -673,7 +673,7 @@ class AuditVerifier:
             
             previous_hash = entry.entry_hash
         
-        check.check_end = datetime.utcnow()
+        check.check_end = datetime.now(timezone.utc)
         return check
     
     async def verify_entry(self, entry_id: str) -> tuple[bool, str]:
@@ -790,7 +790,7 @@ class ComplianceChecker:
     ) -> dict[str, Any]:
         """Generate compliance report for all configured frameworks."""
         report = {
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "period_start": start_time.isoformat(),
             "period_end": end_time.isoformat(),
             "frameworks": {},
@@ -855,7 +855,7 @@ class AuditTrail:
         
         entry = AuditEntry(
             id=self._generate_id(),
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             category=category,
             severity=severity,
             event_type=event_type,
@@ -1112,8 +1112,8 @@ class AuditTrail:
         end_time: Optional[datetime] = None,
     ) -> IntegrityCheck:
         """Verify audit trail integrity."""
-        start = start_time or (datetime.utcnow() - timedelta(days=30))
-        end = end_time or datetime.utcnow()
+        start = start_time or (datetime.now(timezone.utc) - timedelta(days=30))
+        end = end_time or datetime.now(timezone.utc)
         return await self.verifier.verify_chain(start, end)
     
     async def generate_report(
@@ -1193,7 +1193,7 @@ class AuditTrail:
     
     def _generate_id(self) -> str:
         """Generate a unique ID."""
-        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
         counter = self._entry_counter
         data = f"{timestamp}:{counter}"
         return hashlib.sha256(data.encode()).hexdigest()[:16]

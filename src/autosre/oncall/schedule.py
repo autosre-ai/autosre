@@ -133,7 +133,7 @@ class ScheduleLayer(BaseModel):
     handoff_time: str = Field(default="09:00")  # When rotation hands off
     handoff_day: DayOfWeek = Field(default=DayOfWeek.MONDAY)
     timezone: str = Field(default="UTC")
-    start_date: datetime = Field(default_factory=datetime.utcnow)
+    start_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     restrictions: list[ScheduleRestriction] = Field(default_factory=list)
     
     # Current state
@@ -175,7 +175,7 @@ class ScheduleOverride(BaseModel):
     reason_details: str = ""
     replacement_user: Optional[str] = None
     created_by: str = ""
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     approved_by: Optional[str] = None
     approved_at: Optional[datetime] = None
     
@@ -210,8 +210,8 @@ class OnCallSchedule(BaseModel):
     escalation_policy_id: Optional[str] = None
     
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     created_by: str = ""
     
     def add_layer(
@@ -230,7 +230,7 @@ class OnCallSchedule(BaseModel):
         )
         self.layers.append(layer)
         self.layers.sort(key=lambda l: l.priority)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
         return layer
     
     def add_override(
@@ -252,7 +252,7 @@ class OnCallSchedule(BaseModel):
             created_by=created_by,
         )
         self.overrides.append(override)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
         return override
     
     def get_oncall_at(
@@ -492,7 +492,7 @@ class ScheduleManager:
             "end": end.isoformat(),
             "reason": reason,
             "status": "pending",
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
         
         return swap_request
@@ -518,7 +518,7 @@ class ScheduleManager:
             created_by=swap_request["requester"],
         )
         override.approved_by = approved_by
-        override.approved_at = datetime.utcnow()
+        override.approved_at = datetime.now(timezone.utc)
         
         return override
     

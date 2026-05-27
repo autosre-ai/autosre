@@ -1,6 +1,6 @@
 """Common models shared across the API."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Generic, TypeVar
 
@@ -18,7 +18,7 @@ class HealthResponse(BaseModel):
     """Health check response."""
     status: HealthStatus = Field(..., description="Overall health status")
     version: str = Field(..., description="API version")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Check timestamp")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Check timestamp")
     checks: dict[str, HealthStatus] = Field(
         default_factory=dict,
         description="Individual component health checks"
@@ -49,7 +49,7 @@ class ErrorResponse(BaseModel):
         description="Additional error details"
     )
     request_id: str | None = Field(default=None, description="Request correlation ID")
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     model_config = {
         "json_schema_extra": {

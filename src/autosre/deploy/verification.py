@@ -10,7 +10,7 @@ Provides comprehensive pre and post-deployment verification including:
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Callable, Optional
 
@@ -168,7 +168,7 @@ class HealthCheck(BaseModel):
         result = HealthCheckResult(
             name=self.name,
             check_type=self.check_type,
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
         
         try:
@@ -192,7 +192,7 @@ class HealthCheck(BaseModel):
             result.status = VerificationStatus.FAILED
             result.error_message = str(e)
         finally:
-            result.completed_at = datetime.utcnow()
+            result.completed_at = datetime.now(timezone.utc)
             result.duration_ms = result.duration_seconds() * 1000
         
         return result
@@ -204,7 +204,7 @@ class HealthCheck(BaseModel):
         url = self.endpoint or f"http://{self.host}:{self.port}{self.path}"
         
         async with aiohttp.ClientSession() as session:
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
             async with session.request(
                 self.method,
                 url,
@@ -212,7 +212,7 @@ class HealthCheck(BaseModel):
                 data=self.body,
                 timeout=aiohttp.ClientTimeout(total=self.timeout_seconds),
             ) as response:
-                result.latency_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+                result.latency_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
                 result.status_code = response.status
                 result.response_body = await response.text()
                 
@@ -240,14 +240,14 @@ class HealthCheck(BaseModel):
     
     async def _check_tcp(self, result: HealthCheckResult) -> None:
         """Perform TCP health check."""
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         try:
             reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(self.host, self.port),
                 timeout=self.timeout_seconds,
             )
-            result.latency_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+            result.latency_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
             result.status = VerificationStatus.PASSED
             writer.close()
             await writer.wait_closed()
@@ -261,7 +261,7 @@ class HealthCheck(BaseModel):
         try:
             import grpc
             
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
             channel = grpc.aio.insecure_channel(f"{self.host}:{self.port}")
             
             # Standard gRPC health check
@@ -275,7 +275,7 @@ class HealthCheck(BaseModel):
                 timeout=self.timeout_seconds,
             )
             
-            result.latency_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+            result.latency_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
             
             if response.status == health_pb2.HealthCheckResponse.SERVING:
                 result.status = VerificationStatus.PASSED
@@ -290,7 +290,7 @@ class HealthCheck(BaseModel):
     
     async def _check_exec(self, result: HealthCheckResult) -> None:
         """Perform exec health check."""
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         process = await asyncio.create_subprocess_exec(
             *self.exec_command,
@@ -304,7 +304,7 @@ class HealthCheck(BaseModel):
                 timeout=self.timeout_seconds,
             )
             
-            result.latency_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+            result.latency_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
             result.response_body = stdout.decode()
             
             if process.returncode == 0:
@@ -320,7 +320,7 @@ class HealthCheck(BaseModel):
         """Perform DNS resolution check."""
         import socket
         
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         try:
             loop = asyncio.get_event_loop()
@@ -328,7 +328,7 @@ class HealthCheck(BaseModel):
                 loop.getaddrinfo(self.host, self.port),
                 timeout=self.timeout_seconds,
             )
-            result.latency_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+            result.latency_ms = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
             result.status = VerificationStatus.PASSED
         except socket.gaierror as e:
             result.status = VerificationStatus.FAILED
@@ -403,17 +403,17 @@ class ReadinessCheck(BaseModel):
         """Execute readiness check."""
         result = ReadinessResult(
             name=self.name,
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
         
         # Initial delay
         if self.initial_delay_seconds > 0:
             await asyncio.sleep(self.initial_delay_seconds)
         
-        deadline = datetime.utcnow() + timedelta(seconds=self.timeout_seconds)
+        deadline = datetime.now(timezone.utc) + timedelta(seconds=self.timeout_seconds)
         
         try:
-            while datetime.utcnow() < deadline:
+            while datetime.now(timezone.utc) < deadline:
                 if kubernetes_client:
                     deployment = await kubernetes_client.get_deployment(
                         self.deployment_name,
@@ -469,7 +469,7 @@ class ReadinessCheck(BaseModel):
             result.status = VerificationStatus.FAILED
             result.error_message = str(e)
         finally:
-            result.completed_at = datetime.utcnow()
+            result.completed_at = datetime.now(timezone.utc)
         
         return result
 
@@ -573,7 +573,7 @@ class SmokeTest(BaseModel):
             name=self.name,
             test_type=self.test_type,
             endpoint=self.endpoint,
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
         
         latencies: list[float] = []
@@ -589,7 +589,7 @@ class SmokeTest(BaseModel):
                 async def make_request(i: int) -> tuple[bool, float, Optional[str]]:
                     async with semaphore:
                         try:
-                            start = datetime.utcnow()
+                            start = datetime.now(timezone.utc)
                             async with session.request(
                                 self.method,
                                 self.endpoint,
@@ -597,7 +597,7 @@ class SmokeTest(BaseModel):
                                 data=self.body,
                                 timeout=aiohttp.ClientTimeout(total=self.timeout_seconds),
                             ) as response:
-                                latency = (datetime.utcnow() - start).total_seconds() * 1000
+                                latency = (datetime.now(timezone.utc) - start).total_seconds() * 1000
                                 
                                 if response.status in self.expected_status_codes:
                                     if self.expected_body_contains:
@@ -675,7 +675,7 @@ class SmokeTest(BaseModel):
             result.status = VerificationStatus.FAILED
             result.error_messages.append(str(e))
         finally:
-            result.completed_at = datetime.utcnow()
+            result.completed_at = datetime.now(timezone.utc)
         
         return result
 
@@ -784,7 +784,7 @@ class VerificationTimeline:
     ) -> None:
         """Add event to timeline."""
         self.events.append({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "type": event_type,
             "message": message,
             "stage": stage.value if stage else None,
@@ -987,7 +987,7 @@ class DeploymentVerifier:
             VerificationResult with all check results
         """
         self._result = VerificationResult()
-        self._result.timeline.started_at = datetime.utcnow()
+        self._result.timeline.started_at = datetime.now(timezone.utc)
         self._is_running = True
         
         try:
@@ -1038,7 +1038,7 @@ class DeploymentVerifier:
             self._result.message = f"Verification error: {str(e)}"
         finally:
             self._is_running = False
-            self._result.timeline.completed_at = datetime.utcnow()
+            self._result.timeline.completed_at = datetime.now(timezone.utc)
         
         return self._result
     
@@ -1048,7 +1048,7 @@ class DeploymentVerifier:
         namespace: str,
     ) -> None:
         """Run pre-deployment checks."""
-        self._result.timeline.pre_deployment_started_at = datetime.utcnow()
+        self._result.timeline.pre_deployment_started_at = datetime.now(timezone.utc)
         self._result.timeline.add_event(
             "pre_deployment_started",
             "Starting pre-deployment verification",
@@ -1080,10 +1080,10 @@ class DeploymentVerifier:
         ]
         
         for check in checks:
-            check.started_at = datetime.utcnow()
+            check.started_at = datetime.now(timezone.utc)
             # In a real implementation, perform actual checks
             check.status = VerificationStatus.PASSED
-            check.completed_at = datetime.utcnow()
+            check.completed_at = datetime.now(timezone.utc)
             self._result.pre_deployment_checks.append(check)
         
         # Check if all passed
@@ -1097,7 +1097,7 @@ class DeploymentVerifier:
             VerificationStatus.PASSED if all_passed else VerificationStatus.FAILED
         )
         
-        self._result.timeline.pre_deployment_completed_at = datetime.utcnow()
+        self._result.timeline.pre_deployment_completed_at = datetime.now(timezone.utc)
         self._result.timeline.add_event(
             "pre_deployment_completed",
             f"Pre-deployment verification {'passed' if all_passed else 'failed'}",
@@ -1110,7 +1110,7 @@ class DeploymentVerifier:
         namespace: str,
     ) -> None:
         """Run post-deployment checks."""
-        self._result.timeline.post_deployment_started_at = datetime.utcnow()
+        self._result.timeline.post_deployment_started_at = datetime.now(timezone.utc)
         self._result.timeline.add_event(
             "post_deployment_started",
             "Starting post-deployment verification",
@@ -1155,7 +1155,7 @@ class DeploymentVerifier:
         else:
             self._result.post_deployment_status = VerificationStatus.FAILED
         
-        self._result.timeline.post_deployment_completed_at = datetime.utcnow()
+        self._result.timeline.post_deployment_completed_at = datetime.now(timezone.utc)
         self._result.timeline.add_event(
             "post_deployment_completed",
             f"Post-deployment verification {'passed' if self._result.post_deployment_status == VerificationStatus.PASSED else 'failed'}",
@@ -1189,7 +1189,7 @@ class DeploymentVerifier:
     
     async def _run_smoke_tests(self) -> None:
         """Run smoke tests."""
-        self._result.timeline.smoke_tests_started_at = datetime.utcnow()
+        self._result.timeline.smoke_tests_started_at = datetime.now(timezone.utc)
         self._result.timeline.add_event(
             "smoke_tests_started",
             "Starting smoke tests",
@@ -1215,7 +1215,7 @@ class DeploymentVerifier:
         else:
             self._result.smoke_test_status = VerificationStatus.FAILED
         
-        self._result.timeline.smoke_tests_completed_at = datetime.utcnow()
+        self._result.timeline.smoke_tests_completed_at = datetime.now(timezone.utc)
         self._result.timeline.add_event(
             "smoke_tests_completed",
             f"Smoke tests {'passed' if all_passed else 'failed'}",

@@ -14,7 +14,7 @@ import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC, timezone
 from enum import Enum
 from typing import Any, Callable, Optional
 
@@ -136,7 +136,7 @@ class RiskAssessment:
     tenant_id: Optional[str] = None
     
     # Metadata
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     assessment_id: str = ""
     
     # Mitigations
@@ -237,8 +237,8 @@ class ActionPolicy(BaseModel):
     priority: int = Field(default=100, ge=0)
     
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     version: int = Field(default=1, ge=1)
 
 
@@ -352,7 +352,7 @@ class PolicyResult:
     matched_restrictions: list[str] = field(default_factory=list)
     
     # Metadata
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     evaluation_time_ms: float = 0.0
     
     def to_dict(self) -> dict[str, Any]:
@@ -506,8 +506,8 @@ class SafetyPolicy(BaseModel):
     )
     
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     owner: str = ""
     
     def get_action_policy(self, action: ActionCategory) -> Optional[ActionPolicy]:
@@ -551,7 +551,7 @@ class PolicyEngine:
         context: Optional[dict] = None,
     ) -> PolicyResult:
         """Evaluate if an action is allowed."""
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         context = context or {}
         
         # Extract context values
@@ -657,7 +657,7 @@ class PolicyEngine:
                 requires_approval = True
         
         # Calculate evaluation time
-        evaluation_time = (datetime.utcnow() - start_time).total_seconds() * 1000
+        evaluation_time = (datetime.now(UTC) - start_time).total_seconds() * 1000
         
         return PolicyResult(
             action=policy_action,
@@ -762,7 +762,7 @@ class PolicyEngine:
             user_id=context.get("user_id"),
             tenant_id=context.get("tenant_id"),
             assessment_id=hashlib.sha256(
-                f"{action.value}:{target}:{datetime.utcnow().isoformat()}".encode()
+                f"{action.value}:{target}:{datetime.now(UTC).isoformat()}".encode()
             ).hexdigest()[:16],
         )
     
@@ -802,7 +802,7 @@ class PolicyEngine:
     ) -> Optional[Any]:
         """Evaluate context-specific policies."""
         environment = context.get("environment", "development")
-        current_hour = datetime.utcnow().hour
+        current_hour = datetime.now(UTC).hour
         
         for policy in self.policy.context_policies:
             if not policy.enabled:

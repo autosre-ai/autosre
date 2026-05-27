@@ -10,7 +10,7 @@ Implements Health Insurance Portability and Accountability Act checks for:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable
 
@@ -54,7 +54,7 @@ class HIPAAFinding:
     required: bool
     evidence: dict[str, Any] = field(default_factory=dict)
     remediation: str | None = None
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -613,7 +613,7 @@ class HIPAAChecker:
 
         return HIPAAReport(
             report_id=str(uuid.uuid4()),
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
             covered_entity=self.covered_entity,
             findings=findings,
             overall_score=overall_score,

@@ -16,7 +16,7 @@ This skill:
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Optional
 from urllib.parse import urljoin
@@ -79,7 +79,7 @@ class LatencyResult:
     service: str
     status: LatencyStatus
     percentiles: LatencyPercentiles
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Thresholds used
     warning_threshold: Optional[float] = None

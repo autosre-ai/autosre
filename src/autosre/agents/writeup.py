@@ -4,7 +4,7 @@ Writeup Generator
 Generates human-readable incident reports and postmortems.
 """
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 
 from .state import InvestigationState
@@ -20,7 +20,7 @@ class IncidentReport(BaseModel):
     impact: str = ""
     resolution: str = ""
     recommendations: list[str] = []
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     def _format_recommendations(self) -> str:
         """Format recommendations as markdown list."""

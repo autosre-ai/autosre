@@ -9,7 +9,7 @@ The core engine that executes workflows:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set
 import asyncio
@@ -96,7 +96,7 @@ class WorkflowExecution:
     context: Optional[WorkflowContext] = None
     step_executions: List[StepExecution] = field(default_factory=list)
     current_step_index: int = 0
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     error: Optional[str] = None
@@ -110,7 +110,7 @@ class WorkflowExecution:
         if self.started_at and self.completed_at:
             return (self.completed_at - self.started_at).total_seconds()
         elif self.started_at:
-            return (datetime.utcnow() - self.started_at).total_seconds()
+            return (datetime.now(timezone.utc) - self.started_at).total_seconds()
         return None
 
     @property
@@ -327,7 +327,7 @@ class WorkflowEngine:
         
         execution.context = context
         execution.status = ExecutionStatus.RUNNING
-        execution.started_at = datetime.utcnow()
+        execution.started_at = datetime.now(timezone.utc)
         
         # Fire start hook
         await self._fire_hook("on_execution_start", execution)
@@ -399,7 +399,7 @@ class WorkflowEngine:
                     pass  # Don't fail on handler errors
         
         finally:
-            execution.completed_at = datetime.utcnow()
+            execution.completed_at = datetime.now(timezone.utc)
             await self._fire_hook("on_execution_complete", execution)
             
             if self.checkpoint_enabled and self._checkpoint_store:
@@ -425,8 +425,8 @@ class WorkflowEngine:
                     step_id=step.id,
                     step_name=step.name,
                     status=StepStatus.SKIPPED,
-                    started_at=datetime.utcnow(),
-                    completed_at=datetime.utcnow(),
+                    started_at=datetime.now(timezone.utc),
+                    completed_at=datetime.now(timezone.utc),
                 )
                 execution.step_executions.append(step_exec)
                 continue
@@ -461,7 +461,7 @@ class WorkflowEngine:
                 step_id=step.id,
                 step_name=step.name,
                 status=StepStatus.RUNNING,
-                started_at=datetime.utcnow(),
+                started_at=datetime.now(timezone.utc),
                 attempt=attempt,
             )
             
@@ -472,7 +472,7 @@ class WorkflowEngine:
                 result = await step.execute(context)
                 step_exec.result = result
                 step_exec.status = result.status
-                step_exec.completed_at = datetime.utcnow()
+                step_exec.completed_at = datetime.now(timezone.utc)
                 
                 if result.error:
                     step_exec.error = result.error
@@ -482,12 +482,12 @@ class WorkflowEngine:
                     status=StepStatus.FAILED,
                     error=str(e),
                     started_at=step_exec.started_at,
-                    completed_at=datetime.utcnow(),
+                    completed_at=datetime.now(timezone.utc),
                 )
                 step_exec.result = result
                 step_exec.status = StepStatus.FAILED
                 step_exec.error = str(e)
-                step_exec.completed_at = datetime.utcnow()
+                step_exec.completed_at = datetime.now(timezone.utc)
             
             execution.step_executions.append(step_exec)
             last_result = result
@@ -605,7 +605,7 @@ class WorkflowEngine:
             return False
         
         execution.status = ExecutionStatus.CANCELLED
-        execution.completed_at = datetime.utcnow()
+        execution.completed_at = datetime.now(timezone.utc)
         execution.error = "Cancelled by user"
         
         return True

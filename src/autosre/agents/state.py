@@ -2,7 +2,7 @@
 
 from typing import List, Dict, Optional, Literal, Any
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 
@@ -42,7 +42,7 @@ class Alert(BaseModel):
     service: Optional[str] = None
     severity: Literal["critical", "warning", "info"] = "warning"
     description: str = ""
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     labels: Dict[str, str] = {}
 
 
@@ -60,7 +60,7 @@ class Evidence(BaseModel):
     skill: str   # Which skill was used
     finding: str
     confidence: float = 0.5
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     raw_data: Optional[Dict] = None
     supports_hypothesis: Optional[str] = None  # Which hypothesis this supports
     quality_score: float = Field(default=0.5, ge=0.0, le=1.0)  # Evidence quality rating
@@ -126,7 +126,7 @@ class TriageResult(BaseModel):
     golden_signals: GoldenSignals = Field(default_factory=GoldenSignals)
     immediate_action_required: bool = False
     triage_summary: str = ""
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # ----- Changes Correlation -----
@@ -153,7 +153,7 @@ class AIHypothesis(BaseModel):
     supporting_evidence: List[str] = []
     contradicting_evidence: List[str] = []
     counter_checks_performed: List[str] = []
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class AIDecision(BaseModel):
@@ -163,7 +163,7 @@ class AIDecision(BaseModel):
     reasoning: str
     confidence: float
     alternatives_considered: List[str] = []
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class AITelemetry(BaseModel):
@@ -182,7 +182,7 @@ class PhaseTransition(BaseModel):
     """Record of a phase transition."""
     from_phase: Optional[InvestigationPhase] = None
     to_phase: InvestigationPhase
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     duration_seconds: float = 0.0
     requirements_met: List[str] = []
     reason: str = ""
@@ -201,7 +201,7 @@ class PhaseTiming(BaseModel):
         reason: str = "",
     ) -> None:
         """Record a phase transition."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         duration = 0.0
         
         if self.transitions:
@@ -251,7 +251,7 @@ class InvestigationState(BaseModel):
     status: Literal["running", "completed", "failed"] = "running"
     
     # Timing
-    started_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
 
 
@@ -324,7 +324,7 @@ class EnhancedInvestigationState(BaseModel):
     ai_telemetry: AITelemetry = Field(default_factory=AITelemetry)
     
     # Timing
-    started_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
     
     # Postmortem

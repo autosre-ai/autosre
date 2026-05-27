@@ -133,7 +133,7 @@ class SLOReport(BaseModel):
     period_type: ReportPeriod
     period_start: datetime
     period_end: datetime
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Summary statistics
     total_slos: int = 0

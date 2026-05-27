@@ -12,7 +12,7 @@ Enhanced with Investigation Quality features based on Google SRE book:
 """
 from typing import Optional, Any
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, UTC
 from enum import Enum
 
 from .config import Settings
@@ -37,7 +37,7 @@ class InvestigationMetrics:
     
     From SRE book: Track time-to-mitigation vs time-to-root-cause.
     """
-    started_at: datetime = field(default_factory=datetime.utcnow)
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     triage_completed_at: Optional[datetime] = None
     mitigation_completed_at: Optional[datetime] = None
     root_cause_found_at: Optional[datetime] = None
@@ -70,7 +70,7 @@ class Investigation:
     id: str
     alert_id: str
     state: InvestigationStatus
-    started_at: datetime = field(default_factory=datetime.utcnow)
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     ended_at: Optional[datetime] = None
     
     # Quality tracking
@@ -214,14 +214,14 @@ class Orchestrator:
             
             # Complete
             inv.state = InvestigationStatus.COMPLETED
-            inv.ended_at = datetime.utcnow()
+            inv.ended_at = datetime.now(UTC)
             inv.metrics.ended_at = inv.ended_at
             
             return self._build_investigation_report(inv)
             
         except Exception as e:
             inv.state = InvestigationStatus.FAILED
-            inv.ended_at = datetime.utcnow()
+            inv.ended_at = datetime.now(UTC)
             raise
     
     async def _run_triage_phase(self, inv: Investigation) -> None:
@@ -272,7 +272,7 @@ class Orchestrator:
         )
         
         inv.triage_result = triage_result.model_dump() if hasattr(triage_result, 'model_dump') else triage_result.__dict__
-        inv.metrics.triage_completed_at = datetime.utcnow()
+        inv.metrics.triage_completed_at = datetime.now(UTC)
         
         logger.info(
             f"[ORCHESTRATOR] Triage complete: impaired={inv.triage_result.get('is_service_impaired')}, "
@@ -293,7 +293,7 @@ class Orchestrator:
             # For now, we mark mitigation as "considered"
             inv.mitigation_skipped_reason = "Mitigation requires human approval"
         
-        inv.metrics.mitigation_completed_at = datetime.utcnow()
+        inv.metrics.mitigation_completed_at = datetime.now(UTC)
     
     async def _run_investigation_phase(self, inv: Investigation) -> None:
         """Run the investigation to find root cause."""
@@ -308,7 +308,7 @@ class Orchestrator:
         # TODO: Run planner and subagents
         # This is where the existing investigation logic would go
         
-        inv.metrics.root_cause_found_at = datetime.utcnow()
+        inv.metrics.root_cause_found_at = datetime.now(UTC)
     
     async def _run_remediation_phase(self, inv: Investigation) -> None:
         """Apply remediation."""
@@ -316,7 +316,7 @@ class Orchestrator:
         logger = logging.getLogger(__name__)
         logger.info(f"[ORCHESTRATOR] Starting REMEDIATE phase for investigation {inv.id}")
         # TODO: Implement remediation
-        inv.metrics.remediation_completed_at = datetime.utcnow()
+        inv.metrics.remediation_completed_at = datetime.now(UTC)
     
     async def _run_verification_phase(self, inv: Investigation) -> None:
         """Verify remediation worked."""

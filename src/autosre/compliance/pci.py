@@ -11,7 +11,7 @@ Implements Payment Card Industry Data Security Standard checks:
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable
 
@@ -65,7 +65,7 @@ class PCIFinding:
     evidence: dict[str, Any] = field(default_factory=dict)
     remediation: str | None = None
     compensating_controls: str | None = None
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -772,7 +772,7 @@ class PCIChecker:
 
         return PCIReport(
             report_id=str(uuid.uuid4()),
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
             merchant_id=self.merchant_id,
             pci_level=self.pci_level,
             findings=findings,

@@ -15,7 +15,7 @@ import hmac
 import json
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from enum import Enum
 from typing import Any, Callable, Optional, Union
 from uuid import uuid4
@@ -210,7 +210,7 @@ class SecurityEvent(BaseModel):
     """Individual security audit event."""
     
     id: str = Field(default_factory=lambda: str(uuid4()), description="Unique event ID")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Event timestamp")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC), description="Event timestamp")
     
     # Event classification
     event_type: SecurityEventType = Field(description="Type of security event")
@@ -263,7 +263,7 @@ class AuditLogEntry(BaseModel):
     
     event: SecurityEvent
     schema_version: str = Field(default="1.0", description="Log schema version")
-    logged_at: datetime = Field(default_factory=datetime.utcnow)
+    logged_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     log_source: str = Field(default="autosre", description="Source system")
 
 
@@ -303,7 +303,7 @@ class AuditQueryResult(BaseModel):
     events: list[SecurityEvent] = Field(default_factory=list)
     total_count: int = Field(default=0, description="Total matching events")
     query: AuditQuery = Field(description="Query that produced these results")
-    executed_at: datetime = Field(default_factory=datetime.utcnow)
+    executed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class ComplianceReport(BaseModel):
@@ -311,7 +311,7 @@ class ComplianceReport(BaseModel):
     
     report_id: str = Field(default_factory=lambda: str(uuid4()))
     framework: ComplianceFramework = Field(description="Compliance framework")
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     period_start: datetime = Field(description="Report period start")
     period_end: datetime = Field(description="Report period end")
     
@@ -341,7 +341,7 @@ class SecurityAlert(BaseModel):
     """Security alert generated from audit events."""
     
     id: str = Field(default_factory=lambda: str(uuid4()))
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     
     severity: EventSeverity = Field(description="Alert severity")
     title: str = Field(description="Alert title")
@@ -392,7 +392,7 @@ class SecurityAuditLogger:
         
         # Query audit logs
         results = await audit_logger.query(AuditQuery(
-            start_time=datetime.utcnow() - timedelta(days=7),
+            start_time=datetime.now(UTC) - timedelta(days=7),
             event_types=[SecurityEventType.LOGIN_FAILURE],
         ))
         
@@ -884,7 +884,7 @@ class SecurityAuditLogger:
         # Track login failures by IP
         if event.event_type == SecurityEventType.LOGIN_FAILURE:
             ip = event.actor.ip_address or "unknown"
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             window = timedelta(minutes=self.alert_config.login_failure_window_minutes)
             
             if ip not in self._login_failures:
@@ -1016,7 +1016,7 @@ class AuditLogger:
     
     def _get_log_file(self) -> str:
         """Get current log file path."""
-        date_str = datetime.utcnow().strftime("%Y-%m-%d")
+        date_str = datetime.now(UTC).strftime("%Y-%m-%d")
         return os.path.join(self.log_dir, f"audit-{date_str}.jsonl")
     
     def log(
@@ -1037,7 +1037,7 @@ class AuditLogger:
             event_type_str = str(event_type)
         
         entry = AuditEntry(
-            timestamp=datetime.utcnow().isoformat() + "Z",
+            timestamp=datetime.now(UTC).isoformat() + "Z",
             event_type=event_type_str,
             user=user,
             action=action,
@@ -1251,7 +1251,7 @@ class AuditLogger:
     def _get_log_path(self):
         """Get current log file path as Path object."""
         from pathlib import Path
-        date_str = datetime.utcnow().strftime("%Y-%m-%d")
+        date_str = datetime.now(UTC).strftime("%Y-%m-%d")
         return Path(self.log_dir) / f"audit-{date_str}.jsonl"
 
 

@@ -1,13 +1,27 @@
 """
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                              ⚠️  DEMO MODE ONLY ⚠️                            ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║  This module contains DEMO/SIMULATION commands for testing and showcasing.   ║
+║                                                                              ║
+║  ALL DATA IN THIS MODULE IS SIMULATED - NOT REAL INCIDENTS!                  ║
+║                                                                              ║
+║  DO NOT use these commands for real incident investigation.                  ║
+║  For real investigations, use: `autosre investigate`                         ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
 AutoSRE Demo Commands
 
-Run demo investigations and seed test data.
+Run demo investigations and seed test data using SIMULATED data.
+
+WARNING: This is for demonstration purposes only. All scenarios and data
+are synthetic and do not represent real incidents or infrastructure.
 """
 
 import asyncio
 import json
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
@@ -22,11 +36,126 @@ from rich.table import Table
 
 app = typer.Typer(
     name="demo",
-    help="Demo scenarios and test data",
+    help="[DEMO MODE] Demo scenarios with SIMULATED data - NOT for real incidents!",
     no_args_is_help=True,
 )
 
 console = Console()
+
+# Big warning banner for demo mode
+DEMO_WARNING_BANNER = """
+[bold yellow]╔══════════════════════════════════════════════════════════════════╗[/]
+[bold yellow]║[/] [bold red]⚠️  DEMO MODE - SIMULATED DATA ONLY ⚠️[/]                            [bold yellow]║[/]
+[bold yellow]╠══════════════════════════════════════════════════════════════════╣[/]
+[bold yellow]║[/] All data shown is synthetic and for demonstration purposes.    [bold yellow]║[/]
+[bold yellow]║[/] This does NOT represent real incidents or infrastructure.      [bold yellow]║[/]
+[bold yellow]║[/]                                                                [bold yellow]║[/]
+[bold yellow]║[/] [bold white]For real investigations, use:[/] [cyan]autosre investigate[/]            [bold yellow]║[/]
+[bold yellow]╚══════════════════════════════════════════════════════════════════╝[/]
+"""
+
+
+def _print_demo_warning():
+    """Print the demo mode warning banner."""
+    console.print(DEMO_WARNING_BANNER)
+
+
+class DemoInvestigationRunner:
+    """
+    DEMO ONLY: Simulated investigation runner that uses fake data.
+    
+    This class provides a completely simulated investigation experience
+    WITHOUT connecting to any real infrastructure.
+    
+    For real investigations, use the InvestigationRunner from investigate.py.
+    """
+    
+    def __init__(
+        self,
+        alert: str,
+        service: str,
+        severity: str,
+        output_format: str = "text",
+        stream: bool = True,
+    ):
+        self.alert = alert
+        self.service = service
+        self.severity = severity
+        self.output_format = output_format
+        self.stream = stream
+        self.investigation_id = f"demo-{str(uuid4())[:8]}"
+        
+    def run(self) -> dict:
+        """Run a SIMULATED investigation (no real infrastructure)."""
+        import time
+        
+        if self.stream:
+            console.print(f"[bold][DEMO MODE] Investigation ID: {self.investigation_id}[/]")
+            console.print()
+        
+        # Simulate investigation phases (shorter in quiet mode)
+        if self.stream:
+            phases = [
+                ("Context Gathering", "Analyzing alert context...", 1.5),
+                ("Evidence Collection", "Querying simulated metrics...", 2.0),
+                ("Hypothesis Generation", "Generating hypotheses...", 1.0),
+                ("Root Cause Analysis", "Determining root cause...", 1.5),
+                ("Report Generation", "Creating incident report...", 1.0),
+            ]
+            
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                for phase_name, description, duration in phases:
+                    task = progress.add_task(f"[DEMO] {description}", total=100)
+                    steps = int(duration * 10)
+                    for _ in range(steps):
+                        time.sleep(duration / steps)
+                        progress.update(task, advance=100 / steps)
+                    progress.update(task, description=f"[green]✓[/] [DEMO] {phase_name}")
+            
+            duration_seconds = sum(d for _, _, d in phases)
+        else:
+            # Quiet/benchmark mode - just a quick sleep
+            time.sleep(0.1)
+            duration_seconds = 0.1
+        
+        # Generate simulated root cause based on scenario
+        root_causes = {
+            "checkout-service": "Redis connection pool exhaustion due to traffic spike",
+            "api-gateway": "Memory leak in request handler causing OOMKills",
+            "order-service": "Missing database index on order_items table",
+            "payment-service": "Upstream payment provider timeout triggering cascading failures",
+            "user-service": "Configuration drift: AUTH_SECRET_KEY mismatch between pods",
+        }
+        
+        root_cause = root_causes.get(
+            self.service, 
+            f"Simulated root cause for {self.service}"
+        )
+        
+        # Show simulated findings (only in stream mode)
+        if self.stream:
+            console.print()
+            console.print(Panel(
+                f"[bold]SIMULATED Root Cause:[/]\n{root_cause}\n\n"
+                f"[bold]SIMULATED Recommendations:[/]\n"
+                f"• Check connection pool settings\n"
+                f"• Review recent deployments\n"
+                f"• Monitor resource utilization\n\n"
+                f"[yellow]⚠️  This is DEMO output - not from real investigation[/]",
+                title="[DEMO MODE] Root Cause Analysis (SIMULATED)",
+                border_style="cyan",
+            ))
+        
+        return {
+            "investigation_id": self.investigation_id,
+            "duration_seconds": duration_seconds,
+            "root_cause": root_cause,
+            "simulated": True,  # Flag indicating this is demo data
+        }
 
 
 # Demo scenarios
@@ -82,16 +211,23 @@ def run(
     interactive: bool = typer.Option(True, "--interactive/--batch", help="Interactive mode"),
 ):
     """
-    Run a demo investigation.
+    [DEMO MODE] Run a demo investigation with SIMULATED data.
     
-    Simulates an incident investigation with mock data to demonstrate
-    AutoSRE's capabilities.
+    ⚠️  WARNING: This uses FAKE/MOCK data for demonstration only!
+    
+    Simulates an incident investigation with synthetic data to demonstrate
+    AutoSRE's capabilities. This does NOT query real infrastructure.
+    
+    For REAL incident investigations, use: `autosre investigate`
     
     Examples:
         autosre demo run --list
         autosre demo run --scenario redis-connection
         autosre demo run --random
     """
+    # Always show demo warning first
+    _print_demo_warning()
+    
     if list_scenarios:
         _list_scenarios()
         return
@@ -102,17 +238,17 @@ def run(
     elif scenario:
         selected = next((s for s in DEMO_SCENARIOS if s["id"] == scenario), None)
         if not selected:
-            console.print(f"[red]Scenario '{scenario}' not found[/]")
-            console.print("Use --list to see available scenarios")
+            console.print(f"[red][DEMO MODE] Scenario '{scenario}' not found[/]")
+            console.print("[DEMO MODE] Use --list to see available scenarios")
             raise typer.Exit(1)
     else:
         # Interactive selection
         _list_scenarios()
         console.print()
-        scenario_id = typer.prompt("Select scenario ID", default="redis-connection")
+        scenario_id = typer.prompt("[DEMO MODE] Select scenario ID", default="redis-connection")
         selected = next((s for s in DEMO_SCENARIOS if s["id"] == scenario_id), None)
         if not selected:
-            console.print(f"[red]Scenario '{scenario_id}' not found[/]")
+            console.print(f"[red][DEMO MODE] Scenario '{scenario_id}' not found[/]")
             raise typer.Exit(1)
     
     # Show scenario info
@@ -122,23 +258,26 @@ def run(
         f"[bold]Alert:[/] {selected['alert']}\n"
         f"[bold]Service:[/] {selected['service']}\n"
         f"[bold]Severity:[/] {selected['severity']}\n\n"
-        f"[dim]{selected['description']}[/]",
-        title="🎭 Demo Scenario",
+        f"[dim]{selected['description']}[/]\n\n"
+        f"[yellow]⚠️  All data is SIMULATED - not real infrastructure[/]",
+        title="🎭 [DEMO MODE] Demo Scenario (SIMULATED)",
         border_style="magenta",
     ))
     
     if interactive:
-        if not typer.confirm("\nStart investigation?", default=True):
+        if not typer.confirm("\n[DEMO MODE] Start simulated investigation?", default=True):
             raise typer.Abort()
     
-    # Run the investigation
-    from autosre.cli.commands.investigate import InvestigationRunner
+    # Use the DEMO runner (not the real InvestigationRunner!)
+    # The real investigate command uses InvestigationRunner from investigate.py
+    # which connects to real infrastructure. This demo runner is completely simulated.
     
-    runner = InvestigationRunner(
+    console.print("\n[bold yellow]>>> [DEMO MODE] Starting SIMULATED investigation <<<[/]\n")
+    
+    runner = DemoInvestigationRunner(
         alert=selected["alert"],
         service=selected["service"],
         severity=selected["severity"],
-        mock=True,
         output_format="text",
         stream=True,
     )
@@ -151,15 +290,16 @@ def run(
         f"[green]✓ Demo investigation completed[/]\n\n"
         f"[bold]Investigation ID:[/] {result['investigation_id']}\n"
         f"[bold]Duration:[/] {result['duration_seconds']:.1f}s\n"
-        f"[bold]Root Cause:[/] {result['root_cause']}",
-        title="Demo Complete",
+        f"[bold]Root Cause:[/] {result['root_cause']}\n\n"
+        f"[yellow]⚠️  This was a DEMO with simulated data - not a real incident![/]",
+        title="[DEMO MODE] Demo Complete (SIMULATED)",
         border_style="green",
     ))
 
 
 def _list_scenarios():
     """Display available scenarios."""
-    table = Table(title="Available Demo Scenarios", show_header=True)
+    table = Table(title="[DEMO MODE] Available Demo Scenarios (SIMULATED)", show_header=True)
     table.add_column("ID", style="cyan")
     table.add_column("Name", style="bold")
     table.add_column("Service")
@@ -181,6 +321,7 @@ def _list_scenarios():
     
     console.print()
     console.print(table)
+    console.print("\n[dim][DEMO MODE] All scenarios use simulated data - not real incidents[/]")
 
 
 @app.command()
@@ -189,10 +330,14 @@ def seed(
     clear_first: bool = typer.Option(False, "--clear", help="Clear existing memory first"),
 ):
     """
-    Seed episodic memory with demo data.
+    [DEMO MODE] Seed episodic memory with SIMULATED demo data.
     
-    Populates the memory database with realistic incident episodes
+    ⚠️  WARNING: This populates memory with FAKE/SYNTHETIC data!
+    
+    Populates the memory database with synthetic incident episodes
     for testing memory search and pattern matching.
+    
+    This data is NOT from real incidents - it's generated for demos only.
     
     Examples:
         autosre demo seed
@@ -201,11 +346,16 @@ def seed(
     """
     from autosre.memory import EpisodicMemory, Episode
     
+    # Show demo warning
+    _print_demo_warning()
+    
+    console.print("[bold yellow][DEMO MODE] Seeding memory with SIMULATED data...[/]\n")
+    
     memory = EpisodicMemory()
     
     if clear_first:
         memory.clear()
-        console.print("[yellow]Cleared existing memory[/]")
+        console.print("[yellow][DEMO MODE] Cleared existing memory[/]")
     
     # Demo episode templates
     templates = [
@@ -264,7 +414,7 @@ def seed(
         TaskProgressColumn(),
         console=console,
     ) as progress:
-        task = progress.add_task("Seeding episodes...", total=count)
+        task = progress.add_task("[DEMO MODE] Seeding simulated episodes...", total=count)
         
         for i in range(count):
             template = random.choice(templates)
@@ -274,7 +424,7 @@ def seed(
             # Random timestamp in last 30 days
             days_ago = random.randint(0, 30)
             hours_ago = random.randint(0, 23)
-            created_at = datetime.utcnow() - timedelta(days=days_ago, hours=hours_ago)
+            created_at = datetime.now(timezone.utc) - timedelta(days=days_ago, hours=hours_ago)
             
             # Random duration (5 min to 2 hours)
             duration = random.randint(300, 7200)
@@ -317,18 +467,20 @@ def seed(
     
     console.print()
     console.print(Panel(
-        f"[green]✓[/] Seeded {count} episodes\n\n"
+        f"[green]✓[/] Seeded {count} SIMULATED episodes\n\n"
         f"[bold]Total Episodes:[/] {stats['total_episodes']}\n"
         f"[bold]Alert Types:[/] {len(stats.get('top_alert_types', []))}\n"
-        f"[bold]Resolution Rate:[/] {stats.get('resolution_rate', 0):.0%}",
-        title="Demo Data Seeded",
+        f"[bold]Resolution Rate:[/] {stats.get('resolution_rate', 0):.0%}\n\n"
+        f"[yellow]⚠️  This data is SIMULATED - not from real incidents![/]",
+        title="[DEMO MODE] Demo Data Seeded (SIMULATED)",
         border_style="green",
     ))
 
 
 @app.command()
 def scenarios():
-    """List all available demo scenarios."""
+    """[DEMO MODE] List all available demo scenarios with SIMULATED data."""
+    _print_demo_warning()
     _list_scenarios()
 
 
@@ -338,28 +490,35 @@ def benchmark(
     scenario: Optional[str] = typer.Option(None, "--scenario", "-s", help="Specific scenario"),
 ):
     """
-    Benchmark investigation performance.
+    [DEMO MODE] Benchmark investigation performance with SIMULATED data.
     
-    Runs multiple investigations and reports timing statistics.
+    ⚠️  WARNING: This uses FAKE/MOCK scenarios for benchmarking only!
+    
+    Runs multiple simulated investigations and reports timing statistics.
+    Results are based on synthetic demo data, not real incidents.
     
     Examples:
         autosre demo benchmark
         autosre demo benchmark --iterations 10
     """
-    from autosre.cli.commands.investigate import InvestigationRunner
+    # NOTE: We DON'T import InvestigationRunner here - we use DemoInvestigationRunner
+    # which is completely simulated and does not connect to real infrastructure.
     import time
+    
+    # Show demo warning
+    _print_demo_warning()
     
     scenarios_to_run = [next((s for s in DEMO_SCENARIOS if s["id"] == scenario), None)] if scenario else DEMO_SCENARIOS
     scenarios_to_run = [s for s in scenarios_to_run if s]
     
     if not scenarios_to_run:
-        console.print("[red]No scenarios to run[/]")
+        console.print("[red][DEMO MODE] No scenarios to run[/]")
         raise typer.Exit(1)
     
     results = []
     
     console.print()
-    console.print(f"[bold]Running benchmark: {iterations} iterations[/]")
+    console.print(f"[bold][DEMO MODE] Running benchmark: {iterations} iterations with SIMULATED data[/]")
     console.print()
     
     with Progress(
@@ -370,17 +529,17 @@ def benchmark(
         console=console,
     ) as progress:
         total = iterations * len(scenarios_to_run)
-        task = progress.add_task("Running...", total=total)
+        task = progress.add_task("[DEMO] Running...", total=total)
         
         for i in range(iterations):
             for s in scenarios_to_run:
                 start = time.time()
                 
-                runner = InvestigationRunner(
+                # Use DemoInvestigationRunner - NEVER the real InvestigationRunner!
+                runner = DemoInvestigationRunner(
                     alert=s["alert"],
                     service=s["service"],
                     severity=s["severity"],
-                    mock=True,
                     output_format="text",
                     stream=False,  # Quiet mode for benchmark
                 )
@@ -394,7 +553,7 @@ def benchmark(
                     "duration": elapsed,
                 })
                 
-                progress.update(task, advance=1, description=f"{s['id']} ({elapsed:.2f}s)")
+                progress.update(task, advance=1, description=f"[DEMO] {s['id']} ({elapsed:.2f}s)")
     
     # Calculate statistics
     durations = [r["duration"] for r in results]
@@ -412,7 +571,7 @@ def benchmark(
     console.print()
     
     # Results table
-    table = Table(title="Benchmark Results", show_header=True)
+    table = Table(title="[DEMO MODE] Benchmark Results (SIMULATED)", show_header=True)
     table.add_column("Scenario", style="cyan")
     table.add_column("Avg", justify="right")
     table.add_column("Min", justify="right", style="green")
@@ -436,8 +595,9 @@ def benchmark(
         f"[bold]Total Runs:[/] {len(results)}\n"
         f"[bold]Average:[/] {avg_duration:.3f}s\n"
         f"[bold]Min:[/] {min_duration:.3f}s\n"
-        f"[bold]Max:[/] {max_duration:.3f}s",
-        title="Summary",
+        f"[bold]Max:[/] {max_duration:.3f}s\n\n"
+        f"[yellow]⚠️  Results based on SIMULATED demo scenarios[/]",
+        title="[DEMO MODE] Benchmark Summary (SIMULATED)",
         border_style="cyan",
     ))
 
@@ -445,14 +605,18 @@ def benchmark(
 @app.command()
 def topology():
     """
-    Show demo service topology.
+    [DEMO MODE] Show demo service topology with SIMULATED architecture.
     
     Displays a sample microservices topology used in demo scenarios.
+    This is a FICTIONAL architecture for demonstration purposes only.
     """
     from rich.tree import Tree
     
+    # Show demo warning
+    _print_demo_warning()
+    
     # Build topology tree
-    tree = Tree("🏢 [bold]Demo Platform[/]")
+    tree = Tree("🏢 [bold]Demo Platform[/] [dim](SIMULATED)[/]")
     
     # Frontend tier
     frontend = tree.add("📱 [cyan]Frontend Tier[/]")
@@ -489,5 +653,6 @@ def topology():
     infra.add("grafana")
     
     console.print()
-    console.print(Panel(tree, title="Demo Service Topology", border_style="cyan"))
+    console.print(Panel(tree, title="[DEMO MODE] Demo Service Topology (FICTIONAL)", border_style="cyan"))
+    console.print("\n[dim][DEMO MODE] This is a simulated architecture - not real infrastructure[/]")
     console.print()

@@ -8,7 +8,7 @@ baselines using statistical methods and metric thresholds.
 import asyncio
 import statistics
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Callable, Optional
 
@@ -267,7 +267,7 @@ class CanaryWeight:
     
     canary: int = 10
     baseline: int = 90
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class TrafficSplit(BaseModel):
@@ -317,7 +317,7 @@ class CanaryPromotion:
     
     # Timing
     analysis_duration_seconds: int = 0
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Detailed results
     metric_results: list[ComparisonResult] = field(default_factory=list)
@@ -329,7 +329,7 @@ class CanaryEvent:
     
     event_type: str  # weight_change, analysis_complete, promotion, rollback
     message: str
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     details: dict[str, Any] = field(default_factory=dict)
 
 
@@ -526,7 +526,7 @@ class CanaryAnalyzer:
         """
         self._result = CanaryResult(
             phase=CanaryPhase.INITIALIZING,
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
         self._result.timeline.started_at = self._result.started_at
         self._is_running = True
@@ -588,7 +588,7 @@ class CanaryAnalyzer:
             self._result.phase = CanaryPhase.FAILED
         finally:
             self._is_running = False
-            self._result.completed_at = datetime.utcnow()
+            self._result.completed_at = datetime.now(timezone.utc)
             self._result.timeline.completed_at = self._result.completed_at
         
         return self._result

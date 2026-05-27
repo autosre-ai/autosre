@@ -17,7 +17,7 @@ import os
 import secrets
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import httpx
@@ -247,7 +247,7 @@ def _parse_alert_from_prompt(
         "description": prompt,
         "service": service or "",
         "severity": severity or "high",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -288,7 +288,7 @@ async def _run_investigation(
             "type": "start",
             "thread_id": thread_id,
             "alert": alert,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
         
         # Stream events from the graph
@@ -300,7 +300,7 @@ async def _run_investigation(
                 await queue.put({
                     "type": "node_start",
                     "node": node_name,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
             
             elif event_type == "on_chain_end":
@@ -310,7 +310,7 @@ async def _run_investigation(
                     "type": "node_end",
                     "node": node_name,
                     "output_keys": list(output.keys()) if isinstance(output, dict) else [],
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
             
             elif event_type == "on_tool_start":
@@ -320,7 +320,7 @@ async def _run_investigation(
                     "type": "tool_start",
                     "tool": tool_name,
                     "input": str(tool_input)[:500],
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
             
             elif event_type == "on_tool_end":
@@ -330,7 +330,7 @@ async def _run_investigation(
                     "type": "tool_end",
                     "tool": tool_name,
                     "output_preview": str(tool_output)[:500],
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 })
             
             elif event_type == "on_llm_stream":
@@ -349,14 +349,14 @@ async def _run_investigation(
             "type": "complete",
             "thread_id": thread_id,
             "duration_seconds": duration,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
         
     except asyncio.CancelledError:
         await queue.put({
             "type": "cancelled",
             "thread_id": thread_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
     except Exception as e:
         logger.error(f"[SERVER] Investigation {thread_id} failed: {e}")
@@ -364,7 +364,7 @@ async def _run_investigation(
             "type": "error",
             "thread_id": thread_id,
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         })
     finally:
         # Signal end of stream

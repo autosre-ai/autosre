@@ -8,11 +8,11 @@ organized chaos engineering events.
 import uuid
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Callable, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from autosre.chaos.experiments import (
     ChaosExperiment,
@@ -148,7 +148,7 @@ class GameDayResult:
     def add_event(self, event_type: str, message: str, data: Optional[dict] = None) -> None:
         """Add an event to the timeline."""
         self.events.append({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "type": event_type,
             "message": message,
             "data": data or {},
@@ -229,15 +229,14 @@ class GameDay(BaseModel):
     runbook_link: Optional[str] = None
     
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     created_by: str = Field(default="system")
     labels: dict[str, str] = Field(default_factory=dict)
     
     # Results
     result: Optional[dict[str, Any]] = None
     
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
     
     def add_scenario(self, scenario: GameDayScenario) -> None:
         """Add a scenario to the GameDay."""
@@ -311,7 +310,7 @@ class GameDayRunner:
         result = GameDayResult(
             gameday_id=gameday.id,
             state=GameDayState.RUNNING,
-            start_time=datetime.utcnow(),
+            start_time=datetime.now(timezone.utc),
             scenarios_total=len(gameday.scenarios),
         )
         self._result = result
@@ -363,7 +362,7 @@ class GameDayRunner:
                 result.state = GameDayState.COMPLETED
                 gameday.state = GameDayState.COMPLETED
             
-            result.end_time = datetime.utcnow()
+            result.end_time = datetime.now(timezone.utc)
             result.calculate_resilience_score()
             result.overall_success = result.resilience_score >= 70
             
@@ -425,7 +424,7 @@ class GameDayRunner:
     async def _run_scenario(self, scenario: GameDayScenario) -> dict[str, Any]:
         """Execute a single scenario."""
         scenario.executed = True
-        scenario.start_time = datetime.utcnow()
+        scenario.start_time = datetime.now(timezone.utc)
         
         result_data: dict[str, Any] = {
             "scenario_id": scenario.id,
@@ -490,7 +489,7 @@ class GameDayRunner:
             result_data["success"] = False
             result_data["error"] = str(e)
         
-        scenario.end_time = datetime.utcnow()
+        scenario.end_time = datetime.now(timezone.utc)
         scenario.success = result_data["success"]
         
         result_data["end_time"] = scenario.end_time.isoformat()
@@ -602,7 +601,7 @@ class GameDayScheduler:
     
     def get_upcoming(self, within_hours: int = 24) -> list[GameDay]:
         """Get GameDays scheduled within the next N hours."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         cutoff = now + timedelta(hours=within_hours)
         
         upcoming = []

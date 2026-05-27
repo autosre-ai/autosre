@@ -1,6 +1,6 @@
 """Investigation request/response models."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -221,7 +221,7 @@ class InvestigationEvent(BaseModel):
     """SSE event for investigation updates."""
     event_type: EventType = Field(..., description="Type of event")
     investigation_id: str = Field(..., description="Investigation this event belongs to")
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     data: dict[str, Any] = Field(..., description="Event-specific data")
 
     model_config = {

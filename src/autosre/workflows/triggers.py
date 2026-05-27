@@ -10,7 +10,7 @@ Event-based triggers that initiate workflow execution:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Union
 import asyncio
@@ -47,7 +47,7 @@ class TriggerEvent:
     trigger_type: TriggerType
     trigger_id: str
     payload: Dict[str, Any]
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     source: Optional[str] = None
     tenant_id: Optional[str] = None
     correlation_id: Optional[str] = None
@@ -206,7 +206,7 @@ class AlertTrigger(Trigger):
         
         # Dedupe check
         alert_fingerprint = self._get_fingerprint(event_data)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         if alert_fingerprint in self._recent_alerts:
             last_seen = self._recent_alerts[alert_fingerprint]
@@ -229,7 +229,7 @@ class AlertTrigger(Trigger):
 
     def _cleanup_recent_alerts(self) -> None:
         """Remove expired entries from recent alerts."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         cutoff = now - timedelta(seconds=self.dedupe_window_seconds * 2)
         self._recent_alerts = {
             fp: ts for fp, ts in self._recent_alerts.items()
@@ -290,14 +290,14 @@ class ScheduleTrigger(Trigger):
     @property
     def next_run(self) -> datetime:
         """Calculate next scheduled run time."""
-        base = self._last_run or datetime.utcnow()
+        base = self._last_run or datetime.now(timezone.utc)
         cron = croniter(self.cron, base)
         return cron.get_next(datetime)
 
     @property
     def previous_run(self) -> datetime:
         """Calculate previous scheduled run time."""
-        cron = croniter(self.cron, datetime.utcnow())
+        cron = croniter(self.cron, datetime.now(timezone.utc))
         return cron.get_prev(datetime)
 
     def matches(self, event_data: Dict[str, Any]) -> bool:
@@ -305,7 +305,7 @@ class ScheduleTrigger(Trigger):
         if not self.enabled:
             return False
         
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         if self._last_run is None:
             # First run - check if we're at a scheduled time
@@ -321,7 +321,7 @@ class ScheduleTrigger(Trigger):
 
     def mark_run(self) -> None:
         """Mark that the trigger has run."""
-        self._last_run = datetime.utcnow()
+        self._last_run = datetime.now(timezone.utc)
 
     def get_missed_runs(self) -> List[datetime]:
         """Get list of missed run times for catch-up."""
@@ -330,7 +330,7 @@ class ScheduleTrigger(Trigger):
         
         missed = []
         cron = croniter(self.cron, self._last_run)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         while len(missed) < self.max_catch_up_runs:
             next_time = cron.get_next(datetime)
@@ -693,7 +693,7 @@ class TriggerManager:
         """Main scheduler loop."""
         while self._running:
             try:
-                now = datetime.utcnow()
+                now = datetime.now(timezone.utc)
                 
                 for trigger in self.list_triggers(TriggerType.SCHEDULE, enabled_only=True):
                     if isinstance(trigger, ScheduleTrigger):

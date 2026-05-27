@@ -7,7 +7,7 @@ Represents services, dependencies, infrastructure, and their relationships.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -60,8 +60,8 @@ class BaseModel:
     
     id: str
     name: str
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     labels: dict[str, str] = field(default_factory=dict)
     annotations: dict[str, str] = field(default_factory=dict)
     
@@ -174,7 +174,7 @@ class Dependency:
     circuit_breaker: bool = False
     
     # Metadata
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -287,7 +287,7 @@ class Pod:
     restart_count: int = 0
     ready: bool = True
     
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -514,7 +514,7 @@ class Alert:
     description: str = ""
     
     # Timing
-    started_at: datetime = field(default_factory=datetime.utcnow)
+    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     resolved_at: datetime | None = None
     
     # Status
@@ -553,7 +553,7 @@ class Incident:
     severity: str = "sev3"  # sev1, sev2, sev3, sev4
     
     # Timing
-    started_at: datetime = field(default_factory=datetime.utcnow)
+    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     detected_at: datetime | None = None
     mitigated_at: datetime | None = None
     resolved_at: datetime | None = None

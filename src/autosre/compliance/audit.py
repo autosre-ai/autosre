@@ -6,7 +6,7 @@ Generates comprehensive audit reports and compliance dashboards.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -62,7 +62,7 @@ class AuditFinding:
     remediation: str | None = None
     due_date: datetime | None = None
     assigned_to: str | None = None
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -431,7 +431,7 @@ class ComplianceAuditor:
         return AuditReport(
             report_id=str(uuid.uuid4()),
             organization=self.organization,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
             audit_period_start=period_start,
             audit_period_end=period_end,
             frameworks_assessed=frameworks_assessed,

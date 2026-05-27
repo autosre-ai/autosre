@@ -16,7 +16,7 @@ import inspect
 import os
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Optional, Type
@@ -109,7 +109,7 @@ class DiscoveredPlugin:
     plugin_type: Optional[PluginType] = None
     
     # Status
-    discovered_at: datetime = field(default_factory=datetime.utcnow)
+    discovered_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     validated: bool = False
     validation_error: Optional[str] = None
     loaded: bool = False
@@ -180,7 +180,7 @@ class PluginLoader:
         """
         # Check cache
         if not force and self._config.enable_cache and self._cache_timestamp:
-            cache_age = (datetime.utcnow() - self._cache_timestamp).total_seconds()
+            cache_age = (datetime.now(timezone.utc) - self._cache_timestamp).total_seconds()
             if cache_age < self._config.cache_ttl_seconds:
                 return list(self._discovered.values())
         
@@ -199,7 +199,7 @@ class PluginLoader:
             key = f"{dp.module_name}.{dp.class_name}"
             self._discovered[key] = dp
         
-        self._cache_timestamp = datetime.utcnow()
+        self._cache_timestamp = datetime.now(timezone.utc)
         return list(self._discovered.values())
     
     async def _discover_from_directory(self, directory: str) -> list[DiscoveredPlugin]:

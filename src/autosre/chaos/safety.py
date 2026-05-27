@@ -7,7 +7,7 @@ from causing unintended damage.
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Callable, Optional
 
@@ -146,7 +146,7 @@ class SafetyViolation:
     message: str
     severity: str = "high"
     details: dict[str, Any] = field(default_factory=dict)
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Resolution
     can_override: bool = False
@@ -213,7 +213,7 @@ class CircuitBreaker:
     
     def record_failure(self) -> bool:
         """Record a failed experiment. Returns True if circuit opens."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         self._failure_timestamps.append(now)
         
         # Only count recent failures (within timeout window)
@@ -236,7 +236,7 @@ class CircuitBreaker:
         
         # Check if timeout has elapsed
         if self._opened_at:
-            elapsed = datetime.utcnow() - self._opened_at
+            elapsed = datetime.now(timezone.utc) - self._opened_at
             if elapsed > timedelta(minutes=self.timeout_minutes):
                 self._close()
                 return False
@@ -247,7 +247,7 @@ class CircuitBreaker:
         """Get circuit breaker status."""
         remaining_minutes = 0
         if self._is_open and self._opened_at:
-            elapsed = datetime.utcnow() - self._opened_at
+            elapsed = datetime.now(timezone.utc) - self._opened_at
             remaining = timedelta(minutes=self.timeout_minutes) - elapsed
             remaining_minutes = max(0, remaining.total_seconds() / 60)
         
@@ -267,7 +267,7 @@ class CircuitBreaker:
     def _open(self) -> None:
         """Open the circuit breaker."""
         self._is_open = True
-        self._opened_at = datetime.utcnow()
+        self._opened_at = datetime.now(timezone.utc)
     
     def _close(self) -> None:
         """Close the circuit breaker."""
@@ -462,7 +462,7 @@ class SafetyChecker:
     
     def _check_time_restrictions(self) -> Optional[SafetyViolation]:
         """Check if current time is within allowed window."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         # Check day of week
         if now.weekday() in self.policy.blast_radius.blocked_days:
@@ -684,7 +684,7 @@ class SafetyChecker:
     ) -> None:
         """Log audit entry."""
         entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "experiment_id": getattr(experiment, "id", "unknown"),
             "experiment_name": getattr(experiment, "name", "unknown"),
             "violations_count": len(violations),

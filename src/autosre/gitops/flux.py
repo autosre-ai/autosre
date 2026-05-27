@@ -11,7 +11,7 @@ Provides comprehensive Flux CD integration for GitOps-driven incident response:
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Callable, Optional
 
@@ -1168,9 +1168,9 @@ class FluxClient:
             Final reconciler status
         """
         ns = namespace or self.config.namespace
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
-        while (datetime.utcnow() - start_time).total_seconds() < timeout:
+        while (datetime.now(timezone.utc) - start_time).total_seconds() < timeout:
             status = await self.get_reconciler_status(kind, name, ns)
             if status.ready:
                 return status

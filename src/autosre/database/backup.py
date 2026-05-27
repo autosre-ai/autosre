@@ -12,7 +12,7 @@ Provides comprehensive database backup monitoring and verification:
 import asyncio
 import hashlib
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -163,7 +163,7 @@ class BackupVerification(BaseModel):
     
     backup_id: str
     verification_id: str
-    verified_at: datetime = Field(default_factory=datetime.utcnow)
+    verified_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Results
     status: VerificationStatus
@@ -189,7 +189,7 @@ class RestoreTest(BaseModel):
     
     test_id: str
     backup_id: str
-    tested_at: datetime = Field(default_factory=datetime.utcnow)
+    tested_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Results
     success: bool = False
@@ -245,7 +245,7 @@ class BackupAlert(BaseModel):
     database_name: str
     message: str
     details: dict[str, Any] = Field(default_factory=dict)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     acknowledged: bool = False
 
 
@@ -350,7 +350,7 @@ class BackupVerifier:
         backup = self._backups[backup_id]
         backup.verification_status = VerificationStatus.VERIFYING
         
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         checks_performed = []
         checks_passed = []
@@ -394,7 +394,7 @@ class BackupVerifier:
                 checks_failed.append("backup_chain")
                 errors.append("Invalid backup chain")
         
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         duration = (end_time - start_time).total_seconds()
         
         # Determine overall status
@@ -407,7 +407,7 @@ class BackupVerifier:
         
         verification = BackupVerification(
             backup_id=backup_id,
-            verification_id=f"ver_{backup_id}_{datetime.utcnow().timestamp()}",
+            verification_id=f"ver_{backup_id}_{datetime.now(timezone.utc).timestamp()}",
             status=status,
             checksum_valid=checksum_valid,
             metadata_valid=metadata_valid,
@@ -470,12 +470,12 @@ class BackupVerifier:
             raise ValueError(f"Backup not found: {backup_id}")
         
         backup = self._backups[backup_id]
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         # Simulated restore test
         await asyncio.sleep(0.1)  # Would be actual restore operation
         
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         duration = (end_time - start_time).total_seconds()
         
         # Verify data integrity
@@ -485,7 +485,7 @@ class BackupVerifier:
         queries_total = 10  # Simulated
         
         test = RestoreTest(
-            test_id=f"restore_{backup_id}_{datetime.utcnow().timestamp()}",
+            test_id=f"restore_{backup_id}_{datetime.now(timezone.utc).timestamp()}",
             backup_id=backup_id,
             success=True,
             restore_duration_seconds=duration,
@@ -531,7 +531,7 @@ class BackupVerifier:
         
         actual_rpo = 0.0
         if latest_backup_time:
-            actual_rpo = (datetime.utcnow() - latest_backup_time).total_seconds()
+            actual_rpo = (datetime.now(timezone.utc) - latest_backup_time).total_seconds()
         
         return RecoveryPointStatus(
             database_name=database_name,
@@ -568,10 +568,10 @@ class BackupVerifier:
         hours_since = 0.0
         if latest:
             last_backup_at = latest.completed_at or latest.started_at
-            hours_since = (datetime.utcnow() - last_backup_at).total_seconds() / 3600
+            hours_since = (datetime.now(timezone.utc) - last_backup_at).total_seconds() / 3600
         
         # Count recent failures
-        cutoff_24h = datetime.utcnow() - timedelta(hours=24)
+        cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
         failed_24h = sum(
             1 for b in db_backups
             if b.status == BackupStatus.FAILED and b.started_at > cutoff_24h
@@ -616,7 +616,7 @@ class BackupVerifier:
             if self.config.alert_on_missing:
                 if summary.time_since_last_backup_hours > self.config.max_backup_age_hours:
                     alert = BackupAlert(
-                        alert_id=f"missing_{db_name}_{datetime.utcnow().timestamp()}",
+                        alert_id=f"missing_{db_name}_{datetime.now(timezone.utc).timestamp()}",
                         alert_type="missing_backup",
                         severity="critical",
                         database_name=db_name,
@@ -629,7 +629,7 @@ class BackupVerifier:
             # Check for failures
             if self.config.alert_on_failure and summary.failed_backups_24h > 0:
                 alert = BackupAlert(
-                    alert_id=f"failures_{db_name}_{datetime.utcnow().timestamp()}",
+                    alert_id=f"failures_{db_name}_{datetime.now(timezone.utc).timestamp()}",
                     alert_type="backup_failures",
                     severity="warning",
                     database_name=db_name,

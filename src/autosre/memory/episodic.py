@@ -8,7 +8,7 @@ the agent to learn from historical context.
 import json
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -223,7 +223,7 @@ class EpisodicMemory:
         """Convert a database row to an Episode object."""
         return Episode(
             id=row['id'],
-            created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else datetime.utcnow(),
+            created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else datetime.now(timezone.utc),
             alert_type=row['alert_type'],
             service_name=row['service_name'],
             severity=row['severity'] or 'info',

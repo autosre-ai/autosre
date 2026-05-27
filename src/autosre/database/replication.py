@@ -11,7 +11,7 @@ Provides comprehensive database replication monitoring:
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -130,7 +130,7 @@ class ReplicationLag(BaseModel):
     """Replication lag measurement."""
     
     node_id: str
-    measured_at: datetime = Field(default_factory=datetime.utcnow)
+    measured_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Time-based lag
     lag_seconds: float = Field(default=0.0, description="Replication lag in seconds")
@@ -211,7 +211,7 @@ class ReplicationTopology(BaseModel):
     avg_lag_seconds: float = 0.0
     
     # Timestamps
-    last_updated: datetime = Field(default_factory=datetime.utcnow)
+    last_updated: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class ReplicationAlert(BaseModel):
@@ -223,7 +223,7 @@ class ReplicationAlert(BaseModel):
     severity: str
     message: str
     details: dict[str, Any] = Field(default_factory=dict)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     resolved: bool = False
     resolved_at: Optional[datetime] = None
 
@@ -298,7 +298,7 @@ class ReplicationMonitor:
             ))
             
             # Trim old history
-            cutoff = datetime.utcnow() - timedelta(hours=self.config.history_retention_hours)
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=self.config.history_retention_hours)
             self._lag_history[lag.node_id] = [
                 h for h in history if h.timestamp > cutoff
             ]
@@ -310,7 +310,7 @@ class ReplicationMonitor:
         """Check for lag-related alerts."""
         if lag.lag_seconds >= self.config.lag_critical_seconds:
             alert = ReplicationAlert(
-                alert_id=f"lag_critical_{lag.node_id}_{datetime.utcnow().timestamp()}",
+                alert_id=f"lag_critical_{lag.node_id}_{datetime.now(timezone.utc).timestamp()}",
                 node_id=lag.node_id,
                 alert_type="critical_lag",
                 severity="critical",
@@ -320,7 +320,7 @@ class ReplicationMonitor:
             self._alerts.append(alert)
         elif lag.lag_seconds >= self.config.lag_warning_seconds:
             alert = ReplicationAlert(
-                alert_id=f"lag_warning_{lag.node_id}_{datetime.utcnow().timestamp()}",
+                alert_id=f"lag_warning_{lag.node_id}_{datetime.now(timezone.utc).timestamp()}",
                 node_id=lag.node_id,
                 alert_type="warning_lag",
                 severity="warning",
@@ -459,7 +459,7 @@ class ReplicationMonitor:
         if node_id not in self._lag_history:
             return []
         
-        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
         return [
             h for h in self._lag_history[node_id]
             if h.timestamp > cutoff

@@ -10,6 +10,7 @@ from autosre.foundation.connectors.kubernetes import KubernetesConnector
 from autosre.foundation.connectors.prometheus import PrometheusConnector
 from autosre.foundation.connectors.github import GitHubConnector
 from autosre.foundation.connectors.pagerduty import PagerDutyConnector
+from autosre.foundation.connectors.loki import LokiConnector
 
 __all__ = [
     "BaseConnector",
@@ -17,4 +18,5 @@ __all__ = [
     "PrometheusConnector",
     "GitHubConnector",
     "PagerDutyConnector",
+    "LokiConnector",
 ]

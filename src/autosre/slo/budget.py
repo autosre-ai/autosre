@@ -73,7 +73,7 @@ class BudgetDataPoint:
 class BurnRateCalculation(BaseModel):
     """Result of burn rate calculation."""
     
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     window_hours: float
     burn_rate: float                    # Multiple of acceptable rate
     budget_consumed_pct: float          # Percentage consumed in window
@@ -147,7 +147,7 @@ class ErrorBudgetStatus(BaseModel):
     
     slo_id: str
     slo_name: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Budget metrics
     total_budget_minutes: float             # Total budget for period
@@ -238,7 +238,7 @@ class ErrorBudget(BaseModel):
     data_points: list[dict] = Field(default_factory=list)   # BudgetDataPoint as dict
     
     # Current state
-    period_start: datetime = Field(default_factory=datetime.utcnow)
+    period_start: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     total_good_events: float = 0
     total_events: float = 0
     

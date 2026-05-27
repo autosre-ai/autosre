@@ -17,7 +17,7 @@ This skill:
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Optional, Protocol
 from urllib.parse import urljoin
@@ -68,7 +68,7 @@ class SignalResult:
 class GoldenSignalsResult:
     """Complete golden signals check result."""
     service: str
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     latency: Optional[SignalResult] = None
     traffic: Optional[SignalResult] = None
@@ -259,7 +259,7 @@ class DatadogBackend(MetricsBackend):
         except ImportError:
             return {"status": "error", "error": "httpx not installed"}
         
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         start = now - timedelta(minutes=5)
         
         url = f"{self.base_url}/api/v1/query"

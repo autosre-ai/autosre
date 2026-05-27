@@ -10,7 +10,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -304,7 +304,7 @@ class FineTuner:
         Returns:
             Training results with metrics
         """
-        self._training_start_time = datetime.utcnow()
+        self._training_start_time = datetime.now(timezone.utc)
         
         # Route to appropriate backend
         if self.config.backend == ModelBackend.HUGGINGFACE:
@@ -472,7 +472,7 @@ class FineTuner:
             json.dump(self.config.to_dict(), f, indent=2)
         
         # Compute final metrics
-        training_time = (datetime.utcnow() - self._training_start_time).total_seconds()
+        training_time = (datetime.now(timezone.utc) - self._training_start_time).total_seconds()
         
         result = {
             "status": "success",
@@ -582,7 +582,7 @@ class FineTuner:
             
             time.sleep(60)
         
-        training_time = (datetime.utcnow() - self._training_start_time).total_seconds()
+        training_time = (datetime.now(timezone.utc) - self._training_start_time).total_seconds()
         
         return {
             "status": "success",
@@ -633,7 +633,7 @@ class FineTuner:
             
             time.sleep(60)
         
-        training_time = (datetime.utcnow() - self._training_start_time).total_seconds()
+        training_time = (datetime.now(timezone.utc) - self._training_start_time).total_seconds()
         
         return {
             "status": "success",

@@ -15,7 +15,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, UTC, timezone
 from enum import Enum
 from typing import Any, Optional, Protocol
 
@@ -82,7 +82,7 @@ class TriageResult(BaseModel):
     mitigation_skipped_reason: Optional[str] = None
     
     # Timing metrics (SRE book: track time-to-mitigation vs time-to-root-cause)
-    triage_started_at: datetime = Field(default_factory=datetime.utcnow)
+    triage_started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     triage_completed_at: Optional[datetime] = None
     mitigation_started_at: Optional[datetime] = None
     mitigation_completed_at: Optional[datetime] = None
@@ -287,7 +287,7 @@ class TriageNode:
         Returns:
             TriageResult with assessment and mitigation options
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         logger.info(f"[TRIAGE] Starting triage for alert: {alert.get('name', 'unknown')}")
         
         try:
@@ -362,7 +362,7 @@ class TriageNode:
                     for opt in assessment.get("mitigation_options", [])
                 ],
                 triage_started_at=start_time,
-                triage_completed_at=datetime.utcnow(),
+                triage_completed_at=datetime.now(UTC),
                 summary=assessment.get("reasoning", ""),
                 recommended_focus_areas=assessment.get("recommended_focus_areas", []),
             )
@@ -403,7 +403,7 @@ class TriageNode:
     ) -> TriageResult:
         """Mark a mitigation as applied."""
         result.mitigation_applied = option
-        result.mitigation_completed_at = datetime.utcnow()
+        result.mitigation_completed_at = datetime.now(UTC)
         result.status = TriageStatus.MITIGATION_APPLIED
         
         logger.info(

@@ -12,7 +12,7 @@ import asyncio
 import hashlib
 import secrets
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC, timezone
 from enum import Enum
 from typing import Any, Callable, Optional
 
@@ -96,7 +96,7 @@ class ApproverGroup(BaseModel):
     
     # Metadata
     owner: str = ""
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class EscalationRule(BaseModel):
@@ -178,7 +178,7 @@ class ApprovalPolicy(BaseModel):
     # Metadata
     owner: str = ""
     version: int = Field(default=1, ge=1)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class NotificationConfig(BaseModel):
@@ -223,7 +223,7 @@ class ApprovalDecision:
     conditions: list[str] = field(default_factory=list)
     
     # Metadata
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     ip_address: Optional[str] = None
     user_agent: Optional[str] = None
     
@@ -273,8 +273,8 @@ class ApprovalRequest:
     decisions: list[ApprovalDecision] = field(default_factory=list)
     
     # Timeline
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     expires_at: Optional[datetime] = None
     resolved_at: Optional[datetime] = None
     
@@ -292,7 +292,7 @@ class ApprovalRequest:
     def add_decision(self, decision: ApprovalDecision) -> None:
         """Add a decision to the request."""
         self.decisions.append(decision)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(UTC)
         self._evaluate_status()
     
     def _evaluate_status(self) -> None:
@@ -306,35 +306,35 @@ class ApprovalRequest:
         # Any denial means denied
         if denials:
             self.status = ApprovalStatus.DENIED
-            self.resolved_at = datetime.utcnow()
+            self.resolved_at = datetime.now(UTC)
             return
         
         # Check if enough approvals based on strategy
         if self.strategy == ApprovalStrategy.ANY:
             if approvals:
                 self.status = ApprovalStatus.APPROVED
-                self.resolved_at = datetime.utcnow()
+                self.resolved_at = datetime.now(UTC)
         
         elif self.strategy == ApprovalStrategy.ALL:
             required = len(self.required_approvers) if self.required_approvers else self.quorum_size
             if len(approvals) >= required:
                 self.status = ApprovalStatus.APPROVED
-                self.resolved_at = datetime.utcnow()
+                self.resolved_at = datetime.now(UTC)
         
         elif self.strategy == ApprovalStrategy.MAJORITY:
             required = len(self.required_approvers) if self.required_approvers else self.quorum_size
             if len(approvals) > required // 2:
                 self.status = ApprovalStatus.APPROVED
-                self.resolved_at = datetime.utcnow()
+                self.resolved_at = datetime.now(UTC)
         
         elif self.strategy == ApprovalStrategy.QUORUM:
             if len(approvals) >= self.quorum_size:
                 self.status = ApprovalStatus.APPROVED
-                self.resolved_at = datetime.utcnow()
+                self.resolved_at = datetime.now(UTC)
     
     def is_expired(self) -> bool:
         """Check if request has expired."""
-        if self.expires_at and datetime.utcnow() > self.expires_at:
+        if self.expires_at and datetime.now(UTC) > self.expires_at:
             return True
         return False
     
@@ -597,7 +597,7 @@ class ApprovalWorkflow:
             required_groups=self.policy.required_groups,
             strategy=self.policy.strategy,
             quorum_size=self.policy.quorum_size,
-            expires_at=datetime.utcnow() + timedelta(minutes=timeout),
+            expires_at=datetime.now(UTC) + timedelta(minutes=timeout),
             context=context or {},
             priority=priority,
         )
@@ -702,10 +702,10 @@ class ApprovalWorkflow:
         request.escalation_count += 1
         request.escalated_to = next_level.value
         request.status = ApprovalStatus.ESCALATED
-        request.updated_at = datetime.utcnow()
+        request.updated_at = datetime.now(UTC)
         
         # Extend expiry
-        request.expires_at = datetime.utcnow() + timedelta(
+        request.expires_at = datetime.now(UTC) + timedelta(
             minutes=self.policy.timeout_minutes
         )
         
@@ -732,8 +732,8 @@ class ApprovalWorkflow:
             return False, f"Cannot cancel request in {request.status.value} status"
         
         request.status = ApprovalStatus.CANCELLED
-        request.resolved_at = datetime.utcnow()
-        request.updated_at = datetime.utcnow()
+        request.resolved_at = datetime.now(UTC)
+        request.updated_at = datetime.now(UTC)
         
         return True, "Request cancelled"
     
@@ -771,7 +771,7 @@ class ApprovalWorkflow:
         for request in self._requests.values():
             if request.status == ApprovalStatus.PENDING and request.is_expired():
                 request.status = ApprovalStatus.EXPIRED
-                request.resolved_at = datetime.utcnow()
+                request.resolved_at = datetime.now(UTC)
                 expired.append(request)
                 
                 if self._on_expired:
@@ -781,7 +781,7 @@ class ApprovalWorkflow:
     
     def _generate_request_id(self) -> str:
         """Generate a unique request ID."""
-        timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
         random_part = secrets.token_hex(4)
         return f"AR-{timestamp}-{random_part}"
     
@@ -875,7 +875,7 @@ class ApprovalWorkflow:
         decision: ApprovalStatus,
     ) -> str:
         """Create a signature for the decision."""
-        data = f"{request_id}:{approver_id}:{decision.value}:{datetime.utcnow().isoformat()}"
+        data = f"{request_id}:{approver_id}:{decision.value}:{datetime.now(UTC).isoformat()}"
         return hashlib.sha256(data.encode()).hexdigest()[:16]
 
 

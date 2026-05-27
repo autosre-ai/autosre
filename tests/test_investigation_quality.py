@@ -11,7 +11,7 @@ Based on Google SRE book learnings:
 
 import asyncio
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
@@ -252,7 +252,7 @@ class TestChangesSubagent:
         subagent = ChangesSubagent(dry_run=True)
         
         # Manually add test changes
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         test_changes = [
             Change(
                 id="1",

@@ -8,7 +8,7 @@ Uses asyncpg for high-performance async PostgreSQL access with connection poolin
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, AsyncIterator, Optional
 from uuid import UUID
 
@@ -96,7 +96,7 @@ async def store_episode(episode: EpisodeCreate) -> Episode:
         The created Episode with generated ID and timestamps
     """
     async with get_connection() as conn:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         episode_id = await conn.fetchval(
             """
             INSERT INTO episodes (
@@ -220,7 +220,7 @@ async def update_episode(
         return await get_episode(episode_id, org_id)
     
     updates.append(f"updated_at = ${param_idx}")
-    values.append(datetime.utcnow())
+    values.append(datetime.now(timezone.utc))
     param_idx += 1
     
     values.append(episode_id)
@@ -409,7 +409,7 @@ async def delete_episode(episode_id: UUID, org_id: str = "default") -> bool:
 async def store_strategy(strategy: StrategyCreate) -> Strategy:
     """Store a new investigation strategy."""
     async with get_connection() as conn:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         expires_at = now + timedelta(days=7)  # Strategies expire after a week
         
         strategy_id = await conn.fetchval(
@@ -488,7 +488,7 @@ async def get_strategy(
 async def upsert_strategy(strategy: StrategyCreate) -> Strategy:
     """Insert or update a strategy (replaces existing for same scope)."""
     async with get_connection() as conn:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         expires_at = now + timedelta(days=7)
         
         row = await conn.fetchrow(

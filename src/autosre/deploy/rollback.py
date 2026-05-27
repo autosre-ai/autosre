@@ -7,7 +7,7 @@ health checks, and configurable triggers.
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Callable, Optional
 
@@ -189,7 +189,7 @@ class RollbackSnapshot:
     config_hash: str = ""
     
     # Metadata
-    captured_at: datetime = field(default_factory=datetime.utcnow)
+    captured_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     labels: dict[str, str] = field(default_factory=dict)
     annotations: dict[str, str] = field(default_factory=dict)
     
@@ -230,7 +230,7 @@ class RollbackExecution:
     to_version: str = ""
     
     # Timing
-    triggered_at: datetime = field(default_factory=datetime.utcnow)
+    triggered_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     
@@ -378,7 +378,7 @@ class RollbackHistory:
         if deployment:
             filtered = [e for e in filtered if e.deployment_name == deployment]
         if time_window:
-            cutoff = datetime.utcnow() - time_window
+            cutoff = datetime.now(timezone.utc) - time_window
             filtered = [e for e in filtered if e.timestamp > cutoff]
         
         if not filtered:
@@ -568,7 +568,7 @@ class RollbackManager:
             
             # Start rollback
             execution.status = RollbackStatus.IN_PROGRESS
-            execution.started_at = datetime.utcnow()
+            execution.started_at = datetime.now(timezone.utc)
             
             # Execute based on strategy
             if execution.strategy == RollbackStrategy.IMMEDIATE:
@@ -589,7 +589,7 @@ class RollbackManager:
             
             # Mark success
             execution.status = RollbackStatus.COMPLETED
-            execution.completed_at = datetime.utcnow()
+            execution.completed_at = datetime.now(timezone.utc)
             execution.success = True
             execution.progress_percentage = 100
             
@@ -604,7 +604,7 @@ class RollbackManager:
             
         except Exception as e:
             execution.status = RollbackStatus.FAILED
-            execution.completed_at = datetime.utcnow()
+            execution.completed_at = datetime.now(timezone.utc)
             execution.success = False
             execution.error_message = str(e)
             
@@ -628,7 +628,7 @@ class RollbackManager:
         action = RollbackAction(
             action_type="rollback_immediate",
             description=f"Rolling back {execution.deployment_name} to {execution.to_version}",
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
         execution.add_action(action)
         execution.current_step = "Rolling back deployment"
@@ -646,7 +646,7 @@ class RollbackManager:
         await self._wait_for_rollout(execution)
         
         action.status = "completed"
-        action.completed_at = datetime.utcnow()
+        action.completed_at = datetime.now(timezone.utc)
         execution.progress_percentage = 100
     
     async def _rollback_gradual(self, execution: RollbackExecution) -> None:
@@ -659,7 +659,7 @@ class RollbackManager:
             action = RollbackAction(
                 action_type="traffic_shift",
                 description=f"Shifting traffic to {100 - weight}% stable",
-                started_at=datetime.utcnow(),
+                started_at=datetime.now(timezone.utc),
                 details={"canary_weight": weight, "stable_weight": 100 - weight},
             )
             execution.add_action(action)
@@ -675,7 +675,7 @@ class RollbackManager:
                 )
             
             action.status = "completed"
-            action.completed_at = datetime.utcnow()
+            action.completed_at = datetime.now(timezone.utc)
             
             # Wait between steps
             if i < total_steps - 1:
@@ -686,7 +686,7 @@ class RollbackManager:
         action = RollbackAction(
             action_type="blue_green_switch",
             description="Switching service selector to stable version",
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
         execution.add_action(action)
         execution.current_step = "Switching to stable deployment"
@@ -700,7 +700,7 @@ class RollbackManager:
             )
         
         action.status = "completed"
-        action.completed_at = datetime.utcnow()
+        action.completed_at = datetime.now(timezone.utc)
         execution.progress_percentage = 100
     
     async def _rollback_recreate(self, execution: RollbackExecution) -> None:
@@ -709,7 +709,7 @@ class RollbackManager:
         delete_action = RollbackAction(
             action_type="delete_deployment",
             description="Deleting failed deployment",
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
         execution.add_action(delete_action)
         execution.current_step = "Deleting failed deployment"
@@ -722,13 +722,13 @@ class RollbackManager:
             )
         
         delete_action.status = "completed"
-        delete_action.completed_at = datetime.utcnow()
+        delete_action.completed_at = datetime.now(timezone.utc)
         
         # Recreate from snapshot
         recreate_action = RollbackAction(
             action_type="recreate_deployment",
             description="Recreating deployment from snapshot",
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
         execution.add_action(recreate_action)
         execution.current_step = "Recreating deployment"
@@ -743,7 +743,7 @@ class RollbackManager:
             )
         
         recreate_action.status = "completed"
-        recreate_action.completed_at = datetime.utcnow()
+        recreate_action.completed_at = datetime.now(timezone.utc)
         execution.progress_percentage = 100
     
     async def _capture_snapshot(
@@ -788,9 +788,9 @@ class RollbackManager:
     ) -> bool:
         """Wait for rollout to complete."""
         timeout = timeout_seconds or self.config.rollback_timeout_seconds
-        deadline = datetime.utcnow() + timedelta(seconds=timeout)
+        deadline = datetime.now(timezone.utc) + timedelta(seconds=timeout)
         
-        while datetime.utcnow() < deadline:
+        while datetime.now(timezone.utc) < deadline:
             if self.kubernetes_client:
                 status = await self.kubernetes_client.get_rollout_status(
                     execution.deployment_name,
@@ -861,10 +861,10 @@ class RollbackManager:
                     # Check duration requirement
                     trigger_key = f"{trigger.id}:{deployment_name}:{namespace}"
                     if trigger_key not in self._trigger_states:
-                        self._trigger_states[trigger_key] = datetime.utcnow()
+                        self._trigger_states[trigger_key] = datetime.now(timezone.utc)
                     
                     elapsed = (
-                        datetime.utcnow() - self._trigger_states[trigger_key]
+                        datetime.now(timezone.utc) - self._trigger_states[trigger_key]
                     ).total_seconds()
                     
                     if elapsed >= trigger.duration_seconds:

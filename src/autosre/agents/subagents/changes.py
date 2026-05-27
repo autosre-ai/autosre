@@ -16,7 +16,7 @@ Change sources:
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from enum import Enum
 from typing import Any, Optional, Protocol
 
@@ -88,7 +88,7 @@ class Change(BaseModel):
     
     def time_ago(self, reference: Optional[datetime] = None) -> str:
         """Human-readable time since change."""
-        ref = reference or datetime.utcnow()
+        ref = reference or datetime.now(UTC)
         delta = ref - self.timestamp
         
         if delta.total_seconds() < 60:
@@ -138,7 +138,7 @@ class ChangesResult(BaseModel):
     
     def has_recent_deployment(self, within_minutes: int = 30) -> bool:
         """Check if there's a deployment within the time window."""
-        cutoff = datetime.utcnow() - timedelta(minutes=within_minutes)
+        cutoff = datetime.now(UTC) - timedelta(minutes=within_minutes)
         return any(
             c.type == ChangeType.DEPLOYMENT and c.timestamp > cutoff
             for c in self.changes
@@ -272,7 +272,7 @@ class KubernetesChangesClient:
             else:
                 rs_list = apps_v1.list_replica_set_for_all_namespaces()
             
-            cutoff = datetime.utcnow() - timedelta(hours=hours)
+            cutoff = datetime.now(UTC) - timedelta(hours=hours)
             
             for rs in rs_list.items:
                 if rs.metadata.creation_timestamp and rs.metadata.creation_timestamp.replace(tzinfo=None) > cutoff:
@@ -401,7 +401,7 @@ class ChangesSubagent(BaseSubagent):
         Returns:
             ChangesResult with all changes and correlation analysis
         """
-        incident_time = incident_time or datetime.utcnow()
+        incident_time = incident_time or datetime.now(UTC)
         all_changes: list[Change] = []
         
         # Get Kubernetes changes
@@ -417,7 +417,7 @@ class ChangesSubagent(BaseSubagent):
             github_deployments = await self.github.get_deployments()
             for dep in github_deployments:
                 created_at = datetime.fromisoformat(dep["created_at"].replace("Z", ""))
-                if created_at > datetime.utcnow() - timedelta(hours=hours):
+                if created_at > datetime.now(UTC) - timedelta(hours=hours):
                     all_changes.append(Change(
                         id=str(dep["id"]),
                         type=ChangeType.DEPLOYMENT,
@@ -532,7 +532,7 @@ class ChangesSubagent(BaseSubagent):
             if self.dry_run:
                 return f"[DRY RUN] Would get changes near incident"
             
-            inc_time = datetime.utcnow()
+            inc_time = datetime.now(UTC)
             if incident_time:
                 try:
                     inc_time = datetime.fromisoformat(incident_time)
@@ -636,7 +636,7 @@ class ChangesSubagent(BaseSubagent):
             try:
                 anomaly_time = datetime.fromisoformat(metric_anomaly_time)
             except:
-                anomaly_time = datetime.utcnow()
+                anomaly_time = datetime.now(UTC)
             
             result = await self.get_recent_changes(
                 service=service,

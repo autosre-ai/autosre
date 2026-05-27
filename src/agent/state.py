@@ -10,7 +10,7 @@ from __future__ import annotations
 import operator
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing_extensions import TypedDict
 
 
@@ -127,8 +127,7 @@ class Hypothesis(BaseModel):
         default_factory=list,
     )
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class InvestigationPlan(BaseModel):
@@ -148,8 +147,7 @@ class InvestigationPlan(BaseModel):
         description="Brief explanation of the investigation strategy"
     )
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class SynthesisDecision(BaseModel):
@@ -178,8 +176,7 @@ class SynthesisDecision(BaseModel):
         description="Specific guidance for the next investigation iteration"
     )
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class AgentResult(BaseModel):
@@ -214,8 +211,7 @@ class AgentResult(BaseModel):
         description="Total execution time in seconds"
     )
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 # ---------------------------------------------------------------------------
@@ -248,5 +244,4 @@ class AlertInput(BaseModel):
         description="Optional images (screenshots, graphs) attached to alert"
     )
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")

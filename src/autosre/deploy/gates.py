@@ -11,7 +11,7 @@ Provides deployment gate functionality for controlled rollouts:
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 from enum import Enum
 from typing import Any, Callable, Optional
 
@@ -200,7 +200,7 @@ class ApprovalRequest:
     
     # Requestor
     requested_by: str
-    requested_at: datetime = field(default_factory=datetime.utcnow)
+    requested_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Details
     version: str = ""
@@ -227,7 +227,7 @@ class ApprovalRequest:
     def is_expired(self) -> bool:
         """Check if request has expired."""
         if self.expires_at:
-            return datetime.utcnow() > self.expires_at
+            return datetime.now(timezone.utc) > self.expires_at
         return False
 
 
@@ -240,7 +240,7 @@ class ApprovalDecision:
     
     # Approver
     approver: str
-    decided_at: datetime = field(default_factory=datetime.utcnow)
+    decided_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Details
     reason: str = ""
@@ -288,7 +288,7 @@ class ApprovalGate:
             change_description=change_description,
             risk_level=risk_level,
             required_approvers=self.config.approvers.copy(),
-            expires_at=datetime.utcnow() + timedelta(
+            expires_at=datetime.now(timezone.utc) + timedelta(
                 seconds=self.config.approval_timeout_seconds
             ),
         )
@@ -355,7 +355,7 @@ class ApprovalGate:
         result = GateResult(
             gate_name=self.gate_config.name,
             gate_type=GateType.APPROVAL,
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
         
         deployment_name = context.get("deployment_name", "")
@@ -366,7 +366,7 @@ class ApprovalGate:
         if await self._check_auto_approval(context):
             result.status = GateStatus.APPROVED
             result.message = "Auto-approved based on conditions"
-            result.completed_at = datetime.utcnow()
+            result.completed_at = datetime.now(timezone.utc)
             return result
         
         # Create approval request
@@ -385,9 +385,9 @@ class ApprovalGate:
         
         # Wait for approval
         timeout = self.config.approval_timeout_seconds
-        deadline = datetime.utcnow() + timedelta(seconds=timeout)
+        deadline = datetime.now(timezone.utc) + timedelta(seconds=timeout)
         
-        while datetime.utcnow() < deadline:
+        while datetime.now(timezone.utc) < deadline:
             request = self._pending_requests.get(request.id)
             
             if request.status == GateStatus.APPROVED:
@@ -411,7 +411,7 @@ class ApprovalGate:
             result.status = GateStatus.EXPIRED
             result.message = f"Approval timed out after {timeout} seconds"
         
-        result.completed_at = datetime.utcnow()
+        result.completed_at = datetime.now(timezone.utc)
         return result
     
     async def _check_auto_approval(self, context: dict[str, Any]) -> bool:
@@ -547,7 +547,7 @@ class MetricGate:
         result = GateResult(
             gate_name=self.gate_config.name,
             gate_type=GateType.METRIC,
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
         
         deployment_name = context.get("deployment_name", "")
@@ -601,7 +601,7 @@ class MetricGate:
             result.status = GateStatus.ERROR
             result.message = f"Metric evaluation error: {str(e)}"
         
-        result.completed_at = datetime.utcnow()
+        result.completed_at = datetime.now(timezone.utc)
         return result
     
     async def _query_metric(
@@ -679,10 +679,10 @@ class TimeGate:
         result = GateResult(
             gate_name=self.gate_config.name,
             gate_type=GateType.TIME,
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
         
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         current_day = now.weekday()
         current_time = now.time()
         
@@ -696,7 +696,7 @@ class TimeGate:
                     result.status = GateStatus.DENIED
                     result.message = f"Deployment freeze in effect until {freeze_end.isoformat()}"
                     result.reason = freeze.get("reason", "Scheduled freeze period")
-                    result.completed_at = datetime.utcnow()
+                    result.completed_at = datetime.now(timezone.utc)
                     return result
             
             # Check allowed windows
@@ -744,7 +744,7 @@ class TimeGate:
             result.status = GateStatus.ERROR
             result.message = f"Time gate evaluation error: {str(e)}"
         
-        result.completed_at = datetime.utcnow()
+        result.completed_at = datetime.now(timezone.utc)
         result.metadata["evaluated_at"] = now.isoformat()
         result.metadata["day_of_week"] = current_day
         result.metadata["time"] = current_time.isoformat()
@@ -806,8 +806,8 @@ class ManualGate:
         self._waiting_confirmations[confirmation_id] = {
             "deployment_name": deployment_name,
             "namespace": namespace,
-            "requested_at": datetime.utcnow(),
-            "expires_at": datetime.utcnow() + timedelta(seconds=self.config.timeout_seconds),
+            "requested_at": datetime.now(timezone.utc),
+            "expires_at": datetime.now(timezone.utc) + timedelta(seconds=self.config.timeout_seconds),
             "confirmed": False,
             "confirmation_text": None,
         }
@@ -825,7 +825,7 @@ class ManualGate:
         
         confirmation = self._waiting_confirmations[confirmation_id]
         
-        if datetime.utcnow() > confirmation["expires_at"]:
+        if datetime.now(timezone.utc) > confirmation["expires_at"]:
             raise ValueError(f"Confirmation {confirmation_id} has expired")
         
         # Validate confirmation text if required
@@ -835,7 +835,7 @@ class ManualGate:
         
         confirmation["confirmed"] = True
         confirmation["confirmation_text"] = confirmation_text
-        confirmation["confirmed_at"] = datetime.utcnow()
+        confirmation["confirmed_at"] = datetime.now(timezone.utc)
         
         return True
     
@@ -847,7 +847,7 @@ class ManualGate:
         result = GateResult(
             gate_name=self.gate_config.name,
             gate_type=GateType.MANUAL,
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
         
         deployment_name = context.get("deployment_name", "")
@@ -868,13 +868,13 @@ class ManualGate:
             else:
                 result.status = GateStatus.DENIED
                 result.message = "Manual confirmation denied"
-            result.completed_at = datetime.utcnow()
+            result.completed_at = datetime.now(timezone.utc)
             return result
         
         # Wait for external confirmation
-        deadline = datetime.utcnow() + timedelta(seconds=self.config.timeout_seconds)
+        deadline = datetime.now(timezone.utc) + timedelta(seconds=self.config.timeout_seconds)
         
-        while datetime.utcnow() < deadline:
+        while datetime.now(timezone.utc) < deadline:
             confirmation = self._waiting_confirmations.get(confirmation_id)
             
             if confirmation and confirmation["confirmed"]:
@@ -888,7 +888,7 @@ class ManualGate:
             result.status = GateStatus.EXPIRED
             result.message = f"Manual confirmation timed out after {self.config.timeout_seconds} seconds"
         
-        result.completed_at = datetime.utcnow()
+        result.completed_at = datetime.now(timezone.utc)
         return result
 
 
@@ -937,7 +937,7 @@ class DeploymentGate:
         result = GateResult(
             gate_name=self.config.name,
             gate_type=self.gate_type,
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
         
         sub_results: list[GateResult] = []
@@ -951,7 +951,7 @@ class DeploymentGate:
                 if time_result.status == GateStatus.DENIED:
                     result.status = GateStatus.DENIED
                     result.message = f"Time gate: {time_result.message}"
-                    result.completed_at = datetime.utcnow()
+                    result.completed_at = datetime.now(timezone.utc)
                     return result
             
             # Evaluate metric gate
@@ -963,7 +963,7 @@ class DeploymentGate:
                 if metric_result.status == GateStatus.DENIED:
                     result.status = GateStatus.DENIED
                     result.message = f"Metric gate: {metric_result.message}"
-                    result.completed_at = datetime.utcnow()
+                    result.completed_at = datetime.now(timezone.utc)
                     return result
             
             # Evaluate approval gate
@@ -975,7 +975,7 @@ class DeploymentGate:
                 if approval_result.status not in [GateStatus.APPROVED]:
                     result.status = approval_result.status
                     result.message = f"Approval gate: {approval_result.message}"
-                    result.completed_at = datetime.utcnow()
+                    result.completed_at = datetime.now(timezone.utc)
                     return result
             
             # Evaluate manual gate
@@ -986,7 +986,7 @@ class DeploymentGate:
                 if manual_result.status not in [GateStatus.APPROVED]:
                     result.status = manual_result.status
                     result.message = f"Manual gate: {manual_result.message}"
-                    result.completed_at = datetime.utcnow()
+                    result.completed_at = datetime.now(timezone.utc)
                     return result
             
             # All gates passed
@@ -998,7 +998,7 @@ class DeploymentGate:
             result.status = GateStatus.ERROR
             result.message = f"Gate evaluation error: {str(e)}"
         
-        result.completed_at = datetime.utcnow()
+        result.completed_at = datetime.now(timezone.utc)
         return result
 
 
@@ -1109,7 +1109,7 @@ class GatePipeline:
         result = PipelineResult(
             pipeline_name=self.name,
             total_stages=len(self._stages),
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
         
         completed_stages: dict[str, GateResult] = {}
@@ -1130,8 +1130,8 @@ class GatePipeline:
                         gate_type=GateType.CUSTOM,
                         status=GateStatus.BYPASSED,
                         message="Dependencies not met",
-                        started_at=datetime.utcnow(),
-                        completed_at=datetime.utcnow(),
+                        started_at=datetime.now(timezone.utc),
+                        completed_at=datetime.now(timezone.utc),
                     )
                     result.stage_results.append(stage_result)
                     result.skipped_stages += 1
@@ -1184,7 +1184,7 @@ class GatePipeline:
             result.status = GateStatus.ERROR
             result.message = f"Pipeline execution error: {str(e)}"
         
-        result.completed_at = datetime.utcnow()
+        result.completed_at = datetime.now(timezone.utc)
         return result
     
     def get_stages(self) -> list[PipelineStage]:

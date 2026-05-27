@@ -2,17 +2,21 @@
 AutoSRE Investigation Commands
 
 Run AI-powered incident investigations from the command line.
+Connects to real infrastructure (Prometheus, Kubernetes, Elasticsearch).
 """
 
 import asyncio
 import json
+import logging
+import os
 import sys
-from datetime import datetime
+from datetime import datetime, UTC
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from uuid import uuid4
 
 import typer
+import yaml
 from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
@@ -21,6 +25,8 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 from rich.table import Table
 from rich.tree import Tree
 
+logger = logging.getLogger(__name__)
+
 app = typer.Typer(
     name="investigate",
     help="Run AI-powered incident investigations",
@@ -28,6 +34,37 @@ app = typer.Typer(
 )
 
 console = Console()
+
+
+class ConfigurationError(Exception):
+    """Raised when required configuration is missing."""
+    pass
+
+
+def load_config() -> dict[str, Any]:
+    """Load configuration from ~/.autosre/config.yaml.
+    
+    Returns:
+        Configuration dictionary
+        
+    Raises:
+        ConfigurationError: If config file is missing or invalid
+    """
+    config_path = Path("~/.autosre/config.yaml").expanduser()
+    
+    if not config_path.exists():
+        raise ConfigurationError(
+            f"Configuration file not found: {config_path}\n"
+            "Please create ~/.autosre/config.yaml with your infrastructure settings.\n"
+            "See: autosre config init"
+        )
+    
+    try:
+        with open(config_path) as f:
+            config = yaml.safe_load(f)
+            return config or {}
+    except yaml.YAMLError as e:
+        raise ConfigurationError(f"Invalid YAML in config file: {e}")
 
 
 def _format_evidence(evidence: dict) -> str:
@@ -63,31 +100,108 @@ def _format_hypothesis(hypothesis: dict, index: int) -> str:
 
 
 class InvestigationRunner:
-    """Manages the investigation execution and display."""
+    """Manages the investigation execution and display using real infrastructure."""
     
     def __init__(
         self,
         alert: str,
         service: Optional[str] = None,
         severity: str = "high",
-        mock: bool = False,
         output_format: str = "text",
         stream: bool = True,
     ):
         self.alert = alert
         self.service = service
         self.severity = severity
-        self.mock = mock
         self.output_format = output_format
         self.stream = stream
         self.investigation_id = str(uuid4())[:8]
-        self.start_time = datetime.utcnow()
+        self.start_time = datetime.now(UTC)
         
         # Investigation state
         self.evidence: list = []
         self.hypotheses: list = []
         self.root_cause: Optional[str] = None
         self.report: Optional[str] = None
+        
+        # Load configuration
+        self.config = load_config()
+        
+        # Initialize skill instances (lazy loading)
+        self._prometheus_skill = None
+        self._kubernetes_skill = None
+        self._logs_subagent = None
+        
+    def _get_prometheus_skill(self):
+        """Get or create Prometheus skill instance."""
+        if self._prometheus_skill is None:
+            try:
+                from skills.prometheus import PrometheusSkill
+            except ImportError:
+                raise ConfigurationError(
+                    "PrometheusSkill not available. Install with: pip install opensre-skills"
+                )
+            
+            prom_config = self.config.get("prometheus", {})
+            url = prom_config.get("url") or os.environ.get("PROMETHEUS_URL")
+            
+            if not url:
+                raise ConfigurationError(
+                    "Prometheus URL not configured.\n"
+                    "Set prometheus.url in ~/.autosre/config.yaml or PROMETHEUS_URL environment variable."
+                )
+            
+            self._prometheus_skill = PrometheusSkill({
+                "url": url,
+                "alertmanager_url": prom_config.get("alertmanager_url"),
+                "timeout": prom_config.get("timeout", 30),
+                "auth": prom_config.get("auth", {}),
+            })
+        
+        return self._prometheus_skill
+    
+    def _get_kubernetes_skill(self):
+        """Get or create Kubernetes skill instance."""
+        if self._kubernetes_skill is None:
+            try:
+                from skills.kubernetes import KubernetesSkill
+            except ImportError:
+                raise ConfigurationError(
+                    "KubernetesSkill not available. Install with: pip install opensre-skills"
+                )
+            
+            k8s_config = self.config.get("kubernetes", {})
+            
+            self._kubernetes_skill = KubernetesSkill({
+                "kubeconfig": k8s_config.get("kubeconfig"),
+                "context": k8s_config.get("context"),
+                "namespace": k8s_config.get("namespace", "default"),
+            })
+        
+        return self._kubernetes_skill
+    
+    def _get_logs_subagent(self):
+        """Get or create Logs subagent instance."""
+        if self._logs_subagent is None:
+            from autosre.agents.subagents.logs import LogsSubagent
+            
+            logs_config = self.config.get("logs", {})
+            backend_url = logs_config.get("url") or os.environ.get("ELASTICSEARCH_URL")
+            
+            if not backend_url:
+                raise ConfigurationError(
+                    "Logs backend URL not configured.\n"
+                    "Set logs.url in ~/.autosre/config.yaml or ELASTICSEARCH_URL environment variable."
+                )
+            
+            self._logs_subagent = LogsSubagent(
+                backend=logs_config.get("backend", "elasticsearch"),
+                backend_url=backend_url,
+                index_pattern=logs_config.get("index_pattern", "logs-*"),
+                dry_run=False,
+            )
+        
+        return self._logs_subagent
         
     async def run_async(self) -> dict:
         """Run the investigation asynchronously."""
@@ -104,7 +218,7 @@ class InvestigationRunner:
                 f"[bold]Alert:[/] {self.alert}\n"
                 f"[bold]Service:[/] {self.service or 'auto-detect'}\n"
                 f"[bold]Severity:[/] {self.severity}\n"
-                f"[bold]Mode:[/] {'Mock' if self.mock else 'Live'}",
+                f"[bold]Mode:[/] Live (Real Infrastructure)",
                 title="Investigation Started",
                 border_style="cyan",
             ))
@@ -128,11 +242,8 @@ class InvestigationRunner:
                 
                 progress.update(task, description=f"Found {len(similar_episodes)} similar incidents")
         
-        # Phase 2: Evidence Collection (mock or real)
-        if self.mock:
-            self.evidence = await self._collect_mock_evidence()
-        else:
-            self.evidence = await self._collect_real_evidence()
+        # Phase 2: Evidence Collection from real infrastructure
+        self.evidence = await self._collect_real_evidence()
         
         if self.stream:
             console.print()
@@ -141,11 +252,8 @@ class InvestigationRunner:
                 console.print(_format_evidence(ev))
             console.print()
         
-        # Phase 3: Hypothesis Generation
-        if self.mock:
-            self.hypotheses = await self._generate_mock_hypotheses()
-        else:
-            self.hypotheses = await self._generate_hypotheses()
+        # Phase 3: Hypothesis Generation using real LLM
+        self.hypotheses = await self._generate_real_hypotheses()
         
         if self.stream:
             console.print("[bold]🧠 Hypotheses:[/]")
@@ -168,7 +276,7 @@ class InvestigationRunner:
         self.report = self._generate_report()
         
         # Store episode in memory
-        duration = (datetime.utcnow() - self.start_time).total_seconds()
+        duration = (datetime.now(UTC) - self.start_time).total_seconds()
         episode = Episode(
             id=self.investigation_id,
             alert_type=self._classify_alert(),
@@ -178,7 +286,7 @@ class InvestigationRunner:
             summary=f"Investigation of: {self.alert}",
             resolved=True,
             effectiveness_score=0.85,
-            skills_used=["metrics", "logs", "kubernetes"],
+            skills_used=["prometheus", "kubernetes", "logs"],
             key_findings=[{"finding": h.get("title")} for h in self.hypotheses[:3]],
             duration_seconds=int(duration),
             steps_taken=["context_gathering", "evidence_collection", "hypothesis_generation", "root_cause_analysis"],
@@ -212,82 +320,387 @@ class InvestigationRunner:
             return "availability"
         return "general"
     
-    async def _collect_mock_evidence(self) -> list:
-        """Generate mock evidence for demo."""
-        await asyncio.sleep(0.5)  # Simulate work
-        return [
-            {
-                "source": "prometheus",
-                "confidence": 0.92,
-                "data": {
-                    "error_rate": "23.4%",
-                    "p99_latency": "2.3s",
-                    "request_count": "1.2K/min",
-                },
-            },
-            {
-                "source": "kubernetes",
-                "confidence": 0.85,
-                "data": {
-                    "pod_status": "3/5 Running",
-                    "restarts": 12,
-                    "last_deploy": "2h ago",
-                },
-            },
-            {
-                "source": "logs",
-                "confidence": 0.78,
-                "data": {
-                    "error_pattern": "ConnectionRefused: redis-master:6379",
-                    "occurrences": 234,
-                    "first_seen": "47 minutes ago",
-                },
-            },
-        ]
-    
     async def _collect_real_evidence(self) -> list:
-        """Collect real evidence from configured sources."""
-        # For now, return mock data - would integrate with actual skills
-        return await self._collect_mock_evidence()
+        """Collect real evidence from configured infrastructure sources."""
+        evidence = []
+        errors = []
+        
+        # Collect from Prometheus
+        try:
+            prom_evidence = await self._collect_prometheus_evidence()
+            if prom_evidence:
+                evidence.append(prom_evidence)
+        except ConfigurationError as e:
+            logger.warning(f"Prometheus not configured: {e}")
+            errors.append(f"prometheus: {e}")
+        except Exception as e:
+            logger.error(f"Prometheus error: {e}")
+            errors.append(f"prometheus: {e}")
+        
+        # Collect from Kubernetes
+        try:
+            k8s_evidence = await self._collect_kubernetes_evidence()
+            if k8s_evidence:
+                evidence.append(k8s_evidence)
+        except ConfigurationError as e:
+            logger.warning(f"Kubernetes not configured: {e}")
+            errors.append(f"kubernetes: {e}")
+        except Exception as e:
+            logger.error(f"Kubernetes error: {e}")
+            errors.append(f"kubernetes: {e}")
+        
+        # Collect from Logs
+        try:
+            logs_evidence = await self._collect_logs_evidence()
+            if logs_evidence:
+                evidence.append(logs_evidence)
+        except ConfigurationError as e:
+            logger.warning(f"Logs backend not configured: {e}")
+            errors.append(f"logs: {e}")
+        except Exception as e:
+            logger.error(f"Logs error: {e}")
+            errors.append(f"logs: {e}")
+        
+        if not evidence:
+            raise ConfigurationError(
+                f"No evidence could be collected. Infrastructure errors:\n" +
+                "\n".join(f"  - {err}" for err in errors) +
+                "\n\nPlease configure at least one data source in ~/.autosre/config.yaml"
+            )
+        
+        return evidence
     
-    async def _generate_mock_hypotheses(self) -> list:
-        """Generate mock hypotheses for demo."""
-        await asyncio.sleep(0.3)
-        return [
-            {
-                "title": "Redis connection pool exhaustion",
-                "likelihood": 0.87,
-                "supporting_evidence": [
-                    "ConnectionRefused errors spike correlates with error rate",
-                    "Recent deployment changed connection pool settings",
-                ],
-            },
-            {
-                "title": "Upstream service degradation",
-                "likelihood": 0.65,
-                "supporting_evidence": [
-                    "P99 latency increase preceded error spike",
-                    "Dependent service showing similar patterns",
-                ],
-            },
-            {
-                "title": "Resource exhaustion from memory leak",
-                "likelihood": 0.42,
-                "supporting_evidence": [
-                    "Pod restarts trending upward",
-                    "Memory usage climbing before restarts",
-                ],
-            },
-        ]
+    async def _collect_prometheus_evidence(self) -> Optional[dict]:
+        """Query Prometheus for relevant metrics."""
+        skill = self._get_prometheus_skill()
+        await skill.initialize()
+        
+        try:
+            data = {}
+            
+            # Build service-specific queries
+            service_filter = f'service="{self.service}"' if self.service else ""
+            
+            # Query error rate
+            if "error" in self.alert.lower() or self._classify_alert() == "error_rate":
+                error_query = f'sum(rate(http_requests_total{{status=~"5..",{service_filter}}}[5m])) / sum(rate(http_requests_total{{{service_filter}}}[5m])) * 100'
+                result = await skill.query(error_query)
+                if result.success and result.data:
+                    error_rate = result.data[0].value if result.data else 0
+                    data["error_rate"] = f"{error_rate:.1f}%"
+            
+            # Query latency
+            if "latency" in self.alert.lower() or self._classify_alert() == "latency":
+                latency_query = f'histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{{{service_filter}}}[5m])) by (le))'
+                result = await skill.query(latency_query)
+                if result.success and result.data:
+                    p99 = result.data[0].value if result.data else 0
+                    data["p99_latency"] = f"{p99:.2f}s"
+            
+            # Query request rate
+            req_query = f'sum(rate(http_requests_total{{{service_filter}}}[5m]))'
+            result = await skill.query(req_query)
+            if result.success and result.data:
+                req_rate = result.data[0].value if result.data else 0
+                data["request_rate"] = f"{req_rate:.1f}/s"
+            
+            # Get active alerts
+            alerts_result = await skill.get_alerts(state="firing")
+            if alerts_result.success and alerts_result.data:
+                relevant_alerts = [a for a in alerts_result.data 
+                                 if not self.service or self.service in str(a.labels)]
+                data["active_alerts"] = len(relevant_alerts)
+            
+            if data:
+                return {
+                    "source": "prometheus",
+                    "confidence": 0.9,
+                    "data": data,
+                }
+            return None
+            
+        finally:
+            await skill.shutdown()
     
-    async def _generate_hypotheses(self) -> list:
-        """Generate hypotheses using LLM."""
-        # For now, return mock - would integrate with actual LLM
-        return await self._generate_mock_hypotheses()
+    async def _collect_kubernetes_evidence(self) -> Optional[dict]:
+        """Query Kubernetes for pod and deployment status."""
+        skill = self._get_kubernetes_skill()
+        await skill.initialize()
+        
+        try:
+            data = {}
+            namespace = self.config.get("kubernetes", {}).get("namespace", "default")
+            
+            # Get pod status for the service
+            labels = f"app={self.service}" if self.service else None
+            pods_result = await skill.get_pods(namespace=namespace, labels=labels)
+            
+            if pods_result.success and pods_result.data:
+                pods = pods_result.data
+                running = sum(1 for p in pods if p.status == "Running" and p.ready)
+                total = len(pods)
+                total_restarts = sum(p.restarts for p in pods)
+                
+                data["pod_status"] = f"{running}/{total} Running"
+                data["restarts"] = total_restarts
+                
+                # Check for recently restarted pods
+                crash_looping = [p.name for p in pods if p.restarts > 3]
+                if crash_looping:
+                    data["crash_looping"] = crash_looping[:3]
+            
+            # Get recent events
+            events_result = await skill.get_events(namespace=namespace, minutes=30)
+            if events_result.success and events_result.data:
+                warning_events = [e for e in events_result.data if e.type == "Warning"]
+                if warning_events:
+                    data["warning_events"] = len(warning_events)
+                    # Get most common event reason
+                    reasons = [e.reason for e in warning_events]
+                    if reasons:
+                        data["top_event"] = max(set(reasons), key=reasons.count)
+            
+            if data:
+                return {
+                    "source": "kubernetes",
+                    "confidence": 0.85,
+                    "data": data,
+                }
+            return None
+            
+        finally:
+            pass  # KubernetesSkill doesn't have shutdown
+    
+    async def _collect_logs_evidence(self) -> Optional[dict]:
+        """Search logs for error patterns."""
+        subagent = self._get_logs_subagent()
+        
+        data = {}
+        
+        # Build search query based on alert
+        if self.service:
+            # Get error logs for the service
+            es_query = subagent._build_es_query(
+                must=[{"term": {"service": self.service}}],
+                filter_=[{"term": {"level": "error"}}],
+                time_range="1h",
+            )
+            result = await subagent._search_elasticsearch(es_query, size=100)
+            
+            if "error" not in result:
+                hits = result.get("hits", {})
+                total = hits.get("total", {}).get("value", 0)
+                data["error_count"] = total
+                
+                # Extract common error patterns
+                logs = hits.get("hits", [])
+                if logs:
+                    messages = [h.get("_source", {}).get("message", "")[:100] for h in logs[:10]]
+                    if messages:
+                        data["sample_error"] = messages[0]
+        
+        # Search for specific keywords from alert
+        keywords = ["error", "exception", "timeout", "connection", "failed"]
+        alert_keywords = [kw for kw in keywords if kw in self.alert.lower()]
+        
+        if alert_keywords:
+            search_query = " OR ".join(alert_keywords)
+            es_query = subagent._build_es_query(
+                must=[{"query_string": {"query": search_query, "default_field": "message"}}],
+                time_range="1h",
+            )
+            result = await subagent._search_elasticsearch(es_query, size=50)
+            
+            if "error" not in result:
+                hits = result.get("hits", {})
+                total = hits.get("total", {}).get("value", 0)
+                data["pattern_matches"] = total
+        
+        if data:
+            return {
+                "source": "logs",
+                "confidence": 0.75,
+                "data": data,
+            }
+        return None
+    
+    async def _generate_real_hypotheses(self) -> list:
+        """Generate hypotheses using real LLM (OpenAI or Anthropic)."""
+        llm_config = self.config.get("llm", {})
+        provider = llm_config.get("provider") or os.environ.get("OPENSRE_LLM_PROVIDER", "anthropic")
+        
+        # Build context from evidence
+        evidence_context = json.dumps(self.evidence, indent=2, default=str)
+        
+        prompt = f"""You are an expert SRE analyzing an incident. Based on the evidence collected, generate hypotheses for the root cause.
+
+Alert: {self.alert}
+Service: {self.service or "Unknown"}
+Severity: {self.severity}
+
+Evidence collected:
+{evidence_context}
+
+Generate 3 hypotheses for the root cause, ranked by likelihood. For each hypothesis, explain the supporting evidence.
+
+Respond in JSON format:
+[
+  {{
+    "title": "Brief description of the hypothesis",
+    "likelihood": 0.0-1.0,
+    "supporting_evidence": ["evidence point 1", "evidence point 2"]
+  }}
+]"""
+
+        try:
+            if provider == "anthropic":
+                hypotheses = await self._call_anthropic(prompt, llm_config)
+            elif provider == "openai":
+                hypotheses = await self._call_openai(prompt, llm_config)
+            elif provider == "litellm":
+                hypotheses = await self._call_litellm(prompt, llm_config)
+            else:
+                raise ConfigurationError(f"Unknown LLM provider: {provider}. Use 'anthropic', 'openai', or 'litellm'")
+            
+            return hypotheses
+            
+        except Exception as e:
+            logger.error(f"LLM hypothesis generation failed: {e}")
+            # Fallback to rule-based hypotheses
+            return self._generate_fallback_hypotheses()
+    
+    async def _call_anthropic(self, prompt: str, config: dict) -> list:
+        """Call Anthropic API for hypothesis generation."""
+        api_key = config.get("api_key") or os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ConfigurationError(
+                "Anthropic API key not configured.\n"
+                "Set llm.api_key in ~/.autosre/config.yaml or ANTHROPIC_API_KEY environment variable."
+            )
+        
+        try:
+            import anthropic
+        except ImportError:
+            raise ConfigurationError("anthropic package not installed. Run: pip install anthropic")
+        
+        client = anthropic.Anthropic(api_key=api_key)
+        
+        response = client.messages.create(
+            model=config.get("model", "claude-sonnet-4-20250514"),
+            max_tokens=config.get("max_tokens", 2048),
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        # Parse JSON from response
+        text = response.content[0].text
+        # Find JSON array in response
+        import re
+        json_match = re.search(r'\[[\s\S]*\]', text)
+        if json_match:
+            return json.loads(json_match.group())
+        return []
+    
+    async def _call_openai(self, prompt: str, config: dict) -> list:
+        """Call OpenAI API for hypothesis generation."""
+        api_key = config.get("api_key") or os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise ConfigurationError(
+                "OpenAI API key not configured.\n"
+                "Set llm.api_key in ~/.autosre/config.yaml or OPENAI_API_KEY environment variable."
+            )
+        
+        try:
+            from openai import AsyncOpenAI
+        except ImportError:
+            raise ConfigurationError("openai package not installed. Run: pip install openai")
+        
+        client = AsyncOpenAI(api_key=api_key)
+        
+        response = await client.chat.completions.create(
+            model=config.get("model", "gpt-4o"),
+            max_tokens=config.get("max_tokens", 2048),
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        
+        text = response.choices[0].message.content
+        result = json.loads(text)
+        # Handle both array and object with hypotheses key
+        if isinstance(result, list):
+            return result
+        return result.get("hypotheses", [])
+    
+    async def _call_litellm(self, prompt: str, config: dict) -> list:
+        """Call LiteLLM for hypothesis generation."""
+        try:
+            import litellm
+        except ImportError:
+            raise ConfigurationError("litellm package not installed. Run: pip install litellm")
+        
+        model = config.get("model", "gpt-4o")
+        
+        response = await litellm.acompletion(
+            model=model,
+            max_tokens=config.get("max_tokens", 2048),
+            messages=[{"role": "user", "content": prompt}],
+        )
+        
+        text = response.choices[0].message.content
+        import re
+        json_match = re.search(r'\[[\s\S]*\]', text)
+        if json_match:
+            return json.loads(json_match.group())
+        return []
+    
+    def _generate_fallback_hypotheses(self) -> list:
+        """Generate rule-based hypotheses when LLM is unavailable."""
+        hypotheses = []
+        
+        # Analyze evidence to generate hypotheses
+        for ev in self.evidence:
+            source = ev.get("source", "")
+            data = ev.get("data", {})
+            
+            if source == "prometheus":
+                if data.get("error_rate"):
+                    hypotheses.append({
+                        "title": "Elevated error rate indicating application issues",
+                        "likelihood": 0.7,
+                        "supporting_evidence": [
+                            f"Error rate: {data['error_rate']}",
+                            "Prometheus metrics show increased failures"
+                        ]
+                    })
+            
+            if source == "kubernetes":
+                if data.get("restarts", 0) > 0:
+                    hypotheses.append({
+                        "title": "Pod instability causing service disruption",
+                        "likelihood": 0.65,
+                        "supporting_evidence": [
+                            f"Pod restarts: {data.get('restarts', 0)}",
+                            f"Pod status: {data.get('pod_status', 'unknown')}"
+                        ]
+                    })
+            
+            if source == "logs":
+                if data.get("error_count", 0) > 0:
+                    hypotheses.append({
+                        "title": "Application errors detected in logs",
+                        "likelihood": 0.6,
+                        "supporting_evidence": [
+                            f"Error count: {data.get('error_count', 0)}",
+                            data.get("sample_error", "")[:100] if data.get("sample_error") else ""
+                        ]
+                    })
+        
+        # Sort by likelihood
+        hypotheses.sort(key=lambda x: x["likelihood"], reverse=True)
+        return hypotheses[:3]
     
     def _generate_report(self) -> str:
         """Generate investigation report."""
-        duration = (datetime.utcnow() - self.start_time).total_seconds()
+        duration = (datetime.now(UTC) - self.start_time).total_seconds()
         
         report = f"""# Investigation Report
 
@@ -343,56 +756,63 @@ def run(
     alert: str = typer.Argument(..., help="Alert or incident description"),
     service: str = typer.Option(None, "--service", "-s", help="Service name"),
     severity: str = typer.Option("high", "--severity", help="Severity level: low|medium|high|critical"),
-    mock: bool = typer.Option(False, "--mock", "-m", help="Use mock LLM for testing"),
     output: str = typer.Option("text", "--output", "-o", help="Output format: text|json|markdown"),
     stream: bool = typer.Option(True, "--stream/--no-stream", help="Stream output in real-time"),
     save: Optional[Path] = typer.Option(None, "--save", help="Save report to file"),
 ):
     """
-    Start an AI-powered investigation.
+    Start an AI-powered investigation using real infrastructure.
     
-    Analyzes an alert, gathers evidence, generates hypotheses, and
-    identifies root causes using AI reasoning.
+    Connects to Prometheus, Kubernetes, and log backends configured in ~/.autosre/config.yaml.
+    Uses LLM (Anthropic/OpenAI) for hypothesis generation.
     
     Examples:
         autosre investigate run "High error rate on checkout"
-        autosre investigate run "API latency spike" --service api-gateway --mock
+        autosre investigate run "API latency spike" --service api-gateway
         autosre investigate run "Redis connection errors" --output json --save report.json
     """
-    runner = InvestigationRunner(
-        alert=alert,
-        service=service,
-        severity=severity,
-        mock=mock,
-        output_format=output,
-        stream=stream,
-    )
-    
-    result = runner.run()
-    
-    # Output formatting
-    if output == "json":
-        json_output = json.dumps(result, indent=2, default=str)
-        if save:
-            save.write_text(json_output)
-            console.print(f"[green]✓[/] Report saved to {save}")
-        else:
-            console.print(json_output)
-    
-    elif output == "markdown":
-        if save:
-            save.write_text(result["report"])
-            console.print(f"[green]✓[/] Report saved to {save}")
-        else:
-            console.print()
-            console.print(Markdown(result["report"]))
-    
-    else:  # text
-        if save:
-            save.write_text(result["report"])
-            console.print(f"[green]✓[/] Report saved to {save}")
-        elif not stream:
-            console.print(Markdown(result["report"]))
+    try:
+        runner = InvestigationRunner(
+            alert=alert,
+            service=service,
+            severity=severity,
+            output_format=output,
+            stream=stream,
+        )
+        
+        result = runner.run()
+        
+        # Output formatting
+        if output == "json":
+            json_output = json.dumps(result, indent=2, default=str)
+            if save:
+                save.write_text(json_output)
+                console.print(f"[green]✓[/] Report saved to {save}")
+            else:
+                console.print(json_output)
+        
+        elif output == "markdown":
+            if save:
+                save.write_text(result["report"])
+                console.print(f"[green]✓[/] Report saved to {save}")
+            else:
+                console.print()
+                console.print(Markdown(result["report"]))
+        
+        else:  # text
+            if save:
+                save.write_text(result["report"])
+                console.print(f"[green]✓[/] Report saved to {save}")
+            elif not stream:
+                console.print(Markdown(result["report"]))
+                
+    except ConfigurationError as e:
+        console.print(f"[red]Configuration Error:[/] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error:[/] {e}")
+        logger.exception("Investigation failed")
+        raise typer.Exit(1)
 
 
 @app.command()

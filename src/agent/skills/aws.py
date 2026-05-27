@@ -12,7 +12,7 @@ import logging
 import os
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, List
 
 from langchain_core.tools import BaseTool, tool
@@ -373,7 +373,7 @@ class AWSTools(BaseSRETool):
             
             try:
                 # Calculate time range
-                now = datetime.utcnow()
+                now = datetime.now(timezone.utc)
                 duration_map = {"m": 1, "h": 60, "d": 1440}
                 unit = time_range[-1]
                 value = int(time_range[:-1])

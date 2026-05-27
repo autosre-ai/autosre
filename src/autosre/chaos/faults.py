@@ -8,7 +8,7 @@ Chaos Mesh and LitmusChaos patterns.
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional, Union
 
@@ -78,7 +78,7 @@ class Fault(BaseModel, ABC):
     target_percentage: Optional[int] = Field(None, ge=0, le=100)
     
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: dict[str, Any] = Field(default_factory=dict)
     
     @abstractmethod
@@ -436,7 +436,7 @@ class InjectionResult:
     fault_id: str
     success: bool
     message: str
-    start_time: datetime = field(default_factory=datetime.utcnow)
+    start_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     end_time: Optional[datetime] = None
     affected_targets: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)

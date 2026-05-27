@@ -12,7 +12,7 @@ import pytest
 # Skip the entire module - phase handlers not implemented
 pytestmark = pytest.mark.skip(reason="PhaseHandler classes not implemented yet")
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # These imports commented out - TriagePhaseHandler etc. don't exist yet
@@ -325,7 +325,7 @@ class TestInvestigatePhaseHandler:
             return [
                 {
                     "change_type": "deployment",
-                    "timestamp": datetime.utcnow() - timedelta(hours=1),
+                    "timestamp": datetime.now(timezone.utc) - timedelta(hours=1),
                     "author": "deploy-bot",
                     "description": "Deploy v1.2.3",
                     "service": "api-gateway",
@@ -596,7 +596,7 @@ class TestChangesCorrelation:
         """Test Change model."""
         change = Change(
             change_type="deployment",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             author="deploy-bot",
             description="Deploy v1.2.3 to production",
             service="api-gateway",
@@ -613,19 +613,19 @@ class TestChangesCorrelation:
         changes = [
             Change(
                 change_type="config",
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 description="Config update",
                 correlation_score=0.3,
             ),
             Change(
                 change_type="deployment",
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 description="Deploy v1.2.3",
                 correlation_score=0.9,
             ),
             Change(
                 change_type="feature_flag",
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 description="Enable new feature",
                 correlation_score=0.6,
             ),

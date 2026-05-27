@@ -11,11 +11,11 @@ Provides the foundation for creating extensible plugins:
 import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable, Optional, TypeVar, Generic
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class PluginState(str, Enum):
@@ -153,8 +153,7 @@ class PluginConfig(BaseModel):
     # Custom configuration storage
     settings: dict[str, Any] = Field(default_factory=dict)
     
-    class Config:
-        extra = "allow"  # Allow additional fields
+    model_config = ConfigDict(extra="allow")
 
 
 @dataclass
@@ -168,7 +167,7 @@ class PluginContext:
     user_id: str = ""
     
     # Runtime
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: dict[str, Any] = field(default_factory=dict)
     
     # Services (injected at runtime)
@@ -297,7 +296,7 @@ class Plugin(ABC, Generic[ConfigT]):
         try:
             await self.on_initialize()
             self._state = PluginState.ACTIVE
-            self._initialized_at = datetime.utcnow()
+            self._initialized_at = datetime.now(timezone.utc)
             self._error = None
         except Exception as e:
             self._state = PluginState.ERROR

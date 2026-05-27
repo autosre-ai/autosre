@@ -6,7 +6,7 @@ Integrates with issue tracking systems like Jira and GitHub Issues.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any
 import json
@@ -63,14 +63,14 @@ class RemediationTask:
             return False
         if self.due_date is None:
             return False
-        return datetime.utcnow() > self.due_date
+        return datetime.now(timezone.utc) > self.due_date
 
     @property
     def days_until_due(self) -> int | None:
         """Days until due date (negative if overdue)."""
         if self.due_date is None:
             return None
-        delta = self.due_date - datetime.utcnow()
+        delta = self.due_date - datetime.now(timezone.utc)
         return delta.days
 
     def to_dict(self) -> dict[str, Any]:
@@ -178,7 +178,7 @@ class RemediationTracker:
         import uuid
 
         task_id = str(uuid.uuid4())
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Determine priority
         if priority is None:
@@ -273,17 +273,17 @@ class RemediationTracker:
 
         task = self.tasks[task_id]
         task.status = status
-        task.updated_at = datetime.utcnow()
+        task.updated_at = datetime.now(timezone.utc)
 
         if comment:
             task.comments.append({
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "author": updated_by,
                 "text": comment,
             })
 
         if status == RemediationStatus.RESOLVED:
-            task.resolved_at = datetime.utcnow()
+            task.resolved_at = datetime.now(timezone.utc)
             task.resolved_by = updated_by
 
         logger.info(f"Updated task {task_id} status to {status.value}")
@@ -300,7 +300,7 @@ class RemediationTracker:
 
         task = self.tasks[task_id]
         task.assigned_to = assigned_to
-        task.updated_at = datetime.utcnow()
+        task.updated_at = datetime.now(timezone.utc)
 
         logger.info(f"Assigned task {task_id} to {assigned_to}")
         return task
@@ -317,11 +317,11 @@ class RemediationTracker:
 
         task = self.tasks[task_id]
         task.comments.append({
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "author": author,
             "text": comment,
         })
-        task.updated_at = datetime.utcnow()
+        task.updated_at = datetime.now(timezone.utc)
 
         return task
 
@@ -338,9 +338,9 @@ class RemediationTracker:
         task = self.tasks[task_id]
         task.status = RemediationStatus.RESOLVED
         task.resolution_notes = resolution_notes
-        task.resolved_at = datetime.utcnow()
+        task.resolved_at = datetime.now(timezone.utc)
         task.resolved_by = resolved_by
-        task.updated_at = datetime.utcnow()
+        task.updated_at = datetime.now(timezone.utc)
 
         logger.info(f"Resolved task {task_id} by {resolved_by}")
         return task
@@ -358,9 +358,9 @@ class RemediationTracker:
         task = self.tasks[task_id]
         task.status = RemediationStatus.ACCEPTED_RISK
         task.resolution_notes = f"Risk Accepted: {justification}"
-        task.resolved_at = datetime.utcnow()
+        task.resolved_at = datetime.now(timezone.utc)
         task.resolved_by = accepted_by
-        task.updated_at = datetime.utcnow()
+        task.updated_at = datetime.now(timezone.utc)
 
         logger.warning(
             f"Risk accepted for task {task_id} by {accepted_by}: {justification}"
@@ -615,7 +615,7 @@ class RemediationTracker:
                 by_framework[fw]["open"] += 1
 
         return {
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "summary": progress.to_dict(),
             "by_framework": by_framework,
             "overdue_count": len(overdue),

@@ -211,8 +211,8 @@ class SLODefinition(BaseModel):
     alert_policies: list[AlertPolicy] = Field(default_factory=list)
     
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     created_by: str = ""
     
     # Labels/tags
@@ -325,7 +325,7 @@ class SLOGroup(BaseModel):
     slo_ids: list[str] = Field(default_factory=list)
     
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     labels: dict[str, str] = Field(default_factory=dict)
 
 
@@ -416,7 +416,7 @@ class SLOManager:
             if hasattr(slo, key):
                 setattr(slo, key, value)
         
-        slo.updated_at = datetime.utcnow()
+        slo.updated_at = datetime.now(timezone.utc)
         return slo
     
     def delete_slo(self, slo_id: str) -> bool:
@@ -426,7 +426,7 @@ class SLOManager:
             return False
         
         slo.is_active = False
-        slo.updated_at = datetime.utcnow()
+        slo.updated_at = datetime.now(timezone.utc)
         return True
     
     def create_group(

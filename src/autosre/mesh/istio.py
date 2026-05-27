@@ -11,7 +11,7 @@ Provides comprehensive Istio service mesh integration:
 import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -634,7 +634,7 @@ class IstioClient:
             spec=spec,
             labels=labels or {},
             annotations=annotations or {},
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         # In production: apply to cluster via K8s API
         return vs
@@ -657,7 +657,7 @@ class IstioClient:
         self, virtual_service: VirtualService
     ) -> VirtualService:
         """Update an existing VirtualService."""
-        virtual_service.updated_at = datetime.utcnow()
+        virtual_service.updated_at = datetime.now(timezone.utc)
         # In production: update via K8s API
         return virtual_service
     
@@ -685,7 +685,7 @@ class IstioClient:
             spec=spec,
             labels=labels or {},
             annotations=annotations or {},
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         # In production: apply to cluster via K8s API
         return dr
@@ -706,7 +706,7 @@ class IstioClient:
         self, destination_rule: DestinationRule
     ) -> DestinationRule:
         """Update an existing DestinationRule."""
-        destination_rule.updated_at = datetime.utcnow()
+        destination_rule.updated_at = datetime.now(timezone.utc)
         return destination_rule
     
     async def delete_destination_rule(self, name: str, namespace: str) -> bool:

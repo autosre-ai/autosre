@@ -4,7 +4,7 @@ SRE Agent - LLM Analyzer
 Uses local Ollama LLM to analyze incident context and generate insights.
 """
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 import ollama
 
@@ -313,7 +313,7 @@ class LLMAnalyzer:
         """Build final situation report"""
 
         # Calculate duration
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         started = context.alert.started_at
         # Handle timezone-aware datetimes
         if started.tzinfo is not None:
@@ -358,5 +358,5 @@ class LLMAnalyzer:
             runbooks=[],  # TODO: Add runbook matching
             raw_context=context,
             analysis_reasoning=analysis.get("reasoning"),
-            generated_at=datetime.utcnow()
+            generated_at=datetime.now(timezone.utc)
         )

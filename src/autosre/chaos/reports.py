@@ -7,11 +7,11 @@ trend analysis for chaos experiments.
 
 import statistics
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ReportFormat(str, Enum):
@@ -32,7 +32,7 @@ class ExperimentMetrics:
     experiment_name: str
     
     # Timing
-    start_time: datetime = field(default_factory=datetime.utcnow)
+    start_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     end_time: Optional[datetime] = None
     duration_seconds: float = 0.0
     
@@ -138,7 +138,7 @@ class ImpactAnalysis:
             "priority": priority,
             "assignee": assignee,
             "status": "open",
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         })
 
 
@@ -233,7 +233,7 @@ class ResilienceScore:
                 self.trend = "stable"
         
         # Add to history
-        self.score_history.append((datetime.utcnow(), self.overall_score))
+        self.score_history.append((datetime.now(timezone.utc), self.overall_score))
         
         return self.overall_score
 
@@ -243,8 +243,8 @@ class TrendAnalysis:
     """Trend analysis across multiple chaos experiments."""
     
     # Time range
-    start_date: datetime = field(default_factory=lambda: datetime.utcnow() - timedelta(days=30))
-    end_date: datetime = field(default_factory=datetime.utcnow)
+    start_date: datetime = field(default_factory=lambda: datetime.now(timezone.utc) - timedelta(days=30))
+    end_date: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     
     # Experiment counts
     total_experiments: int = 0
@@ -347,7 +347,7 @@ class ChaosReport(BaseModel):
     # Metadata
     id: str
     title: str
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     generated_by: str = "system"
     
     # Time range
@@ -379,8 +379,7 @@ class ChaosReport(BaseModel):
     # Appendix
     raw_data: dict[str, Any] = Field(default_factory=dict)
     
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     
     def set_grade(self) -> str:
         """Set resilience grade based on score."""

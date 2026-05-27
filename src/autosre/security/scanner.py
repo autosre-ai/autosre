@@ -13,7 +13,7 @@ import asyncio
 import hashlib
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -253,7 +253,7 @@ class ImageScanResult(BaseModel):
     
     image: str = Field(description="Scanned image")
     image_digest: Optional[str] = Field(default=None, description="Image SHA digest")
-    scan_time: datetime = Field(default_factory=datetime.utcnow)
+    scan_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     duration_seconds: float = Field(default=0.0, description="Scan duration")
     
     # Findings
@@ -288,7 +288,7 @@ class KubernetesScanResult(BaseModel):
     """Kubernetes configuration scan result."""
     
     cluster_name: Optional[str] = Field(default=None, description="Cluster name")
-    scan_time: datetime = Field(default_factory=datetime.utcnow)
+    scan_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     duration_seconds: float = Field(default=0.0)
     
     # What was scanned
@@ -328,7 +328,7 @@ class ScanSummary(BaseModel):
     """Overall scan summary across all scan types."""
     
     scan_id: str = Field(description="Unique scan identifier")
-    scan_time: datetime = Field(default_factory=datetime.utcnow)
+    scan_time: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     status: ScanStatus = Field(default=ScanStatus.PENDING)
     
     # Results by type
@@ -414,7 +414,7 @@ class VulnerabilityScanner:
         if config is None:
             config = ImageScanConfig(image=image)
         
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         # Simulate scanning (in production, would call Trivy/Grype)
         vulnerabilities = await self._scan_image_impl(config)
@@ -430,7 +430,7 @@ class VulnerabilityScanner:
             if v.id not in self.config.ignore_cves
         ]
         
-        duration = (datetime.utcnow() - start_time).total_seconds()
+        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
         
         result = ImageScanResult(
             image=image,
@@ -462,7 +462,7 @@ class VulnerabilityScanner:
         if config is None:
             config = KubernetesScanConfig()
         
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         
         # Get findings (simulated - would use kube-bench in production)
         findings = await self._scan_kubernetes_impl(config)
@@ -480,7 +480,7 @@ class VulnerabilityScanner:
         for finding in findings:
             counts[finding.severity] += 1
         
-        duration = (datetime.utcnow() - start_time).total_seconds()
+        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
         
         return KubernetesScanResult(
             scan_time=start_time,
@@ -684,7 +684,7 @@ class VulnerabilityScanner:
     
     def _generate_scan_id(self) -> str:
         """Generate unique scan identifier."""
-        data = f"{datetime.utcnow().isoformat()}-{id(self)}"
+        data = f"{datetime.now(timezone.utc).isoformat()}-{id(self)}"
         return hashlib.sha256(data.encode()).hexdigest()[:16]
     
     def _get_image_digest(self, image: str) -> str:

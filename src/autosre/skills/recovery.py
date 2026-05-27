@@ -14,7 +14,7 @@ Think of it like a traffic jam - you can't fix it by adding more cars.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from enum import Enum
 from typing import Any, Optional
 import logging
@@ -117,7 +117,7 @@ class RecoveryPlan:
     current_action_index: int = 0
     
     # Timing
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     started_at: Optional[datetime] = None
     estimated_completion: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -181,7 +181,7 @@ class RecoveryPlan:
             ])
         
         if self.estimated_completion:
-            remaining = self.estimated_completion - datetime.utcnow()
+            remaining = self.estimated_completion - datetime.now(UTC)
             if remaining.total_seconds() > 0:
                 lines.append(f"Estimated Time Remaining: {remaining.total_seconds() / 60:.0f} minutes")
         
@@ -241,7 +241,7 @@ class RecoveryPlanner:
         Returns:
             RecoveryPlan with staged recovery actions
         """
-        plan_id = plan_id or f"recovery-{service}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+        plan_id = plan_id or f"recovery-{service}-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
         
         # Calculate safe load at current capacity
         # With 20% headroom to avoid re-overload
@@ -274,7 +274,7 @@ class RecoveryPlanner:
         total_minutes = sum(
             a.duration_minutes or 0 for a in actions
         )
-        estimated_completion = datetime.utcnow() + timedelta(minutes=total_minutes)
+        estimated_completion = datetime.now(UTC) + timedelta(minutes=total_minutes)
         
         return RecoveryPlan(
             plan_id=plan_id,
@@ -414,7 +414,7 @@ class RecoveryPlanner:
             True if action succeeded
         """
         action.status = "in_progress"
-        action.started_at = datetime.utcnow()
+        action.started_at = datetime.now(UTC)
         
         logger.info(f"Executing recovery action: {action.description}")
         
@@ -448,7 +448,7 @@ class RecoveryPlanner:
             
             if success:
                 action.status = "complete"
-                action.completed_at = datetime.utcnow()
+                action.completed_at = datetime.now(UTC)
                 plan.current_action_index += 1
                 return True
             else:
@@ -508,7 +508,7 @@ class RecoveryPlanner:
                     "gc_pause_ms": gc_pause_ms,
                     "queue_wait_ms": queue_wait_ms,
                 },
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
             
         except Exception as e:
@@ -517,7 +517,7 @@ class RecoveryPlanner:
                 "healthy": False,
                 "issues": [f"Health check error: {e}"],
                 "metrics": {},
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
     
     async def should_abort(
