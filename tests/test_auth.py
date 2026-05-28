@@ -237,20 +237,24 @@ class TestAuthManager:
 class TestGetAuthManager:
     """Test get_auth_manager singleton."""
     
-    def test_returns_auth_manager(self):
-        """Test that get_auth_manager returns an AuthManager."""
-        # Reset global state
+    @pytest.fixture(autouse=True)
+    def use_temp_keys(self, tmp_path, monkeypatch):
+        """Use temp file to avoid polluting config/api_keys.json."""
         import autosre.security.auth as auth_module
         auth_module._auth_manager = None
-        
+        temp_keys = tmp_path / "test_api_keys.json"
+        temp_keys.write_text('{"api_keys": {}}')
+        monkeypatch.setenv("OPENSRE_KEYS_FILE", str(temp_keys))
+        yield
+        auth_module._auth_manager = None
+    
+    def test_returns_auth_manager(self):
+        """Test that get_auth_manager returns an AuthManager."""
         manager = get_auth_manager()
         assert isinstance(manager, AuthManager)
     
     def test_returns_same_instance(self):
         """Test that get_auth_manager returns singleton."""
-        import autosre.security.auth as auth_module
-        auth_module._auth_manager = None
-        
         manager1 = get_auth_manager()
         manager2 = get_auth_manager()
         assert manager1 is manager2
@@ -260,10 +264,14 @@ class TestRequireAuthDecorator:
     """Test require_auth decorator."""
     
     @pytest.fixture(autouse=True)
-    def reset_auth(self):
-        """Reset global auth manager before each test."""
+    def reset_auth(self, tmp_path, monkeypatch):
+        """Reset global auth manager before each test using temp file."""
         import autosre.security.auth as auth_module
         auth_module._auth_manager = None
+        # Use temp file to avoid polluting config/api_keys.json
+        temp_keys = tmp_path / "test_api_keys.json"
+        temp_keys.write_text('{"api_keys": {}}')
+        monkeypatch.setenv("OPENSRE_KEYS_FILE", str(temp_keys))
         yield
         auth_module._auth_manager = None
     
