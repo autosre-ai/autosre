@@ -281,6 +281,28 @@ class DemoInvestigationRunner:
         
         duration_seconds = time.time() - start_time
         
+        # Dramatic confidence build-up before reveal
+        from rich.live import Live
+        from rich.text import Text
+        
+        console.print()
+        console.print("[bold]🎯 Calculating Confidence...[/]")
+        
+        with Live(Text(""), console=console, refresh_per_second=30, transient=True) as live:
+            for pct in range(0, 93, 10):
+                bar_filled = int(pct / 5)
+                bar_empty = 20 - bar_filled
+                color = "yellow" if pct < 70 else "green"
+                bar_text = Text()
+                bar_text.append("   [", style="dim")
+                bar_text.append("█" * bar_filled, style=color)
+                bar_text.append("░" * bar_empty, style="dim")
+                bar_text.append(f"] {pct}%", style="dim")
+                live.update(bar_text)
+                time.sleep(0.03)
+        
+        console.print(f"   [green]████████████████████[/] [bold green]92%[/] [bold]CONFIDENT[/]")
+        
         # Show impressive findings panel
         console.print()
         console.print(Rule("[bold green]✅ ROOT CAUSE IDENTIFIED[/]", style="green"))
@@ -365,7 +387,7 @@ class DemoInvestigationRunner:
             transient=True,
         ) as progress:
             task = progress.add_task("", total=None)
-            time.sleep(0.4)  # Faster topology build
+            time.sleep(0.2)  # Faster topology build
         
         # Service topology tree - use scenario data if available
         tree = Tree(f"🎯 [bold cyan]{self.service}[/]")
@@ -416,11 +438,10 @@ class DemoInvestigationRunner:
                 transient=True,
             ) as progress:
                 task = progress.add_task("", total=None)
-                time.sleep(0.15)  # Faster - snappy feel
+                time.sleep(0.08)  # Super snappy
             console.print(f"  [green]✓[/] {result}")
         
         console.print()
-        time.sleep(0.1)  # Quicker transition
     
     def _phase_evidence_collection(self):
         """Phase 2: Evidence Collection with live metrics."""
@@ -448,7 +469,7 @@ class DemoInvestigationRunner:
                 transient=True,
             ) as progress:
                 task = progress.add_task("", total=None)
-                time.sleep(duration)
+                time.sleep(duration * 0.5)  # Cut query times in half
             console.print(f"  [green]✓[/] [bold]{source_name}[/]")
             console.print(f"    [dim]└─ {query[:60]}{'...' if len(query) > 60 else ''}[/]")
         
@@ -500,7 +521,7 @@ class DemoInvestigationRunner:
         log_panel_lines = []
         for level, ts, msg in logs:
             log_panel_lines.append(f"[dim]{ts}[/] {level} {msg}")
-            time.sleep(0.08)  # Faster streaming effect
+            time.sleep(0.04)  # Faster streaming effect
         
         console.print(Panel(
             "\n".join(log_panel_lines),
@@ -508,7 +529,6 @@ class DemoInvestigationRunner:
             padding=(0, 1),
         ))
         console.print()
-        time.sleep(0.15)  # Quicker transition
     
     def _phase_hypothesis_generation(self):
         """Phase 3: AI Hypothesis Generation with streaming effect."""
@@ -537,13 +557,13 @@ class DemoInvestigationRunner:
                 transient=True,
             ) as progress:
                 task = progress.add_task("", total=None)
-                time.sleep(0.12)  # Fast thinking
+                time.sleep(0.03)  # Lightning fast thinking
         
         # Dramatic AI streaming insight effect - use scenario data if available
         if self.scenario and "ai_insight" in self.scenario:
             ai_insight = self.scenario["ai_insight"]
         else:
-            ai_insight = "Analyzing collected evidence... Pattern detected: Redis connection exhaustion correlates with 3.2x traffic spike at 14:30:17. Confidence level: HIGH."
+            ai_insight = "Pattern detected: Redis connection exhaustion correlates with 3.2x traffic spike. Confidence: HIGH."
         console.print("[bold magenta]🤖 AI Reasoning:[/]")
         
         # Use Live for smooth streaming effect
@@ -555,7 +575,7 @@ class DemoInvestigationRunner:
             for char in ai_insight:
                 displayed += char
                 live.update(Text(displayed, style="dim italic"))
-                time.sleep(0.008)  # Fast typing effect
+                time.sleep(0.003)  # Super fast typing effect
         
         console.print()
         
@@ -586,8 +606,13 @@ class DemoInvestigationRunner:
             # Animate the bar filling up using Live
             final_filled = int(confidence * 20)
             
+            # Faster animation - only show key frames
             with Live(Text(""), console=console, refresh_per_second=30, transient=True) as live:
-                for filled in range(final_filled + 1):
+                # Show only 5 key frames for speed
+                frames = [0, final_filled // 4, final_filled // 2, 3 * final_filled // 4, final_filled]
+                for filled in frames:
+                    if filled > final_filled:
+                        continue
                     bar_empty = 20 - filled
                     bar_text = Text()
                     bar_text.append("█" * filled, style=color)
@@ -595,14 +620,13 @@ class DemoInvestigationRunner:
                     current_pct = int((filled / 20) * 100) if final_filled > 0 else int(confidence * 100)
                     bar_text.append(f"  {current_pct:>3}%  {title}")
                     live.update(bar_text)
-                    time.sleep(0.015)  # Smooth animation
+                    time.sleep(0.02)  # Quick animation
             
             # Print final state
             console.print(f" [{color}]{'█' * final_filled}[/][dim]{'░' * (20 - final_filled)}[/]  [bold]{confidence:.0%}[/]  {title}  [{color}]{status}[/]")
-            time.sleep(0.08)  # Brief pause between hypotheses
         
         console.print()
-        time.sleep(0.1)  # Brief pause before next phase
+        time.sleep(0.03)  # Brief pause before next phase
     
     def _phase_root_cause_analysis(self) -> tuple:
         """Phase 4: Root Cause Analysis with evidence correlation."""
@@ -633,7 +657,7 @@ class DemoInvestigationRunner:
                 transient=True,
             ) as progress:
                 task = progress.add_task("", total=None)
-                time.sleep(0.2)  # Faster checks
+                time.sleep(0.05)  # Ultra fast checks
             
             if status == "CONFIRMED":
                 console.print(f"  [green]✓[/] {evidence} [{color}]{status}[/]")
@@ -705,7 +729,7 @@ class DemoInvestigationRunner:
                 transient=True,
             ) as progress:
                 task = progress.add_task("", total=None)
-                time.sleep(0.12)  # Snappy report generation
+                time.sleep(0.03)  # Lightning fast report generation
             console.print(f"  [green]✓[/] {item}")
         
         console.print()
