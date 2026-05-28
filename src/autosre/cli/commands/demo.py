@@ -99,6 +99,7 @@ class DemoInvestigationRunner:
         stream: bool = True,
         scenario_id: str | None = None,
         scenario_data: dict[str, Any] | None = None,
+        turbo: bool = False,
     ):
         self.alert = alert
         self.service = service
@@ -107,6 +108,9 @@ class DemoInvestigationRunner:
         self.stream = stream
         self.investigation_id = f"demo-{str(uuid4())[:8]}"
         self.scenario_id = scenario_id
+        self.turbo = turbo
+        # Timing multiplier: turbo = 0.3x normal delays, normal = 1.0x
+        self.speed = 0.3 if turbo else 1.0
         
         # Load scenario data from JSON file if scenario_id provided
         if scenario_data:
@@ -118,6 +122,11 @@ class DemoInvestigationRunner:
                 self.scenario = None
         else:
             self.scenario = None
+    
+    def _delay(self, seconds: float):
+        """Apply speed-adjusted delay."""
+        import time
+        time.sleep(seconds * self.speed)
     
     def _phase_context_gathering(self):
         """Phase 1: Simulate context gathering with service topology."""
@@ -265,7 +274,7 @@ class DemoInvestigationRunner:
                 transient=True,
             ) as progress:
                 progress.add_task("", total=None)
-                time.sleep(0.08)  # Snappy init sequence
+                self._delay(0.08)  # Snappy init sequence
             console.print(f"  [green]✓[/] {step}")
         
         console.print()
@@ -322,7 +331,7 @@ class DemoInvestigationRunner:
                 bar_text.append(f"] {pct}%", style=color)
                 live.update(bar_text)
                 # Very snappy - just enough to see the animation
-                time.sleep(0.08)
+                self._delay(0.08)
         
         # Final flash effect - show 92% with emphasis
         console.print(f"   [bold green]████████████████████[/] [bold white on green] 92% [/] [bold green]HIGH CONFIDENCE ✨[/]")
@@ -418,7 +427,7 @@ class DemoInvestigationRunner:
             transient=True,
         ) as progress:
             task = progress.add_task("", total=None)
-            time.sleep(0.1)  # Quick topology build
+            self._delay(0.1)  # Quick topology build
         
         # Service topology tree - use scenario data if available
         tree = Tree(f"🎯 [bold cyan]{self.service}[/]")
@@ -469,7 +478,7 @@ class DemoInvestigationRunner:
                 transient=True,
             ) as progress:
                 task = progress.add_task("", total=None)
-                time.sleep(0.05)  # Lightning fast
+                self._delay(0.05)  # Lightning fast
             console.print(f"  [green]✓[/] {result}")
         
         console.print()
@@ -500,7 +509,7 @@ class DemoInvestigationRunner:
                 transient=True,
             ) as progress:
                 task = progress.add_task("", total=None)
-                time.sleep(duration * 0.3)  # Quick queries
+                self._delay(duration * 0.3)  # Quick queries
             console.print(f"  [green]✓[/] [bold]{source_name}[/]")
             console.print(f"    [dim]└─ {query[:60]}{'...' if len(query) > 60 else ''}[/]")
         
@@ -552,7 +561,7 @@ class DemoInvestigationRunner:
         log_panel_lines = []
         for level, ts, msg in logs:
             log_panel_lines.append(f"[dim]{ts}[/] {level} {msg}")
-            time.sleep(0.02)  # Quick streaming effect
+            self._delay(0.02)  # Quick streaming effect
         
         console.print(Panel(
             "\n".join(log_panel_lines),
@@ -563,7 +572,7 @@ class DemoInvestigationRunner:
         
         # Dramatic trace span visualization 
         console.print("[bold]🔗 Distributed Trace Analysis[/] [dim](sampling slow requests...)[/]")
-        time.sleep(0.05)
+        self._delay(0.05)
         
         # Build trace visualization
         trace_lines = [
@@ -609,7 +618,7 @@ class DemoInvestigationRunner:
                 transient=True,
             ) as progress:
                 task = progress.add_task("", total=None)
-                time.sleep(0.03)  # Snappy thinking
+                self._delay(0.03)  # Snappy thinking
         
         # Dramatic AI streaming insight effect - use scenario data if available
         if self.scenario and "ai_insight" in self.scenario:
@@ -630,7 +639,7 @@ class DemoInvestigationRunner:
                 # Only update every 3rd character for speed, but always show final
                 if i % 3 == 0 or i == len(ai_insight) - 1:
                     live.update(Text(displayed, style="dim italic"))
-                    time.sleep(0.003)  # Rapid typing effect
+                    self._delay(0.003)  # Rapid typing effect
         
         console.print()
         
@@ -670,13 +679,13 @@ class DemoInvestigationRunner:
                 current_pct = int(confidence * 100)
                 bar_text.append(f"  {current_pct:>3}%  {title}")
                 live.update(bar_text)
-                time.sleep(0.02)  # Brief flash
+                self._delay(0.02)  # Brief flash
             
             # Print final state
             console.print(f" [{color}]{'█' * final_filled}[/][dim]{'░' * (20 - final_filled)}[/]  [bold]{confidence:.0%}[/]  {title}  [{color}]{status}[/]")
         
         console.print()
-        time.sleep(0.02)  # Brief pause before next phase
+        self._delay(0.02)  # Brief pause before next phase
     
     def _phase_root_cause_analysis(self) -> tuple:
         """Phase 4: Root Cause Analysis with evidence correlation."""
@@ -707,7 +716,7 @@ class DemoInvestigationRunner:
                 transient=True,
             ) as progress:
                 task = progress.add_task("", total=None)
-                time.sleep(0.03)  # Instant checks
+                self._delay(0.03)  # Instant checks
             
             if status == "CONFIRMED":
                 console.print(f"  [green]✓[/] {evidence} [{color}]{status}[/]")
@@ -754,7 +763,7 @@ class DemoInvestigationRunner:
                 ["Review service logs", "Check recent deployments"]
             ))
         
-        time.sleep(0.1)
+        self._delay(0.1)
         return root_cause_data
     
     def _phase_report_generation(self):
@@ -779,7 +788,7 @@ class DemoInvestigationRunner:
                 transient=True,
             ) as progress:
                 task = progress.add_task("", total=None)
-                time.sleep(0.02)  # Instant report generation
+                self._delay(0.02)  # Instant report generation
             console.print(f"  [green]✓[/] {item}")
         
         console.print()
@@ -843,6 +852,7 @@ def run(
     interactive: bool = typer.Option(False, "--interactive/--batch", "-i", help="Interactive mode (prompts for input)"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output, suppress demo warnings"),
     wow: bool = typer.Option(False, "--wow", "-w", help="Clean demo mode - no warnings, maximum impressiveness"),
+    turbo: bool = typer.Option(False, "--turbo", "-t", help="Turbo mode - faster animations for quick demos (~5s)"),
 ):
     """
     [DEMO MODE] Run a demo investigation with SIMULATED data.
@@ -861,12 +871,19 @@ def run(
         autosre demo run --list                    # List available scenarios
         autosre demo run --random                  # Run random scenario
         autosre demo run -s memory-leak --quiet    # Quiet mode
+        autosre demo run redis-connection --turbo  # Fast demo (~5s)
     """
     # Merge scenario from positional arg or option
     effective_scenario = scenario_id or scenario
     
     # --wow implies no warnings and non-interactive
     if wow:
+        quiet = True
+        yes = True
+        interactive = False
+    
+    # --turbo also implies wow mode
+    if turbo:
         quiet = True
         yes = True
         interactive = False
@@ -955,6 +972,7 @@ def run(
         output_format="text",
         stream=True,
         scenario_id=selected["id"],
+        turbo=turbo,
     )
     
     result = runner.run()

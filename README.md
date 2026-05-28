@@ -278,6 +278,9 @@ autosre memory stats
 # List available models
 autosre model list
 
+# Show current model configuration
+autosre model info
+
 # Switch providers
 autosre model use anthropic claude-3-5-sonnet-20241022
 autosre model use openai gpt-4o
@@ -298,6 +301,9 @@ autosre serve start --notification-webhook https://hooks.slack.com/...
 
 # Check server status
 autosre serve status
+
+# Test webhook endpoint
+autosre serve test-webhook
 ```
 
 ### Additional Commands
@@ -319,7 +325,7 @@ autosre plugin list
 autosre team list
 
 # Compare investigations
-autosre diff INV_ID_1 INV_ID_2
+autosre diff abc123 def456
 
 # Autonomous agent mode
 autosre agent run
