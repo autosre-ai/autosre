@@ -433,6 +433,8 @@ class DemoInvestigationRunner:
         """Phase 3: AI Hypothesis Generation with streaming effect."""
         import time
         from rich.table import Table
+        from rich.live import Live
+        from rich.text import Text
         
         console.print(f"[bold white on blue] PHASE 3/5 [/] [bold]🧠 Hypothesis Generation[/]")
         console.print("[dim]AI analyzing patterns and generating hypotheses...[/]\n")
@@ -456,8 +458,25 @@ class DemoInvestigationRunner:
                 task = progress.add_task("", total=None)
                 time.sleep(0.12)  # Fast thinking
         
+        # Dramatic AI streaming insight effect
+        ai_insight = "Analyzing collected evidence... Pattern detected: Redis connection exhaustion correlates with 3.2x traffic spike at 14:30:17. Confidence level: HIGH."
+        console.print("[bold magenta]🤖 AI Reasoning:[/]")
+        
+        # Use Live for smooth streaming effect
+        from rich.live import Live
+        from rich.text import Text
+        
+        with Live(Text("", style="dim italic"), console=console, refresh_per_second=60, transient=False) as live:
+            displayed = ""
+            for char in ai_insight:
+                displayed += char
+                live.update(Text(displayed, style="dim italic"))
+                time.sleep(0.008)  # Fast typing effect
+        
+        console.print()
+        
         # Dramatic AI insight reveal
-        console.print("[bold green]🤖 AI Analysis Complete[/]\n")
+        console.print("[bold green]✨ Analysis Complete[/]\n")
         
         hypotheses = [
             ("Redis connection pool exhaustion", 0.92, "HIGH", "green"),
@@ -466,22 +485,31 @@ class DemoInvestigationRunner:
             ("Database query timeout", 0.05, "RULED OUT", "dim"),
         ]
         
-        # Build hypothesis table for clean display
-        hyp_table = Table(show_header=False, box=None, padding=(0, 1))
-        hyp_table.add_column("Bar", width=22)
-        hyp_table.add_column("Conf", width=5)
-        hyp_table.add_column("Hypothesis")
-        hyp_table.add_column("Status")
+        # Dramatic animated hypothesis ranking
+        console.print("[bold]📊 Hypothesis Ranking:[/]")
+        
+        from rich.live import Live
+        from rich.text import Text
         
         for title, confidence, status, color in hypotheses:
-            bar_filled = int(confidence * 20)
-            bar_empty = 20 - bar_filled
-            bar = f"[{color}]{'█' * bar_filled}[/][dim]{'░' * bar_empty}[/]"
-            status_display = f"[{color}]{status}[/]"
-            hyp_table.add_row(bar, f"[bold]{confidence:.0%}[/]", title, status_display)
-            time.sleep(0.08)  # Small delay for effect
+            # Animate the bar filling up using Live
+            final_filled = int(confidence * 20)
+            
+            with Live(Text(""), console=console, refresh_per_second=30, transient=True) as live:
+                for filled in range(final_filled + 1):
+                    bar_empty = 20 - filled
+                    bar_text = Text()
+                    bar_text.append("█" * filled, style=color)
+                    bar_text.append("░" * bar_empty, style="dim")
+                    current_pct = int((filled / 20) * 100) if final_filled > 0 else int(confidence * 100)
+                    bar_text.append(f"  {current_pct:>3}%  {title}")
+                    live.update(bar_text)
+                    time.sleep(0.015)  # Smooth animation
+            
+            # Print final state
+            console.print(f" [{color}]{'█' * final_filled}[/][dim]{'░' * (20 - final_filled)}[/]  [bold]{confidence:.0%}[/]  {title}  [{color}]{status}[/]")
+            time.sleep(0.08)  # Brief pause between hypotheses
         
-        console.print(hyp_table)
         console.print()
         time.sleep(0.1)  # Brief pause before next phase
     
@@ -764,11 +792,23 @@ def run(
     manual_triage_time = 1800  # 30 minutes typical manual triage
     speed_multiplier = manual_triage_time / max(result['duration_seconds'], 1)
     
+    # Calculate estimated savings (based on industry averages)
+    # Avg SRE salary: $150k/yr = ~$72/hr, assume 2 engineers for 30min = $72
+    # Plus revenue impact: $10k/min for high-severity, so 30 min saved = $300k  
+    engineer_cost_saved = 72  # 2 engineers x 30 min at $72/hr
+    revenue_protected = 15000  # Conservative: $500/min for 30 min faster resolution
+    total_savings = engineer_cost_saved + revenue_protected
+    
+    # Error rate sparkline (shows the spike and current state)
+    sparkline = "▁▁▂▃▅█▇▅▃▂▁"  # Visual representation of error spike
+    
     summary_text = (
         f"[bold green]✅ Investigation Successful[/]\n\n"
         f"[bold]Investigation ID:[/]  [cyan]{result['investigation_id']}[/]\n"
         f"[bold]Time to Resolution:[/] [yellow]{result['duration_seconds']:.1f}s[/] [dim](vs ~30min manual)[/]\n"
         f"[bold]Speed:[/]             [bold green]⚡ {speed_multiplier:.0f}x FASTER[/]\n"
+        f"[bold]Est. Savings:[/]      [bold green]💰 ${total_savings:,}[/] [dim](eng time + revenue)[/]\n"
+        f"[bold]Error Trend:[/]       [red]{sparkline}[/] [dim]→ resolving[/]\n"
         f"[bold]Root Cause:[/]        [red]{result['root_cause']}[/]\n\n"
         f"[dim]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]\n\n"
         f"[bold]Next Steps:[/]\n"

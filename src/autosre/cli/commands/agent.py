@@ -236,12 +236,51 @@ def agent_analyze(alert_file: str, alert_name: str, service: str, verbose: bool,
             )
             
             if has_llm:
-                # TODO: Actually call the LLM reasoner
+                # Use the Reasoner for LLM-powered analysis
                 analysis_method = "LLM"
-                root_cause = "Analysis requires LLM integration (coming soon)"
-                confidence = 0.0
-                reasoning = "LLM integration pending"
-            else:
+                try:
+                    from autosre.agent.reasoner import Reasoner, ReasonerConfig
+                    from autosre.foundation.models import Alert
+                    import uuid
+                    
+                    # Configure based on available keys
+                    if os.environ.get("ANTHROPIC_API_KEY"):
+                        config = ReasonerConfig(provider="anthropic", model="claude-sonnet-4-20250514")
+                    elif os.environ.get("OPENAI_API_KEY"):
+                        config = ReasonerConfig(provider="openai", model="gpt-4o")
+                    else:
+                        config = ReasonerConfig(provider="ollama", model="qwen3:14b")
+                    
+                    reasoner = Reasoner(context_store=store, config=config)
+                    
+                    # Create alert object
+                    from datetime import datetime
+                    alert_obj = Alert(
+                        id=str(uuid.uuid4())[:8],
+                        name=alert_data.get("name", "Unknown"),
+                        severity=alert_data.get("severity", "high"),
+                        source=alert_data.get("source", "unknown"),
+                        labels=alert_data.get("labels", {}),
+                        summary=alert_data.get("summary", alert_data.get("name", "")),
+                        description=alert_data.get("description"),
+                        service_name=service_name,
+                        fired_at=datetime.fromisoformat(alert_data.get("fired_at", datetime.now().isoformat())) if alert_data.get("fired_at") else datetime.now(),
+                    )
+                    
+                    result = await reasoner.analyze(alert_obj)
+                    root_cause = result.root_cause
+                    confidence = result.confidence
+                    reasoning = result.reasoning
+                    suggested_actions = result.immediate_actions or ["Follow runbook recommendations"]
+                    
+                except Exception as e:
+                    # Fall back to heuristics if LLM fails
+                    analysis_method = "Offline (heuristic - LLM unavailable)"
+                    reasoning = f"LLM analysis unavailable: {str(e)[:100]}"
+                    # Will use heuristics below
+                    has_llm = False
+            
+            if not has_llm:
                 # Use heuristic-based analysis
                 analysis_method = "Offline (heuristic)"
                 
