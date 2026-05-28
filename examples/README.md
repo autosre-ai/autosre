@@ -222,10 +222,16 @@ expected_root_cause: "Recent config change broke authentication"
 expected_service: my-service
 ```
 
-Run with:
+Run with the demo flag:
 
 ```bash
-autosre eval run --scenario my-custom-scenario
+autosre investigate run "Error rate above threshold" --demo --service my-service
+```
+
+Or test using the benchmark command:
+
+```bash
+autosre benchmark --iterations 5
 ```
 
 ## Contributing Examples

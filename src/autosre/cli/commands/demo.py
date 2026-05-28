@@ -230,6 +230,8 @@ class DemoInvestigationRunner:
         """Run a SIMULATED investigation (no real infrastructure)."""
         import time
         from rich.rule import Rule
+        from rich.live import Live
+        from rich.text import Text
         
         if not self.stream:
             # Quiet/benchmark mode - just a quick sleep
@@ -248,7 +250,25 @@ class DemoInvestigationRunner:
         # Epic logo
         _print_logo()
         
-        # Show impressive header
+        # Dramatic "INITIATING" sequence
+        console.print()
+        init_steps = [
+            ("🔐 Authenticating with infrastructure...", "green"),
+            ("📡 Connecting to telemetry sources...", "cyan"),
+            ("🧠 Loading AI investigation model...", "magenta"),
+            ("⚡ Ready.", "bold green"),
+        ]
+        for step, color in init_steps:
+            with Progress(
+                SpinnerColumn(spinner_name="dots"),
+                TextColumn(f"[{color}]{step}[/]"),
+                console=console,
+                transient=True,
+            ) as progress:
+                progress.add_task("", total=None)
+                time.sleep(0.15)
+            console.print(f"  [green]✓[/] {step}")
+        
         console.print()
         console.print(Rule("[bold cyan]🔍 INVESTIGATION STARTED[/]", style="cyan"))
         console.print()
@@ -284,24 +304,31 @@ class DemoInvestigationRunner:
         # Dramatic confidence build-up before reveal
         from rich.live import Live
         from rich.text import Text
+        from rich.layout import Layout
+        from rich.align import Align
         
         console.print()
         console.print("[bold]🎯 Calculating Confidence...[/]")
         
-        with Live(Text(""), console=console, refresh_per_second=30, transient=True) as live:
-            for pct in range(0, 93, 10):
+        # More dramatic percentage counter with accelerating speed
+        with Live(Text(""), console=console, refresh_per_second=60, transient=True) as live:
+            # Start slow, then accelerate
+            for pct in list(range(0, 50, 5)) + list(range(50, 80, 3)) + list(range(80, 92, 1)):
                 bar_filled = int(pct / 5)
                 bar_empty = 20 - bar_filled
-                color = "yellow" if pct < 70 else "green"
+                color = "yellow" if pct < 60 else "cyan" if pct < 80 else "green"
                 bar_text = Text()
                 bar_text.append("   [", style="dim")
                 bar_text.append("█" * bar_filled, style=color)
                 bar_text.append("░" * bar_empty, style="dim")
-                bar_text.append(f"] {pct}%", style="dim")
+                bar_text.append(f"] {pct}%", style=color)
                 live.update(bar_text)
-                time.sleep(0.03)
+                # Speed up as we approach the final value
+                delay = 0.05 if pct < 50 else 0.03 if pct < 80 else 0.02
+                time.sleep(delay)
         
-        console.print(f"   [green]████████████████████[/] [bold green]92%[/] [bold]CONFIDENT[/]")
+        # Final flash effect - show 92% with emphasis
+        console.print(f"   [bold green]████████████████████[/] [bold white on green] 92% [/] [bold green]HIGH CONFIDENCE ✨[/]")
         
         # Show impressive findings panel
         console.print()
@@ -526,6 +553,28 @@ class DemoInvestigationRunner:
         console.print(Panel(
             "\n".join(log_panel_lines),
             border_style="red",
+            padding=(0, 1),
+        ))
+        console.print()
+        
+        # Dramatic trace span visualization 
+        console.print("[bold]🔗 Distributed Trace Analysis[/] [dim](sampling slow requests...)[/]")
+        time.sleep(0.1)
+        
+        # Build trace visualization
+        trace_lines = [
+            "[cyan]▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔[/]",
+            "[bold]api-gateway[/]     [dim]├[/][cyan]████[/][dim]┤[/] [dim]42ms[/]",
+            "[bold]checkout-svc[/]    [dim]│   ├[/][green]████████[/][dim]┤[/] [dim]89ms[/]",
+            f"[bold]redis-primary[/]   [dim]│   │       ├[/][red]{'█' * 40}[/][dim]┤[/] [red]30,000ms TIMEOUT[/] [bold red]⚠[/]",
+            "[bold]postgres[/]        [dim]│   │   ├[/][green]██[/][dim]┤[/] [dim]12ms[/]",
+            "[cyan]▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁[/]",
+            "[dim]Trace ID: [/][cyan]abc123def456[/]  [dim]•  Total: [/][red]30,143ms[/]  [dim]•  Spans: [/]5",
+        ]
+        console.print(Panel(
+            "\n".join(trace_lines),
+            title="[bold]Sampled Trace[/]",
+            border_style="cyan",
             padding=(0, 1),
         ))
         console.print()
