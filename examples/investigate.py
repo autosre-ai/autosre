@@ -4,8 +4,11 @@ AutoSRE Investigation Example
 
 Demonstrates how to use AutoSRE programmatically for incident investigation.
 
-Run:
+Run (interactive):
     python examples/investigate.py
+    
+Run (non-interactive):
+    python examples/investigate.py --no-input
     
 Or with custom alert:
     python examples/investigate.py "payment-service timeout errors"
@@ -230,10 +233,16 @@ async def interactive_demo():
 
 async def main():
     """Main entry point."""
+    import argparse
     
-    if len(sys.argv) > 1:
+    parser = argparse.ArgumentParser(description="AutoSRE Investigation Example")
+    parser.add_argument("alert", nargs="*", help="Alert description or example name")
+    parser.add_argument("--no-input", action="store_true", help="Non-interactive mode (use default example)")
+    args = parser.parse_args()
+    
+    if args.alert:
         # Run with command line argument
-        alert_input = " ".join(sys.argv[1:])
+        alert_input = " ".join(args.alert)
         
         # Check if it's a known example
         if alert_input in EXAMPLE_ALERTS:
@@ -242,6 +251,12 @@ async def main():
             # Treat as description
             alert = alert_input
         
+        await run_investigation(alert)
+    elif args.no_input:
+        # Non-interactive mode - use first example
+        alert = EXAMPLE_ALERTS["checkout_5xx"]
+        print("\n🚨 AutoSRE Investigation Demo (non-interactive mode)\n")
+        print(f"Running with example: checkout_5xx")
         await run_investigation(alert)
     else:
         # Run interactive demo

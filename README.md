@@ -82,7 +82,7 @@ autosre investigate run "checkout service 500 errors" --service checkout-service
 
 Or with Docker:
 ```bash
-docker run -it --rm -v ~/.autosre:/root/.autosre ghcr.io/autosre-ai/autosre investigate "high latency on api-gateway"
+docker run -it --rm -v ~/.autosre:/root/.autosre ghcr.io/autosre-ai/autosre investigate run "high latency on api-gateway"
 ```
 
 **That's it.** No Neo4j. No Postgres. No infrastructure. Just `pip install` and go.
