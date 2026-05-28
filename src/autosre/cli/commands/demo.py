@@ -339,11 +339,18 @@ class DemoInvestigationRunner:
         # Show impressive findings panel with dramatic effect
         console.print()
         
-        # Flash effect for root cause reveal
-        import os
-        if os.environ.get("TERM"):
-            # Terminal bell for dramatic effect (optional)
-            pass
+        # DRAMATIC REVEAL MOMENT
+        from rich.align import Align
+        
+        # Dramatic pause before the reveal
+        self._delay(0.15)
+        
+        # Flash "ANALYZING" a few times for effect
+        for _ in range(2):
+            console.print("[bold yellow blink]>>> ANALYZING EVIDENCE <<<[/]", end="\r")
+            self._delay(0.1)
+            console.print(" " * 40, end="\r")
+            self._delay(0.05)
         
         console.print(Rule("[bold green]✅ ROOT CAUSE IDENTIFIED[/]", style="green"))
         console.print()
@@ -387,19 +394,21 @@ class DemoInvestigationRunner:
                 time_str = event["time"]
                 event_text = event["event"]
                 if event.get("success"):
-                    timeline_lines.append(f"[dim]{time_str}[/] [green]{event_text}[/]")
+                    # Green checkmark for successful resolution
+                    timeline_lines.append(f"[dim]{time_str}[/] [bold green]✓ {event_text}[/]")
                 elif event.get("highlight"):
-                    timeline_lines.append(f"[dim]{time_str}[/] [red]{event_text}[/]")
+                    # Red warning for critical events
+                    timeline_lines.append(f"[dim]{time_str}[/] [bold red]⚠ {event_text}[/]")
                 else:
-                    timeline_lines.append(f"[dim]{time_str}[/] {event_text}")
+                    timeline_lines.append(f"[dim]{time_str}[/]   {event_text}")
             timeline_text = "\n".join(timeline_lines)
         else:
             timeline_text = (
-                "[dim]14:30:17[/] Traffic spike detected (3x baseline)\n"
-                "[dim]14:32:17[/] [red]First 5xx errors recorded[/]\n"
-                "[dim]14:32:45[/] PagerDuty alert triggered\n"
-                "[dim]14:33:02[/] AutoSRE investigation started\n"
-                f"[dim]14:33:{int(duration_seconds):02d}[/] [green]Root cause identified[/]"
+                "[dim]14:30:17[/]   Traffic spike detected (3x baseline)\n"
+                "[dim]14:32:17[/] [bold red]⚠ First 5xx errors recorded[/]\n"
+                "[dim]14:32:45[/]   PagerDuty alert triggered\n"
+                "[dim]14:33:02[/]   AutoSRE investigation started\n"
+                f"[dim]14:33:{int(duration_seconds):02d}[/] [bold green]✓ Root cause identified[/]"
             )
         console.print(Panel(timeline_text, title="⏱️  Incident Timeline", border_style="cyan"))
         

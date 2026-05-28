@@ -519,10 +519,10 @@ In production, AutoSRE connects to:
 {Colors.GREEN}{Colors.BOLD}Demo Complete!{Colors.RESET}
 
 {Colors.BOLD}Next Steps:{Colors.RESET}
-  1. Check out examples/demo.py for a more detailed demonstration
-  2. Configure real integrations in config/settings.yaml
-  3. Run the API server: autosre serve
-  4. Read the docs: https://autosre.dev/docs
+  1. Check out examples/demo_simple.py for a more detailed demonstration
+  2. Configure real integrations in ~/.autosre/config.yaml
+  3. Run the webhook server: autosre serve start
+  4. Read the docs: https://github.com/autosre-ai/autosre
 
 {Colors.DIM}For production use, set your LLM API key:
   export OPENSRE_OPENAI_API_KEY=your-key-here
