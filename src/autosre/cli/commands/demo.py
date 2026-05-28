@@ -963,7 +963,6 @@ def run(
     
     # Show impressive completion summary
     console.print()
-    from rich.rule import Rule
     
     # Dramatic completion banner
     console.print()
