@@ -256,7 +256,7 @@ autosre investigate run "High error rate" --watch --watch-interval 120
 autosre investigate run "DB connection errors" --format html --save report.html
 
 # Stream output in real-time (default behavior)
-autosre investigate run "Redis connection timeout" --service cache-service --stream
+autosre investigate run "Redis connection timeout" --service cache-service
 ```
 
 ### Memory & Learning
@@ -325,6 +325,10 @@ AutoSRE is configured via environment variables or YAML:
 # Set LLM provider
 export OPENSRE_LLM_PROVIDER=anthropic
 export OPENSRE_ANTHROPIC_API_KEY=sk-ant-...
+
+# Or for OpenAI
+export OPENSRE_LLM_PROVIDER=openai
+export OPENSRE_OPENAI_API_KEY=sk-...
 
 # Configure infrastructure
 export OPENSRE_PROMETHEUS_URL=http://prometheus:9090

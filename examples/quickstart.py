@@ -525,9 +525,9 @@ In production, AutoSRE connects to:
   4. Read the docs: https://autosre.dev/docs
 
 {Colors.DIM}For production use, set your LLM API key:
-  export OPENAI_API_KEY=your-key-here
+  export OPENSRE_OPENAI_API_KEY=your-key-here
   # or
-  export ANTHROPIC_API_KEY=your-key-here{Colors.RESET}
+  export OPENSRE_ANTHROPIC_API_KEY=your-key-here{Colors.RESET}
 """)
 
 

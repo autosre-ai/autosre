@@ -8,8 +8,8 @@ This directory contains examples, tutorials, and reference configurations for Au
 # Run the simplest demo (mock mode, no external dependencies)
 python examples/demo_simple.py
 
-# Run with your LLM configured
-python examples/quickstart.py --no-input
+# Run with your LLM configured (non-interactive)
+python examples/quickstart.py --no-input   # or: python examples/quickstart.py -n
 
 # Test an investigation scenario
 autosre investigate run "high latency on api-gateway" --demo
