@@ -53,7 +53,7 @@ def main_callback(
 
 
 # Import and register command groups
-from autosre.cli.commands import investigate, memory, config, demo, chat, doctor, runbook, tutorial, serve, benchmark, model, plugin, history, team, template
+from autosre.cli.commands import investigate, memory, config, demo, chat, doctor, runbook, tutorial, serve, benchmark, model, plugin, history, team, template, agent
 
 app.add_typer(investigate.app, name="investigate", help="Investigation commands")
 app.add_typer(memory.app, name="memory", help="Episodic memory management")
@@ -70,6 +70,49 @@ app.add_typer(model.app, name="model", help="Configure AI model settings")
 app.add_typer(plugin.app, name="plugin", help="Manage AutoSRE plugins")
 app.add_typer(team.app, name="team", help="Team collaboration")
 app.add_typer(template.app, name="template", help="Investigation templates for common incidents")
+
+# Import click-based agent command and adapt it
+from autosre.cli.commands.agent import agent as agent_click
+from click.testing import CliRunner as ClickRunner
+
+# Create a wrapper for the click-based agent command
+import subprocess
+import sys
+
+agent_app = typer.Typer(name="agent", help="Autonomous agent for monitoring and remediation")
+
+@agent_app.command("run")
+def agent_run_wrapper(
+    interval: int = typer.Option(30, help="Check interval in seconds"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Don't execute remediation actions"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
+    once: bool = typer.Option(False, "--once", help="Run once then exit"),
+):
+    """Run the agent in watch mode, continuously monitoring for alerts."""
+    from autosre.cli.commands.agent import agent_run
+    import asyncio
+    agent_run(interval, dry_run, verbose, once)
+
+@agent_app.command("analyze")
+def agent_analyze_wrapper(
+    alert_file: str = typer.Option(None, "--alert", "-a", help="Alert JSON file"),
+    alert_name: str = typer.Option(None, "--alert-name", help="Analyze alert by name"),
+    service: str = typer.Option(None, "--service", "-s", help="Service to analyze"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
+    as_json: bool = typer.Option(False, "--json", help="Output as JSON"),
+    model: str = typer.Option(None, "--model", "-m", help="Override LLM model"),
+):
+    """Analyze an alert and suggest remediation."""
+    import asyncio
+    from autosre.cli.commands.agent import agent_analyze
+    
+    # Wrap the click context
+    import click
+    ctx = click.Context(click.Command("analyze"))
+    with ctx:
+        agent_analyze(alert_file, alert_name, service, verbose, as_json, model)
+
+app.add_typer(agent_app, name="agent")
 
 
 # Quick access to investigate run

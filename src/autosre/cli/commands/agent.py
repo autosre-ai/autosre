@@ -513,13 +513,149 @@ def agent_history(limit: int, service: str, as_json: bool):
 
 
 async def _analyze_alert(alert, store, dry_run: bool, verbose: bool):
-    """Analyze a single alert."""
-    console.print()
-    console.print(f"[bold]Analyzing:[/bold] {alert.name}")
-    console.print(f"[dim]{alert.summary}[/dim]")
+    """Analyze a single alert using heuristics and context correlation."""
+    from rich.panel import Panel
+    from rich.table import Table
     
-    # TODO: Implement actual analysis
-    console.print("[yellow]Analysis implementation coming soon[/yellow]")
+    console.print()
+    console.print(Panel.fit(
+        f"[bold]{alert.name}[/bold]\n"
+        f"[dim]{alert.summary}[/dim]",
+        title="🔍 Analyzing Alert",
+        border_style="cyan",
+    ))
+    
+    # Gather context
+    context = {
+        "services": [],
+        "changes": [],
+        "runbooks": [],
+    }
+    
+    service_name = alert.service_name
+    
+    if service_name:
+        svc = store.get_service(service_name)
+        if svc:
+            context["services"].append(svc)
+            for dep_name in svc.dependencies:
+                dep = store.get_service(dep_name)
+                if dep:
+                    context["services"].append(dep)
+        
+        # Get recent changes
+        changes = store.get_recent_changes(service_name=service_name, hours=24)
+        context["changes"] = changes[:5]
+        
+        # Get relevant runbooks
+        runbooks = store.find_runbook(
+            alert_name=alert.name,
+            service_name=service_name,
+        )
+        context["runbooks"] = runbooks[:3]
+    
+    # Perform heuristic-based analysis
+    alert_text = f"{alert.name} {alert.summary}".lower()
+    
+    # Identify issue type and generate analysis
+    if "cpu" in alert_text:
+        root_cause = "High CPU utilization - possible CPU-intensive operation or process"
+        suggested_actions = [
+            "Check top CPU-consuming processes",
+            "Review recent deployments for inefficient code",
+            "Consider horizontal scaling",
+        ]
+        confidence = 0.6
+    elif "memory" in alert_text or "oom" in alert_text:
+        root_cause = "Memory pressure or leak - application using excessive memory"
+        suggested_actions = [
+            "Check memory usage trends",
+            "Review heap dumps for memory leaks",
+            "Increase memory limits or scale pods",
+        ]
+        confidence = 0.65
+    elif "disk" in alert_text or "storage" in alert_text:
+        root_cause = "Disk space or I/O issue"
+        suggested_actions = [
+            "Check disk usage with df -h",
+            "Clean up old logs and temporary files",
+            "Consider expanding storage volume",
+        ]
+        confidence = 0.7
+    elif "connection" in alert_text or "timeout" in alert_text or "refused" in alert_text:
+        root_cause = "Connection or timeout issue - check network and dependencies"
+        suggested_actions = [
+            "Check downstream service health",
+            "Review connection pool settings",
+            "Check network policies and firewall rules",
+        ]
+        confidence = 0.55
+    elif "error" in alert_text or "5xx" in alert_text or "exception" in alert_text:
+        root_cause = "Application errors - review logs for exception details"
+        suggested_actions = [
+            "Check application logs for stack traces",
+            "Review recent code deployments",
+            "Check error rate trends",
+        ]
+        confidence = 0.5
+    elif "latency" in alert_text or "slow" in alert_text or "p99" in alert_text:
+        root_cause = "Latency degradation - performance bottleneck detected"
+        suggested_actions = [
+            "Review distributed traces for slow operations",
+            "Check database query performance",
+            "Profile the application for bottlenecks",
+        ]
+        confidence = 0.55
+    else:
+        root_cause = "Issue detected - correlate with recent changes and logs"
+        suggested_actions = [
+            "Review recent changes to affected services",
+            "Check service logs for anomalies",
+            "Verify service dependencies are healthy",
+        ]
+        confidence = 0.3
+    
+    # Boost confidence if we have recent changes
+    if context["changes"]:
+        recent_change = context["changes"][0]
+        root_cause += f"\n\n💡 [yellow]Recent change:[/yellow] {recent_change.description}"
+        confidence = min(confidence + 0.15, 0.9)
+    
+    # Display analysis results
+    console.print()
+    console.print(f"[bold]Root Cause Analysis[/bold] (confidence: {confidence:.0%})")
+    console.print(f"  {root_cause}")
+    console.print()
+    
+    # Display suggested actions
+    console.print("[bold]Suggested Actions:[/bold]")
+    for i, action in enumerate(suggested_actions, 1):
+        console.print(f"  {i}. {action}")
+    console.print()
+    
+    # Display relevant runbooks
+    if context["runbooks"]:
+        console.print("[bold]Relevant Runbooks:[/bold]")
+        for runbook in context["runbooks"]:
+            console.print(f"  📒 {runbook.id}: {runbook.name}")
+        console.print()
+    
+    # Display affected services
+    if context["services"]:
+        console.print(f"[bold]Affected Services:[/bold] {', '.join(s.name for s in context['services'])}")
+        console.print()
+    
+    if verbose:
+        # Show detailed context
+        if context["changes"]:
+            console.print("[bold]Recent Changes:[/bold]")
+            for change in context["changes"]:
+                console.print(f"  • {change.change_type}: {change.description}")
+            console.print()
+    
+    if dry_run:
+        console.print("[dim]Dry run - no remediation executed[/dim]")
+    
     console.print()
 
 

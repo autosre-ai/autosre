@@ -136,3 +136,21 @@ class TestCompletion:
         # Should either auto-detect or ask for shell
         # In test environment, it typically can't detect, so should exit with message
         assert "shell" in result.output.lower() or result.exit_code == 0
+
+
+class TestAgentCommands:
+    """Test agent subcommands."""
+    
+    def test_agent_help(self, runner):
+        """Test agent --help."""
+        result = runner.invoke(app, ["agent", "--help"])
+        assert result.exit_code == 0
+        assert "run" in result.output
+        assert "analyze" in result.output
+    
+    def test_agent_analyze_help(self, runner):
+        """Test agent analyze --help."""
+        result = runner.invoke(app, ["agent", "analyze", "--help"])
+        assert result.exit_code == 0
+        assert "--alert" in result.output
+        assert "--service" in result.output
