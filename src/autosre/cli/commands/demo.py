@@ -639,6 +639,7 @@ def run(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip all confirmations (non-interactive)"),
     interactive: bool = typer.Option(False, "--interactive/--batch", "-i", help="Interactive mode (prompts for input)"),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Minimal output, suppress demo warnings"),
+    wow: bool = typer.Option(False, "--wow", "-w", help="Clean demo mode - no warnings, maximum impressiveness"),
 ):
     """
     [DEMO MODE] Run a demo investigation with SIMULATED data.
@@ -661,9 +662,19 @@ def run(
     # Merge scenario from positional arg or option
     effective_scenario = scenario_id or scenario
     
+    # --wow implies no warnings and non-interactive
+    if wow:
+        quiet = True
+        yes = True
+        interactive = False
+    
     # -y flag implies non-interactive
     if yes:
         interactive = False
+    
+    # If scenario is explicitly provided, default to non-interactive
+    if effective_scenario and not interactive:
+        yes = True
     
     # Show demo warning unless quiet mode
     if not quiet:
@@ -698,16 +709,28 @@ def run(
     
     # Show scenario info
     console.print()
-    console.print(Panel(
-        f"[bold]{selected['name']}[/]\n\n"
-        f"[bold]Alert:[/] {selected['alert']}\n"
-        f"[bold]Service:[/] {selected['service']}\n"
-        f"[bold]Severity:[/] {selected['severity']}\n\n"
-        f"[dim]{selected['description']}[/]\n\n"
-        f"[yellow]⚠️  All data is SIMULATED - not real infrastructure[/]",
-        title="🎭 [DEMO MODE] Demo Scenario (SIMULATED)",
-        border_style="magenta",
-    ))
+    if wow:
+        # Clean wow mode - no DEMO MODE labels, just the scenario
+        console.print(Panel(
+            f"[bold]{selected['name']}[/]\n\n"
+            f"[bold]Alert:[/] {selected['alert']}\n"
+            f"[bold]Service:[/] {selected['service']}\n"
+            f"[bold]Severity:[/] {selected['severity']}\n\n"
+            f"[dim]{selected['description']}[/]",
+            title="🚨 [bold]Incoming Alert[/]",
+            border_style="red",
+        ))
+    else:
+        console.print(Panel(
+            f"[bold]{selected['name']}[/]\n\n"
+            f"[bold]Alert:[/] {selected['alert']}\n"
+            f"[bold]Service:[/] {selected['service']}\n"
+            f"[bold]Severity:[/] {selected['severity']}\n\n"
+            f"[dim]{selected['description']}[/]\n\n"
+            f"[yellow]⚠️  All data is SIMULATED - not real infrastructure[/]",
+            title="🎭 [DEMO MODE] Demo Scenario (SIMULATED)",
+            border_style="magenta",
+        ))
     
     # Only prompt in interactive mode (and not if -y flag used)
     if interactive and not yes:

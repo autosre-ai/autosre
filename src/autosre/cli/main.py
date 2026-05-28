@@ -90,8 +90,8 @@ def agent_run_wrapper(
 ):
     """Run the agent in watch mode, continuously monitoring for alerts."""
     from autosre.cli.commands.agent import agent_run
-    import asyncio
-    agent_run(interval, dry_run, verbose, once)
+    # Use the callback directly to bypass Click's argument parsing
+    agent_run.callback(interval, once, dry_run, None, verbose)
 
 @agent_app.command("analyze")
 def agent_analyze_wrapper(
@@ -103,14 +103,11 @@ def agent_analyze_wrapper(
     model: str = typer.Option(None, "--model", "-m", help="Override LLM model"),
 ):
     """Analyze an alert and suggest remediation."""
-    import asyncio
     from autosre.cli.commands.agent import agent_analyze
     
-    # Wrap the click context
-    import click
-    ctx = click.Context(click.Command("analyze"))
-    with ctx:
-        agent_analyze(alert_file, alert_name, service, verbose, as_json, model)
+    # Click commands need to be invoked with standalone_mode=False to avoid sys.exit
+    # and pass parameters as keyword arguments matching the decorator options
+    agent_analyze.callback(alert_file, alert_name, service, verbose, as_json, model)
 
 app.add_typer(agent_app, name="agent")
 
