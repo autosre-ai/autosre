@@ -298,7 +298,7 @@ class KubernetesTools(BaseSRETool):
             if parent.mock_mode:
                 mock_data = parent.get_mock_response(
                     "get_pod_logs",
-                    f"[INFO] Mock log line 1\n[INFO] Mock log line 2\n"
+                    "[INFO] Mock log line 1\n[INFO] Mock log line 2\n"
                 )
                 return mock_data
             

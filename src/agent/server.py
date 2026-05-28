@@ -174,7 +174,7 @@ async def stream_investigation(thread_id: str):
                     yield f"data: {json.dumps(event)}\n\n"
                 except asyncio.TimeoutError:
                     # Send keepalive
-                    yield f": keepalive\n\n"
+                    yield ": keepalive\n\n"
         finally:
             # Cleanup
             _cleanup_thread(thread_id)

@@ -146,7 +146,7 @@ def doctor(ctx: click.Context):
     all_passed = True
     for name, passed, details in checks:
         icon = "[green]✓[/green]" if passed else "[red]✗[/red]"
-        status = f"[green]OK[/green]" if passed else "[red]FAIL[/red]"
+        status = "[green]OK[/green]" if passed else "[red]FAIL[/red]"
         console.print(f"  {icon} {name}: {status}")
         if details:
             console.print(f"      [dim]{details}[/dim]")

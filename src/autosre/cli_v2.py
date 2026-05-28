@@ -31,7 +31,7 @@ def investigate(
     from rich.console import Console
     console = Console()
     
-    console.print(f"[bold blue]🔍 Starting investigation[/bold blue]")
+    console.print("[bold blue]🔍 Starting investigation[/bold blue]")
     console.print(f"Alert: {alert}")
     if service:
         console.print(f"Service: {service}")

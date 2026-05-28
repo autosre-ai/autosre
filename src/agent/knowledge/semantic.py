@@ -183,7 +183,7 @@ class SemanticLayer:
             f"**Tier:** {result.failed_service.tier.value}",
             f"**Team:** {result.failed_service.team}",
             "",
-            f"## Impact Summary",
+            "## Impact Summary",
             f"- Direct dependents: {len(result.direct_dependents)}",
             f"- Transitive dependents: {len(result.transitive_dependents)}",
             f"- Total affected: {result.total_affected}",

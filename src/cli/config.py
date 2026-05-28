@@ -135,7 +135,7 @@ def _print_config_tree(data: dict, prefix: str = "") -> None:
         full_key = f"{prefix}{key}" if prefix else key
         if isinstance(value, dict):
             console.print(f"  [cyan]{key}[/cyan]:")
-            _print_config_tree(value, prefix=f"  ")
+            _print_config_tree(value, prefix="  ")
         else:
             # Mask sensitive values
             display_value = value
