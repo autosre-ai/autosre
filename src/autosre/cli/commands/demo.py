@@ -20,7 +20,6 @@ are synthetic and do not represent real incidents or infrastructure.
 
 import random
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
@@ -31,7 +30,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 from rich.status import Status
 from rich.table import Table
 
-from autosre.scenarios import load_scenario, list_available_scenarios
+from autosre.scenarios import load_scenario
 
 app = typer.Typer(
     name="demo",
@@ -304,8 +303,6 @@ class DemoInvestigationRunner:
         # Dramatic confidence build-up before reveal
         from rich.live import Live
         from rich.text import Text
-        from rich.layout import Layout
-        from rich.align import Align
         
         console.print()
         console.print("[bold]🎯 Calculating Confidence...[/]")
@@ -582,7 +579,6 @@ class DemoInvestigationRunner:
     def _phase_hypothesis_generation(self):
         """Phase 3: AI Hypothesis Generation with streaming effect."""
         import time
-        from rich.table import Table
         from rich.live import Live
         from rich.text import Text
         

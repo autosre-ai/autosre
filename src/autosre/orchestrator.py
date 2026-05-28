@@ -219,7 +219,7 @@ class Orchestrator:
             
             return self._build_investigation_report(inv)
             
-        except Exception as e:
+        except Exception:
             inv.state = InvestigationStatus.FAILED
             inv.ended_at = datetime.now(UTC)
             raise

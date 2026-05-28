@@ -53,7 +53,7 @@ def main_callback(
 
 
 # Import and register command groups
-from autosre.cli.commands import investigate, memory, config, demo, chat, doctor, runbook, tutorial, serve, benchmark, model, plugin, history, team, template, agent
+from autosre.cli.commands import investigate, memory, config, demo, chat, doctor, runbook, tutorial, serve, benchmark, model, plugin, history, team, template
 
 app.add_typer(investigate.app, name="investigate", help="Investigation commands")
 app.add_typer(memory.app, name="memory", help="Episodic memory management")
@@ -72,12 +72,8 @@ app.add_typer(team.app, name="team", help="Team collaboration")
 app.add_typer(template.app, name="template", help="Investigation templates for common incidents")
 
 # Import click-based agent command and adapt it
-from autosre.cli.commands.agent import agent as agent_click
-from click.testing import CliRunner as ClickRunner
 
 # Create a wrapper for the click-based agent command
-import subprocess
-import sys
 
 agent_app = typer.Typer(name="agent", help="Autonomous agent for monitoring and remediation")
 

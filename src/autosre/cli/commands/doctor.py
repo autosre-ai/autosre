@@ -370,7 +370,7 @@ def check_kubernetes_connection() -> HealthCheck:
             try:
                 k8s_config.load_kube_config()
                 config_source = "kubeconfig"
-            except Exception as e:
+            except Exception:
                 return HealthCheck(
                     "Kubernetes",
                     "warning",
