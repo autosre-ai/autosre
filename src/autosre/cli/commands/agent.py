@@ -554,7 +554,6 @@ def agent_history(limit: int, service: str, as_json: bool):
 async def _analyze_alert(alert, store, dry_run: bool, verbose: bool):
     """Analyze a single alert using heuristics and context correlation."""
     from rich.panel import Panel
-    from rich.table import Table
     
     console.print()
     console.print(Panel.fit(
