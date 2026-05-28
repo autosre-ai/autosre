@@ -20,7 +20,8 @@ are synthetic and do not represent real incidents or infrastructure.
 
 import random
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from pathlib import Path
+from typing import Any, Optional
 from uuid import uuid4
 
 import typer
@@ -29,6 +30,8 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.status import Status
 from rich.table import Table
+
+from autosre.scenarios import load_scenario, list_available_scenarios
 
 app = typer.Typer(
     name="demo",
@@ -95,6 +98,8 @@ class DemoInvestigationRunner:
         severity: str,
         output_format: str = "text",
         stream: bool = True,
+        scenario_id: str | None = None,
+        scenario_data: dict[str, Any] | None = None,
     ):
         self.alert = alert
         self.service = service
@@ -102,6 +107,18 @@ class DemoInvestigationRunner:
         self.output_format = output_format
         self.stream = stream
         self.investigation_id = f"demo-{str(uuid4())[:8]}"
+        self.scenario_id = scenario_id
+        
+        # Load scenario data from JSON file if scenario_id provided
+        if scenario_data:
+            self.scenario = scenario_data
+        elif scenario_id:
+            try:
+                self.scenario = load_scenario(scenario_id)
+            except FileNotFoundError:
+                self.scenario = None
+        else:
+            self.scenario = None
     
     def _phase_context_gathering(self):
         """Phase 1: Simulate context gathering with service topology."""
@@ -217,10 +234,11 @@ class DemoInvestigationRunner:
         if not self.stream:
             # Quiet/benchmark mode - just a quick sleep
             time.sleep(0.1)
+            root_cause = self.scenario["root_cause"] if self.scenario else "Redis connection pool exhaustion due to traffic spike"
             return {
                 "investigation_id": self.investigation_id,
                 "duration_seconds": 0.1,
-                "root_cause": "Redis connection pool exhaustion due to traffic spike",
+                "root_cause": root_cause,
                 "recommendations": [],
                 "simulated": True,
             }
@@ -276,28 +294,51 @@ class DemoInvestigationRunner:
             padding=(1, 2),
         ))
         
-        # Evidence summary
-        evidence_text = (
-            "[bold]Key Evidence:[/]\n"
-            f"• Error rate spike: [yellow]23% 5xx errors[/] (threshold: 1%)\n"
-            f"• First occurrence: [cyan]14:32:17 UTC[/]\n"
-            f"• Affected pods: [cyan]{self.service}-7d4f8b6c9-xxxxx[/] (3 replicas)\n"
-            f"• Correlation: [green]92% confidence[/] with traffic spike"
-        )
+        # Evidence summary - use scenario data if available
+        if self.scenario and "evidence_summary" in self.scenario:
+            es = self.scenario["evidence_summary"]
+            evidence_text = (
+                "[bold]Key Evidence:[/]\n"
+                f"• Error rate spike: [yellow]{es.get('error_rate', 'N/A')}[/] (threshold: {es.get('threshold', 'N/A')})\n"
+                f"• First occurrence: [cyan]{es.get('first_occurrence', 'N/A')} UTC[/]\n"
+                f"• Affected pods: [cyan]{es.get('affected_pods', 'N/A')}[/]\n"
+                f"• Correlation: [green]{es.get('correlation_confidence', 'N/A')} confidence[/]"
+            )
+        else:
+            evidence_text = (
+                "[bold]Key Evidence:[/]\n"
+                f"• Error rate spike: [yellow]23% 5xx errors[/] (threshold: 1%)\n"
+                f"• First occurrence: [cyan]14:32:17 UTC[/]\n"
+                f"• Affected pods: [cyan]{self.service}-7d4f8b6c9-xxxxx[/] (3 replicas)\n"
+                f"• Correlation: [green]92% confidence[/] with traffic spike"
+            )
         console.print(Panel(evidence_text, title="📊 Evidence Summary", border_style="yellow"))
         
         # Recommendations
         rec_text = "\n".join([f"[green]{i+1}.[/] {rec}" for i, rec in enumerate(recommendations)])
         console.print(Panel(rec_text, title="💡 Recommended Actions", border_style="green"))
         
-        # Timeline
-        timeline_text = (
-            "[dim]14:30:17[/] Traffic spike detected (3x baseline)\n"
-            "[dim]14:32:17[/] [red]First 5xx errors recorded[/]\n"
-            "[dim]14:32:45[/] PagerDuty alert triggered\n"
-            "[dim]14:33:02[/] AutoSRE investigation started\n"
-            f"[dim]14:33:{int(duration_seconds):02d}[/] [green]Root cause identified[/]"
-        )
+        # Timeline - use scenario data if available
+        if self.scenario and "timeline" in self.scenario:
+            timeline_lines = []
+            for event in self.scenario["timeline"]:
+                time_str = event["time"]
+                event_text = event["event"]
+                if event.get("success"):
+                    timeline_lines.append(f"[dim]{time_str}[/] [green]{event_text}[/]")
+                elif event.get("highlight"):
+                    timeline_lines.append(f"[dim]{time_str}[/] [red]{event_text}[/]")
+                else:
+                    timeline_lines.append(f"[dim]{time_str}[/] {event_text}")
+            timeline_text = "\n".join(timeline_lines)
+        else:
+            timeline_text = (
+                "[dim]14:30:17[/] Traffic spike detected (3x baseline)\n"
+                "[dim]14:32:17[/] [red]First 5xx errors recorded[/]\n"
+                "[dim]14:32:45[/] PagerDuty alert triggered\n"
+                "[dim]14:33:02[/] AutoSRE investigation started\n"
+                f"[dim]14:33:{int(duration_seconds):02d}[/] [green]Root cause identified[/]"
+            )
         console.print(Panel(timeline_text, title="⏱️  Incident Timeline", border_style="cyan"))
         
         return {
@@ -326,25 +367,46 @@ class DemoInvestigationRunner:
             task = progress.add_task("", total=None)
             time.sleep(0.4)  # Faster topology build
         
-        # Service topology tree
+        # Service topology tree - use scenario data if available
         tree = Tree(f"🎯 [bold cyan]{self.service}[/]")
-        deps = tree.add("[dim]Dependencies[/]")
-        deps.add("📦 redis-primary [yellow](connection pool: 10)[/]")
-        deps.add("🐘 postgres-orders")
-        deps.add("📨 kafka-events")
-        upstreams = tree.add("[dim]Upstream[/]")
-        upstreams.add("🌐 api-gateway")
-        upstreams.add("📱 mobile-bff")
+        
+        if self.scenario and "service_topology" in self.scenario:
+            topology = self.scenario["service_topology"]
+            
+            # Add dependencies
+            deps = tree.add("[dim]Dependencies[/]")
+            for dep in topology.get("dependencies", []):
+                icon = {"cache": "📦", "database": "🐘", "messaging": "📨", "service": "⚙️", "external": "🌐", "config": "⚙️", "middleware": "🔧", "secrets": "🔐"}.get(dep.get("type", ""), "📦")
+                note = f" [yellow]({dep['note']})[/]" if dep.get("note") else ""
+                deps.add(f"{icon} {dep['name']}{note}")
+            
+            # Add upstream
+            upstreams = tree.add("[dim]Upstream[/]")
+            for upstream in topology.get("upstream", []):
+                icon = {"gateway": "🌐", "bff": "📱", "service": "⚙️", "frontend": "💻", "ingress": "🚪", "cdn": "☁️"}.get(upstream.get("type", ""), "🌐")
+                upstreams.add(f"{icon} {upstream['name']}")
+        else:
+            # Fallback to default topology
+            deps = tree.add("[dim]Dependencies[/]")
+            deps.add("📦 redis-primary [yellow](connection pool: 10)[/]")
+            deps.add("🐘 postgres-orders")
+            deps.add("📨 kafka-events")
+            upstreams = tree.add("[dim]Upstream[/]")
+            upstreams.add("🌐 api-gateway")
+            upstreams.add("📱 mobile-bff")
         
         console.print(Panel(tree, title="Service Topology", border_style="cyan"))
         
-        # Gather context items with progress
-        context_items = [
-            ("Fetching service topology", f"Found 5 dependencies for {self.service}"),
-            ("Loading alert history", "Retrieved 47 related alerts from last 24h"),
-            ("Checking deployments", "3 deployments in last 48h (latest: v2.4.1)"),
-            ("Analyzing traffic patterns", "Current traffic: 3.2x baseline"),
-        ]
+        # Gather context items with progress - use scenario data if available
+        if self.scenario and "context_items" in self.scenario:
+            context_items = [(item["action"], item["result"]) for item in self.scenario["context_items"]]
+        else:
+            context_items = [
+                ("Fetching service topology", f"Found 5 dependencies for {self.service}"),
+                ("Loading alert history", "Retrieved 47 related alerts from last 24h"),
+                ("Checking deployments", "3 deployments in last 48h (latest: v2.4.1)"),
+                ("Analyzing traffic patterns", "Current traffic: 3.2x baseline"),
+            ]
         
         for action, result in context_items:
             with Progress(
@@ -367,13 +429,16 @@ class DemoInvestigationRunner:
         console.print(f"[bold white on blue] PHASE 2/5 [/] [bold]🔬 Evidence Collection[/]")
         console.print("[dim]Querying metrics, logs, and traces from multiple sources...[/]\n")
         
-        # Data sources with simulated queries
-        sources = [
-            ("📊 Prometheus", "rate(http_requests_total{service=\"" + self.service + "\",status=~\"5..\"}[5m])", 0.4),
-            ("📜 Elasticsearch", f"service:{self.service} AND level:error | last 15m", 0.5),
-            ("🔗 Jaeger", f"service={self.service} minDuration=1s", 0.3),
-            ("☸️  Kubernetes", f"kubectl get pods -l app={self.service} -o json", 0.25),
-        ]
+        # Data sources with simulated queries - use scenario data if available
+        if self.scenario and "data_sources" in self.scenario:
+            sources = [(s["name"], s["query"], s.get("duration", 0.3)) for s in self.scenario["data_sources"]]
+        else:
+            sources = [
+                ("📊 Prometheus", "rate(http_requests_total{service=\"" + self.service + "\",status=~\"5..\"}[5m])", 0.4),
+                ("📜 Elasticsearch", f"service:{self.service} AND level:error | last 15m", 0.5),
+                ("🔗 Jaeger", f"service={self.service} minDuration=1s", 0.3),
+                ("☸️  Kubernetes", f"kubectl get pods -l app={self.service} -o json", 0.25),
+            ]
         
         for source_name, query, duration in sources:
             with Progress(
@@ -389,32 +454,48 @@ class DemoInvestigationRunner:
         
         console.print()
         
-        # Metrics table with key findings
+        # Metrics table with key findings - use scenario data if available
         metrics_table = Table(title="📈 Key Metrics Snapshot", show_header=True, header_style="bold cyan")
         metrics_table.add_column("Metric", style="bold")
         metrics_table.add_column("Current", justify="right")
         metrics_table.add_column("Baseline", justify="right")
         metrics_table.add_column("Status")
         
-        metrics_table.add_row("Error Rate (5xx)", "[red]23.4%[/]", "0.1%", "[red]🔴 CRITICAL[/]")
-        metrics_table.add_row("P99 Latency", "[yellow]2,340ms[/]", "45ms", "[yellow]⚠️  HIGH[/]")
-        metrics_table.add_row("Request Rate", "[cyan]3,200/s[/]", "1,000/s", "[cyan]↑ 3.2x[/]")
-        metrics_table.add_row("Redis Connections", "[red]250/250[/]", "45/250", "[red]🔴 EXHAUSTED[/]")
-        metrics_table.add_row("Pod Restarts (1h)", "[yellow]3[/]", "0", "[yellow]⚠️  ELEVATED[/]")
+        if self.scenario and "metrics" in self.scenario:
+            for metric in self.scenario["metrics"]:
+                color = metric.get("status_color", "white")
+                metrics_table.add_row(
+                    metric["name"],
+                    f"[{color}]{metric['current']}[/]",
+                    metric["baseline"],
+                    f"[{color}]{metric['status']}[/]"
+                )
+        else:
+            metrics_table.add_row("Error Rate (5xx)", "[red]23.4%[/]", "0.1%", "[red]🔴 CRITICAL[/]")
+            metrics_table.add_row("P99 Latency", "[yellow]2,340ms[/]", "45ms", "[yellow]⚠️  HIGH[/]")
+            metrics_table.add_row("Request Rate", "[cyan]3,200/s[/]", "1,000/s", "[cyan]↑ 3.2x[/]")
+            metrics_table.add_row("Redis Connections", "[red]250/250[/]", "45/250", "[red]🔴 EXHAUSTED[/]")
+            metrics_table.add_row("Pod Restarts (1h)", "[yellow]3[/]", "0", "[yellow]⚠️  ELEVATED[/]")
         
         console.print(metrics_table)
         console.print()
         
-        # Streaming log analysis effect
+        # Streaming log analysis effect - use scenario data if available
         console.print("[bold]📜 Recent Error Logs[/] [dim](streaming...)[/]")
         
-        logs = [
-            ("[red]ERROR[/]", "14:32:15.234", "Redis connection timeout after 30000ms - pool exhausted"),
-            ("[red]ERROR[/]", "14:32:15.456", "Failed to acquire connection from pool: max connections reached"),
-            ("[yellow]WARN[/]", "14:32:16.012", "Circuit breaker OPEN for redis-primary after 10 failures"),
-            ("[red]ERROR[/]", "14:32:16.789", "CheckoutService.processOrder failed: RedisConnectionException"),
-            ("[yellow]WARN[/]", "14:32:17.001", "Fallback triggered: returning cached inventory data"),
-        ]
+        if self.scenario and "logs" in self.scenario:
+            logs = [
+                (f"[{'red' if log['level'] == 'ERROR' else 'yellow'}]{log['level']}[/]", log["timestamp"], log["message"])
+                for log in self.scenario["logs"]
+            ]
+        else:
+            logs = [
+                ("[red]ERROR[/]", "14:32:15.234", "Redis connection timeout after 30000ms - pool exhausted"),
+                ("[red]ERROR[/]", "14:32:15.456", "Failed to acquire connection from pool: max connections reached"),
+                ("[yellow]WARN[/]", "14:32:16.012", "Circuit breaker OPEN for redis-primary after 10 failures"),
+                ("[red]ERROR[/]", "14:32:16.789", "CheckoutService.processOrder failed: RedisConnectionException"),
+                ("[yellow]WARN[/]", "14:32:17.001", "Fallback triggered: returning cached inventory data"),
+            ]
         
         log_panel_lines = []
         for level, ts, msg in logs:
@@ -458,8 +539,11 @@ class DemoInvestigationRunner:
                 task = progress.add_task("", total=None)
                 time.sleep(0.12)  # Fast thinking
         
-        # Dramatic AI streaming insight effect
-        ai_insight = "Analyzing collected evidence... Pattern detected: Redis connection exhaustion correlates with 3.2x traffic spike at 14:30:17. Confidence level: HIGH."
+        # Dramatic AI streaming insight effect - use scenario data if available
+        if self.scenario and "ai_insight" in self.scenario:
+            ai_insight = self.scenario["ai_insight"]
+        else:
+            ai_insight = "Analyzing collected evidence... Pattern detected: Redis connection exhaustion correlates with 3.2x traffic spike at 14:30:17. Confidence level: HIGH."
         console.print("[bold magenta]🤖 AI Reasoning:[/]")
         
         # Use Live for smooth streaming effect
@@ -478,12 +562,19 @@ class DemoInvestigationRunner:
         # Dramatic AI insight reveal
         console.print("[bold green]✨ Analysis Complete[/]\n")
         
-        hypotheses = [
-            ("Redis connection pool exhaustion", 0.92, "HIGH", "green"),
-            ("Downstream service degradation", 0.15, "LOW", "yellow"),
-            ("Recent deployment regression", 0.08, "LOW", "dim"),
-            ("Database query timeout", 0.05, "RULED OUT", "dim"),
-        ]
+        # Use scenario hypotheses if available
+        if self.scenario and "hypotheses" in self.scenario:
+            hypotheses = [
+                (h["title"], h["confidence"], h["status"], h["color"])
+                for h in self.scenario["hypotheses"]
+            ]
+        else:
+            hypotheses = [
+                ("Redis connection pool exhaustion", 0.92, "HIGH", "green"),
+                ("Downstream service degradation", 0.15, "LOW", "yellow"),
+                ("Recent deployment regression", 0.08, "LOW", "dim"),
+                ("Database query timeout", 0.05, "RULED OUT", "dim"),
+            ]
         
         # Dramatic animated hypothesis ranking
         console.print("[bold]📊 Hypothesis Ranking:[/]")
@@ -520,13 +611,19 @@ class DemoInvestigationRunner:
         console.print(f"[bold white on blue] PHASE 4/5 [/] [bold]🎯 Root Cause Analysis[/]")
         console.print("[dim]Validating top hypothesis against collected evidence...[/]\n")
         
-        # Evidence correlation animation
-        correlations = [
-            ("Redis pool at max capacity", "CONFIRMED", "green"),
-            ("Traffic spike coincides with errors", "CONFIRMED", "green"),
-            ("No circuit breaker configured", "CONFIRMED", "green"),
-            ("Recent deployment causation", "RULED OUT", "dim"),
-        ]
+        # Evidence correlation animation - use scenario data if available
+        if self.scenario and "correlations" in self.scenario:
+            correlations = [
+                (c["evidence"], c["status"], c["color"])
+                for c in self.scenario["correlations"]
+            ]
+        else:
+            correlations = [
+                ("Redis pool at max capacity", "CONFIRMED", "green"),
+                ("Traffic spike coincides with errors", "CONFIRMED", "green"),
+                ("No circuit breaker configured", "CONFIRMED", "green"),
+                ("Recent deployment causation", "RULED OUT", "dim"),
+            ]
         
         for evidence, status, color in correlations:
             with Progress(
@@ -545,39 +642,43 @@ class DemoInvestigationRunner:
         
         console.print()
         
-        # Determine root cause based on service
-        root_causes = {
-            "checkout-service": ("Redis connection pool exhaustion due to traffic spike", [
-                "Increase Redis connection pool max_connections from 10 to 50",
-                "Implement connection pool circuit breaker with 5s timeout",
-                "Add auto-scaling rule based on Redis connection utilization",
-                "Set up PagerDuty alert for connection pool usage > 80%",
-            ]),
-            "api-gateway": ("Memory leak in request handler causing OOMKills", [
-                "Deploy hotfix v2.3.1 with patched request handler",
-                "Increase pod memory limit from 512Mi to 1Gi temporarily",
-                "Enable memory profiling in staging environment",
-            ]),
-            "order-service": ("Missing database index on order_items table", [
-                "CREATE INDEX idx_order_items_order_id ON order_items(order_id)",
-                "Enable slow query logging with 100ms threshold",
-                "Review query patterns for N+1 issues",
-            ]),
-            "payment-service": ("Upstream payment provider timeout causing cascade", [
-                "Increase payment provider timeout from 5s to 15s",
-                "Implement async payment processing with retry queue",
-                "Add fallback payment provider configuration",
-            ]),
-            "user-service": ("Configuration drift: AUTH_SECRET_KEY mismatch", [
-                "Sync AUTH_SECRET_KEY across all user-service pods",
-                "Migrate secrets to HashiCorp Vault with versioning",
-            ]),
-        }
-        
-        root_cause_data = root_causes.get(self.service, (
-            f"Simulated root cause for {self.service}",
-            ["Review service logs", "Check recent deployments"]
-        ))
+        # Determine root cause - use scenario data if available
+        if self.scenario and "root_cause" in self.scenario and "recommendations" in self.scenario:
+            root_cause_data = (self.scenario["root_cause"], self.scenario["recommendations"])
+        else:
+            # Fallback to service-based root causes
+            root_causes = {
+                "checkout-service": ("Redis connection pool exhaustion due to traffic spike", [
+                    "Increase Redis connection pool max_connections from 10 to 50",
+                    "Implement connection pool circuit breaker with 5s timeout",
+                    "Add auto-scaling rule based on Redis connection utilization",
+                    "Set up PagerDuty alert for connection pool usage > 80%",
+                ]),
+                "api-gateway": ("Memory leak in request handler causing OOMKills", [
+                    "Deploy hotfix v2.3.1 with patched request handler",
+                    "Increase pod memory limit from 512Mi to 1Gi temporarily",
+                    "Enable memory profiling in staging environment",
+                ]),
+                "order-service": ("Missing database index on order_items table", [
+                    "CREATE INDEX idx_order_items_order_id ON order_items(order_id)",
+                    "Enable slow query logging with 100ms threshold",
+                    "Review query patterns for N+1 issues",
+                ]),
+                "payment-service": ("Upstream payment provider timeout causing cascade", [
+                    "Increase payment provider timeout from 5s to 15s",
+                    "Implement async payment processing with retry queue",
+                    "Add fallback payment provider configuration",
+                ]),
+                "user-service": ("Configuration drift: AUTH_SECRET_KEY mismatch", [
+                    "Sync AUTH_SECRET_KEY across all user-service pods",
+                    "Migrate secrets to HashiCorp Vault with versioning",
+                ]),
+            }
+            
+            root_cause_data = root_causes.get(self.service, (
+                f"Simulated root cause for {self.service}",
+                ["Review service logs", "Check recent deployments"]
+            ))
         
         time.sleep(0.2)
         return root_cause_data
@@ -777,6 +878,7 @@ def run(
         severity=selected["severity"],
         output_format="text",
         stream=True,
+        scenario_id=selected["id"],
     )
     
     result = runner.run()
@@ -1071,6 +1173,7 @@ def benchmark(
                     severity=s["severity"],
                     output_format="text",
                     stream=False,  # Quiet mode for benchmark
+                    scenario_id=s["id"],
                 )
                 
                 runner.run()

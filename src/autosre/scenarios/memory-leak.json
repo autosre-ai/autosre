@@ -1,0 +1,92 @@
+{
+  "id": "memory-leak",
+  "name": "Memory Leak in API Gateway",
+  "alert": "API Gateway pod restarts: 12 restarts in last hour",
+  "service": "api-gateway",
+  "severity": "critical",
+  "description": "Gradual memory increase leading to OOMKills",
+
+  "service_topology": {
+    "target": "api-gateway",
+    "dependencies": [
+      {"name": "auth-service", "type": "service", "note": "JWT validation"},
+      {"name": "rate-limiter", "type": "middleware"},
+      {"name": "config-server", "type": "config"}
+    ],
+    "upstream": [
+      {"name": "nginx-ingress", "type": "ingress"},
+      {"name": "cloudflare-cdn", "type": "cdn"}
+    ]
+  },
+
+  "context_items": [
+    {"action": "Fetching service topology", "result": "Found 3 dependencies for api-gateway"},
+    {"action": "Loading alert history", "result": "Retrieved 23 OOMKill events from last 6h"},
+    {"action": "Checking deployments", "result": "v2.3.0 deployed 4 hours ago"},
+    {"action": "Analyzing memory patterns", "result": "Memory grows 50MB/hour until OOMKill"}
+  ],
+
+  "data_sources": [
+    {"name": "📊 Prometheus", "query": "container_memory_working_set_bytes{pod=~\"api-gateway.*\"}", "duration": 0.4},
+    {"name": "📜 Elasticsearch", "query": "kubernetes.pod_name:api-gateway* AND (OOMKilled OR memory)", "duration": 0.5},
+    {"name": "☸️  Kubernetes", "query": "kubectl describe pods -l app=api-gateway | grep -A5 'Last State'", "duration": 0.3},
+    {"name": "🔬 Pprof", "query": "go tool pprof http://api-gateway:6060/debug/pprof/heap", "duration": 0.6}
+  ],
+
+  "metrics": [
+    {"name": "Memory Usage", "current": "498/512 Mi", "baseline": "180 Mi", "status": "🔴 CRITICAL", "status_color": "red"},
+    {"name": "Pod Restarts (1h)", "current": "12", "baseline": "0", "status": "🔴 CRITICAL", "status_color": "red"},
+    {"name": "GC Pause Time", "current": "340ms", "baseline": "15ms", "status": "⚠️  HIGH", "status_color": "yellow"},
+    {"name": "Goroutines", "current": "12,847", "baseline": "450", "status": "🔴 LEAK", "status_color": "red"},
+    {"name": "Heap Objects", "current": "8.2M", "baseline": "120K", "status": "⚠️  ELEVATED", "status_color": "yellow"}
+  ],
+
+  "logs": [
+    {"level": "WARN", "timestamp": "{now-45m}", "message": "Memory usage at 75% of limit (384/512 Mi)"},
+    {"level": "WARN", "timestamp": "{now-30m}", "message": "GC taking longer than expected: 180ms pause"},
+    {"level": "ERROR", "timestamp": "{now-15m}", "message": "Container killed: OOMKilled (exit code 137)"},
+    {"level": "INFO", "timestamp": "{now-14m}", "message": "Pod api-gateway-7d8f9c-abcde restarted (attempt 11)"},
+    {"level": "WARN", "timestamp": "{now-5m}", "message": "Memory usage at 85% of limit (435/512 Mi)"}
+  ],
+
+  "ai_insight": "Analyzing collected evidence... Pattern detected: Memory leak in request handler introduced in v2.3.0. Goroutine count increasing linearly (28/min). Heap profile shows accumulation in http.response objects. The leak pattern matches a known issue with unclosed response bodies in the new middleware. Confidence level: HIGH.",
+
+  "hypotheses": [
+    {"title": "Memory leak in request handler middleware", "confidence": 0.89, "status": "HIGH", "color": "green"},
+    {"title": "Goroutine leak from unclosed connections", "confidence": 0.78, "status": "HIGH", "color": "green"},
+    {"title": "Insufficient memory limit for traffic", "confidence": 0.12, "status": "LOW", "color": "dim"},
+    {"title": "External dependency causing backpressure", "confidence": 0.08, "status": "RULED OUT", "color": "dim"}
+  ],
+
+  "correlations": [
+    {"evidence": "Memory grows linearly since v2.3.0 deploy", "status": "CONFIRMED", "color": "green"},
+    {"evidence": "Goroutine count 28x normal", "status": "CONFIRMED", "color": "green"},
+    {"evidence": "Heap shows http.response accumulation", "status": "CONFIRMED", "color": "green"},
+    {"evidence": "Traffic increase causing memory spike", "status": "RULED OUT", "color": "dim"}
+  ],
+
+  "root_cause": "Memory leak in request handler causing OOMKills",
+
+  "recommendations": [
+    "Deploy hotfix v2.3.1 with patched request handler",
+    "Increase pod memory limit from 512Mi to 1Gi temporarily",
+    "Enable memory profiling in staging environment",
+    "Add memory usage alert at 70% threshold"
+  ],
+
+  "evidence_summary": {
+    "error_rate": "12 OOMKills in 1 hour",
+    "threshold": "0 restarts",
+    "first_occurrence": "{now-4h}",
+    "affected_pods": "api-gateway-7d8f9c-* (all 5 replicas)",
+    "correlation_confidence": "89%"
+  },
+
+  "timeline": [
+    {"time": "{now-4h}", "event": "v2.3.0 deployed to production"},
+    {"time": "{now-3h}", "event": "First memory warning at 75% threshold"},
+    {"time": "{now-2h}", "event": "First OOMKill detected", "highlight": true},
+    {"time": "{now-1h}", "event": "12 pod restarts, PagerDuty escalation"},
+    {"time": "{now}", "event": "Root cause identified", "highlight": true, "success": true}
+  ]
+}

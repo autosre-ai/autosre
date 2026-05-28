@@ -1,0 +1,93 @@
+{
+  "id": "config-drift",
+  "name": "Configuration Drift",
+  "alert": "Intermittent authentication failures: user-service",
+  "service": "user-service",
+  "severity": "medium",
+  "description": "Environment variable mismatch between pods",
+
+  "service_topology": {
+    "target": "user-service",
+    "dependencies": [
+      {"name": "postgres-users", "type": "database"},
+      {"name": "redis-sessions", "type": "cache"},
+      {"name": "vault", "type": "secrets", "note": "secret management"}
+    ],
+    "upstream": [
+      {"name": "api-gateway", "type": "gateway"},
+      {"name": "auth-service", "type": "service"}
+    ]
+  },
+
+  "context_items": [
+    {"action": "Fetching service topology", "result": "Found 3 dependencies for user-service"},
+    {"action": "Loading alert history", "result": "Retrieved 234 auth failures from last 4h"},
+    {"action": "Checking deployments", "result": "Rolling update completed 3h ago"},
+    {"action": "Analyzing config state", "result": "Config mismatch detected across 2/5 pods"}
+  ],
+
+  "data_sources": [
+    {"name": "📊 Prometheus", "query": "sum(rate(auth_failures_total{service=\"user-service\"}[5m])) by (pod)", "duration": 0.3},
+    {"name": "📜 Elasticsearch", "query": "service:user-service AND (JWT OR auth OR signature)", "duration": 0.4},
+    {"name": "☸️  Kubernetes", "query": "kubectl get pods -l app=user-service -o jsonpath='{.items[*].metadata.name}'", "duration": 0.2},
+    {"name": "🔐 Vault", "query": "vault kv get -version=2 secret/user-service/AUTH_SECRET_KEY", "duration": 0.3}
+  ],
+
+  "metrics": [
+    {"name": "Auth Failure Rate", "current": "18.4%", "baseline": "0.01%", "status": "🔴 HIGH", "status_color": "red"},
+    {"name": "JWT Validation Errors", "current": "156/min", "baseline": "2/min", "status": "🔴 CRITICAL", "status_color": "red"},
+    {"name": "Config Version", "current": "Mixed (v2/v3)", "baseline": "v3", "status": "⚠️  DRIFT", "status_color": "yellow"},
+    {"name": "Pods with v2 Config", "current": "2/5", "baseline": "0/5", "status": "⚠️  STALE", "status_color": "yellow"},
+    {"name": "User Complaints", "current": "47", "baseline": "0", "status": "⚠️  ELEVATED", "status_color": "yellow"}
+  ],
+
+  "logs": [
+    {"level": "ERROR", "timestamp": "{now-3h}", "message": "JWT signature verification failed: key mismatch"},
+    {"level": "WARN", "timestamp": "{now-2h}", "message": "Pod user-service-abc12 using AUTH_SECRET_KEY v2 (expected v3)"},
+    {"level": "ERROR", "timestamp": "{now-90m}", "message": "Session validation failed for user_id=12345: invalid signature"},
+    {"level": "WARN", "timestamp": "{now-60m}", "message": "Rolling update may have left pods with stale config"},
+    {"level": "ERROR", "timestamp": "{now-30m}", "message": "Intermittent auth failures: 2/5 pods failing JWT validation"}
+  ],
+
+  "ai_insight": "Analyzing collected evidence... Pattern detected: Configuration drift after rolling deployment. 2 of 5 user-service pods are running with stale AUTH_SECRET_KEY (v2) while 3 pods have updated key (v3). Requests randomly hitting v2 pods fail JWT validation. This explains the intermittent nature of auth failures. Confidence level: HIGH.",
+
+  "hypotheses": [
+    {"title": "Configuration drift: AUTH_SECRET_KEY mismatch", "confidence": 0.88, "status": "HIGH", "color": "green"},
+    {"title": "Vault secret rotation incomplete", "confidence": 0.54, "status": "MEDIUM", "color": "yellow"},
+    {"title": "JWT library version mismatch", "confidence": 0.12, "status": "LOW", "color": "dim"},
+    {"title": "Database session table corruption", "confidence": 0.04, "status": "RULED OUT", "color": "dim"}
+  ],
+
+  "correlations": [
+    {"evidence": "2 pods have different AUTH_SECRET_KEY", "status": "CONFIRMED", "color": "green"},
+    {"evidence": "Failures correlate with traffic to v2 pods", "status": "CONFIRMED", "color": "green"},
+    {"evidence": "Rolling update terminated early", "status": "CONFIRMED", "color": "green"},
+    {"evidence": "JWT library functioning correctly", "status": "RULED OUT", "color": "dim"}
+  ],
+
+  "root_cause": "Configuration drift: AUTH_SECRET_KEY mismatch",
+
+  "recommendations": [
+    "Sync AUTH_SECRET_KEY across all user-service pods",
+    "Migrate secrets to HashiCorp Vault with versioning",
+    "Add config consistency check to deployment pipeline",
+    "Implement config drift detection alerts"
+  ],
+
+  "evidence_summary": {
+    "error_rate": "18.4% auth failures (intermittent)",
+    "threshold": "0.1%",
+    "first_occurrence": "{now-3h}",
+    "affected_pods": "user-service-abc12, user-service-def34 (2/5 pods with stale config)",
+    "correlation_confidence": "88%"
+  },
+
+  "timeline": [
+    {"time": "{now-4h}", "event": "Secret rotation initiated in Vault"},
+    {"time": "{now-3h30m}", "event": "Rolling deployment started"},
+    {"time": "{now-3h}", "event": "Rolling update interrupted (resource constraints)", "highlight": true},
+    {"time": "{now-2h}", "event": "First auth failure reports from users"},
+    {"time": "{now-1h}", "event": "Config drift detected across pods"},
+    {"time": "{now}", "event": "Root cause identified", "highlight": true, "success": true}
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "id": "latency-spike",
+  "name": "Database Query Latency",
+  "alert": "P99 latency spike: order-service at 2.3s (threshold: 500ms)",
+  "service": "order-service",
+  "severity": "high",
+  "description": "Slow queries due to missing index after schema migration",
+
+  "service_topology": {
+    "target": "order-service",
+    "dependencies": [
+      {"name": "postgres-orders", "type": "database", "note": "primary RW"},
+      {"name": "postgres-replica", "type": "database", "note": "read replica"},
+      {"name": "notification-service", "type": "service"}
+    ],
+    "upstream": [
+      {"name": "checkout-service", "type": "service"},
+      {"name": "admin-dashboard", "type": "frontend"}
+    ]
+  },
+
+  "context_items": [
+    {"action": "Fetching service topology", "result": "Found 3 dependencies for order-service"},
+    {"action": "Loading alert history", "result": "Retrieved 156 slow query alerts from last 2h"},
+    {"action": "Checking deployments", "result": "Schema migration ran 2 hours ago"},
+    {"action": "Analyzing query patterns", "result": "SELECT on order_items table 50x slower"}
+  ],
+
+  "data_sources": [
+    {"name": "📊 Prometheus", "query": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{service=\"order-service\"}[5m]))", "duration": 0.4},
+    {"name": "📜 Elasticsearch", "query": "service:order-service AND slow_query:true | last 2h", "duration": 0.5},
+    {"name": "🐘 PostgreSQL", "query": "SELECT * FROM pg_stat_statements WHERE query LIKE '%order_items%' ORDER BY mean_time DESC", "duration": 0.4},
+    {"name": "🔗 Jaeger", "query": "service=order-service minDuration=500ms operation=GetOrderDetails", "duration": 0.3}
+  ],
+
+  "metrics": [
+    {"name": "P99 Latency", "current": "2,340ms", "baseline": "45ms", "status": "🔴 CRITICAL", "status_color": "red"},
+    {"name": "P50 Latency", "current": "890ms", "baseline": "12ms", "status": "⚠️  HIGH", "status_color": "yellow"},
+    {"name": "DB Query Time", "current": "1,850ms", "baseline": "8ms", "status": "🔴 CRITICAL", "status_color": "red"},
+    {"name": "Sequential Scans", "current": "12,450/min", "baseline": "23/min", "status": "🔴 FULL SCAN", "status_color": "red"},
+    {"name": "Error Rate", "current": "2.1%", "baseline": "0.1%", "status": "⚠️  ELEVATED", "status_color": "yellow"}
+  ],
+
+  "logs": [
+    {"level": "WARN", "timestamp": "{now-2h}", "message": "Migration 20240115_add_order_status completed successfully"},
+    {"level": "WARN", "timestamp": "{now-90m}", "message": "Slow query detected: SELECT * FROM order_items WHERE order_id = ? (1.2s)"},
+    {"level": "ERROR", "timestamp": "{now-60m}", "message": "Request timeout: GetOrderDetails exceeded 2s deadline"},
+    {"level": "WARN", "timestamp": "{now-30m}", "message": "Connection pool wait time: 450ms (threshold: 100ms)"},
+    {"level": "ERROR", "timestamp": "{now-15m}", "message": "Downstream timeout from checkout-service calling GetOrderDetails"}
+  ],
+
+  "ai_insight": "Analyzing collected evidence... Pattern detected: After migration 20240115_add_order_status, queries on order_items table are doing full sequential scans. The migration added a new column but did not include the index that was present in staging. Query execution plans show Seq Scan instead of Index Scan. Confidence level: HIGH.",
+
+  "hypotheses": [
+    {"title": "Missing database index on order_items table", "confidence": 0.94, "status": "HIGH", "color": "green"},
+    {"title": "N+1 query pattern in GetOrderDetails", "confidence": 0.18, "status": "LOW", "color": "yellow"},
+    {"title": "Database connection pool exhaustion", "confidence": 0.11, "status": "LOW", "color": "dim"},
+    {"title": "Network latency to database", "confidence": 0.04, "status": "RULED OUT", "color": "dim"}
+  ],
+
+  "correlations": [
+    {"evidence": "Latency spike started after migration", "status": "CONFIRMED", "color": "green"},
+    {"evidence": "Sequential scans 540x higher than baseline", "status": "CONFIRMED", "color": "green"},
+    {"evidence": "Index exists in staging but not prod", "status": "CONFIRMED", "color": "green"},
+    {"evidence": "Network metrics show no degradation", "status": "RULED OUT", "color": "dim"}
+  ],
+
+  "root_cause": "Missing database index on order_items table",
+
+  "recommendations": [
+    "CREATE INDEX CONCURRENTLY idx_order_items_order_id ON order_items(order_id)",
+    "Enable slow query logging with 100ms threshold",
+    "Review query patterns for N+1 issues",
+    "Add index existence check to migration CI/CD pipeline"
+  ],
+
+  "evidence_summary": {
+    "error_rate": "P99 at 2.3s (52x normal)",
+    "threshold": "500ms",
+    "first_occurrence": "{now-2h}",
+    "affected_pods": "order-service-5c7f8d-* (4 replicas)",
+    "correlation_confidence": "94%"
+  },
+
+  "timeline": [
+    {"time": "{now-2h}", "event": "Schema migration 20240115 deployed"},
+    {"time": "{now-90m}", "event": "First slow query alerts triggered", "highlight": true},
+    {"time": "{now-60m}", "event": "P99 latency exceeded SLO threshold"},
+    {"time": "{now-30m}", "event": "Downstream services affected (checkout)"},
+    {"time": "{now}", "event": "Root cause identified", "highlight": true, "success": true}
+  ]
+}

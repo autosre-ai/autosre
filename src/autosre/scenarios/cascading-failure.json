@@ -1,0 +1,93 @@
+{
+  "id": "cascading-failure",
+  "name": "Cascading Failure",
+  "alert": "Multiple services degraded: payment, checkout, order",
+  "service": "payment-service",
+  "severity": "critical",
+  "description": "Upstream timeout causing downstream failures",
+
+  "service_topology": {
+    "target": "payment-service",
+    "dependencies": [
+      {"name": "stripe-api", "type": "external", "note": "payment provider"},
+      {"name": "fraud-detection", "type": "service"},
+      {"name": "postgres-payments", "type": "database"}
+    ],
+    "upstream": [
+      {"name": "checkout-service", "type": "service"},
+      {"name": "subscription-service", "type": "service"}
+    ]
+  },
+
+  "context_items": [
+    {"action": "Fetching service topology", "result": "Found 6 services in blast radius"},
+    {"action": "Loading alert history", "result": "Retrieved 89 timeout alerts from last 30m"},
+    {"action": "Checking external dependencies", "result": "Stripe API reporting degraded performance"},
+    {"action": "Analyzing failure propagation", "result": "Cascade: stripe → payment → checkout → order"}
+  ],
+
+  "data_sources": [
+    {"name": "📊 Prometheus", "query": "increase(http_requests_total{status=~\"5..\"}[5m])", "duration": 0.4},
+    {"name": "📜 Elasticsearch", "query": "(service:payment-service OR service:checkout-service) AND (timeout OR error)", "duration": 0.5},
+    {"name": "🔗 Jaeger", "query": "service=payment-service error=true", "duration": 0.3},
+    {"name": "🌐 StatusPage", "query": "curl -s https://status.stripe.com/api/v2/status.json", "duration": 0.2}
+  ],
+
+  "metrics": [
+    {"name": "Payment Success Rate", "current": "34%", "baseline": "99.9%", "status": "🔴 CRITICAL", "status_color": "red"},
+    {"name": "Checkout Error Rate", "current": "45%", "baseline": "0.2%", "status": "🔴 CRITICAL", "status_color": "red"},
+    {"name": "Order Failures", "current": "892/min", "baseline": "12/min", "status": "🔴 CRITICAL", "status_color": "red"},
+    {"name": "Stripe P99 Latency", "current": "28,500ms", "baseline": "450ms", "status": "🔴 TIMEOUT", "status_color": "red"},
+    {"name": "Circuit Breaker State", "current": "OPEN", "baseline": "CLOSED", "status": "⚠️  TRIPPED", "status_color": "yellow"}
+  ],
+
+  "logs": [
+    {"level": "WARN", "timestamp": "{now-25m}", "message": "Stripe API response time elevated: 2.3s (normal: 400ms)"},
+    {"level": "ERROR", "timestamp": "{now-20m}", "message": "PaymentService.processPayment timeout after 5000ms"},
+    {"level": "WARN", "timestamp": "{now-18m}", "message": "Circuit breaker HALF-OPEN for stripe-api"},
+    {"level": "ERROR", "timestamp": "{now-15m}", "message": "CheckoutService.checkout failed: PaymentServiceException"},
+    {"level": "ERROR", "timestamp": "{now-10m}", "message": "OrderService.createOrder failed: upstream checkout-service unavailable"}
+  ],
+
+  "ai_insight": "Analyzing collected evidence... Pattern detected: Cascading failure originating from Stripe API degradation. Timeline: Stripe latency spike at {now-25m} → payment-service timeouts at {now-20m} → checkout-service failures at {now-15m} → order-service impact at {now-10m}. Circuit breakers engaged but timeout settings too aggressive. Confidence level: HIGH.",
+
+  "hypotheses": [
+    {"title": "Upstream payment provider timeout causing cascade", "confidence": 0.91, "status": "HIGH", "color": "green"},
+    {"title": "Circuit breaker misconfiguration", "confidence": 0.67, "status": "MEDIUM", "color": "yellow"},
+    {"title": "Internal payment-service failure", "confidence": 0.09, "status": "LOW", "color": "dim"},
+    {"title": "Database connection issues", "confidence": 0.05, "status": "RULED OUT", "color": "dim"}
+  ],
+
+  "correlations": [
+    {"evidence": "Stripe status page shows degraded", "status": "CONFIRMED", "color": "green"},
+    {"evidence": "Failure timeline matches cascade pattern", "status": "CONFIRMED", "color": "green"},
+    {"evidence": "Circuit breaker tripped appropriately", "status": "CONFIRMED", "color": "green"},
+    {"evidence": "Internal infrastructure healthy", "status": "RULED OUT", "color": "dim"}
+  ],
+
+  "root_cause": "Upstream payment provider timeout causing cascade",
+
+  "recommendations": [
+    "Increase payment provider timeout from 5s to 15s",
+    "Implement async payment processing with retry queue",
+    "Add fallback payment provider configuration",
+    "Configure bulkhead pattern to isolate payment failures"
+  ],
+
+  "evidence_summary": {
+    "error_rate": "66% payment failures, 45% checkout failures",
+    "threshold": "0.1% failure rate",
+    "first_occurrence": "{now-25m}",
+    "affected_pods": "6 services in cascade (payment, checkout, order, subscription, notification, analytics)",
+    "correlation_confidence": "91%"
+  },
+
+  "timeline": [
+    {"time": "{now-25m}", "event": "Stripe API latency spike detected"},
+    {"time": "{now-20m}", "event": "payment-service timeouts begin", "highlight": true},
+    {"time": "{now-18m}", "event": "Circuit breaker opens for Stripe"},
+    {"time": "{now-15m}", "event": "checkout-service failures cascade", "highlight": true},
+    {"time": "{now-10m}", "event": "order-service impacted"},
+    {"time": "{now}", "event": "Root cause identified", "highlight": true, "success": true}
+  ]
+}

@@ -138,6 +138,43 @@ class TestCompletion:
         assert "shell" in result.output.lower() or result.exit_code == 0
 
 
+class TestDemoScenarios:
+    """Test demo scenario commands."""
+    
+    def test_demo_scenarios_list(self, runner):
+        """Test demo scenarios command lists available scenarios."""
+        result = runner.invoke(app, ["demo", "scenarios"])
+        assert result.exit_code == 0
+        # Should show at least the core scenarios
+        assert "redis-connection" in result.output
+        assert "memory-leak" in result.output
+        assert "latency-spike" in result.output
+    
+    def test_demo_run_specific_scenario(self, runner):
+        """Test demo run with specific scenario."""
+        result = runner.invoke(app, ["demo", "run", "redis-connection", "-q", "-y"])
+        assert result.exit_code == 0
+        # Should show scenario-specific content
+        assert "Redis" in result.output or "checkout-service" in result.output
+        assert "ROOT CAUSE" in result.output
+        assert "Investigation" in result.output
+    
+    def test_demo_run_memory_leak_scenario(self, runner):
+        """Test demo run memory-leak scenario."""
+        result = runner.invoke(app, ["demo", "run", "memory-leak", "-q", "-y"])
+        assert result.exit_code == 0
+        # Should show memory-leak specific content
+        assert "api-gateway" in result.output.lower() or "memory" in result.output.lower()
+        assert "ROOT CAUSE" in result.output
+    
+    def test_demo_run_wow_mode(self, runner):
+        """Test demo run with --wow flag (clean demo mode)."""
+        result = runner.invoke(app, ["demo", "run", "redis-connection", "--wow"])
+        assert result.exit_code == 0
+        # Wow mode should still work
+        assert "Investigation" in result.output or "AutoSRE" in result.output
+
+
 class TestAgentCommands:
     """Test agent subcommands."""
     

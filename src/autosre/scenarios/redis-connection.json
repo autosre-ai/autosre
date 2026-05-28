@@ -1,0 +1,92 @@
+{
+  "id": "redis-connection",
+  "name": "Redis Connection Pool Exhaustion",
+  "alert": "High error rate on checkout-service: 23% 5xx errors",
+  "service": "checkout-service",
+  "severity": "high",
+  "description": "Classic connection pool exhaustion after a traffic spike",
+
+  "service_topology": {
+    "target": "checkout-service",
+    "dependencies": [
+      {"name": "redis-primary", "type": "cache", "note": "connection pool: 10"},
+      {"name": "postgres-orders", "type": "database"},
+      {"name": "kafka-events", "type": "messaging"}
+    ],
+    "upstream": [
+      {"name": "api-gateway", "type": "gateway"},
+      {"name": "mobile-bff", "type": "bff"}
+    ]
+  },
+
+  "context_items": [
+    {"action": "Fetching service topology", "result": "Found 5 dependencies for checkout-service"},
+    {"action": "Loading alert history", "result": "Retrieved 47 related alerts from last 24h"},
+    {"action": "Checking deployments", "result": "3 deployments in last 48h (latest: v2.4.1)"},
+    {"action": "Analyzing traffic patterns", "result": "Current traffic: 3.2x baseline"}
+  ],
+
+  "data_sources": [
+    {"name": "📊 Prometheus", "query": "rate(http_requests_total{service=\"checkout-service\",status=~\"5..\"}[5m])", "duration": 0.4},
+    {"name": "📜 Elasticsearch", "query": "service:checkout-service AND level:error | last 15m", "duration": 0.5},
+    {"name": "🔗 Jaeger", "query": "service=checkout-service minDuration=1s", "duration": 0.3},
+    {"name": "☸️  Kubernetes", "query": "kubectl get pods -l app=checkout-service -o json", "duration": 0.25}
+  ],
+
+  "metrics": [
+    {"name": "Error Rate (5xx)", "current": "23.4%", "baseline": "0.1%", "status": "🔴 CRITICAL", "status_color": "red"},
+    {"name": "P99 Latency", "current": "2,340ms", "baseline": "45ms", "status": "⚠️  HIGH", "status_color": "yellow"},
+    {"name": "Request Rate", "current": "3,200/s", "baseline": "1,000/s", "status": "↑ 3.2x", "status_color": "cyan"},
+    {"name": "Redis Connections", "current": "250/250", "baseline": "45/250", "status": "🔴 EXHAUSTED", "status_color": "red"},
+    {"name": "Pod Restarts (1h)", "current": "3", "baseline": "0", "status": "⚠️  ELEVATED", "status_color": "yellow"}
+  ],
+
+  "logs": [
+    {"level": "ERROR", "timestamp": "{now-3m}", "message": "Redis connection timeout after 30000ms - pool exhausted"},
+    {"level": "ERROR", "timestamp": "{now-3m}", "message": "Failed to acquire connection from pool: max connections reached"},
+    {"level": "WARN", "timestamp": "{now-2m}", "message": "Circuit breaker OPEN for redis-primary after 10 failures"},
+    {"level": "ERROR", "timestamp": "{now-2m}", "message": "CheckoutService.processOrder failed: RedisConnectionException"},
+    {"level": "WARN", "timestamp": "{now-1m}", "message": "Fallback triggered: returning cached inventory data"}
+  ],
+
+  "ai_insight": "Analyzing collected evidence... Pattern detected: Redis connection exhaustion correlates with 3.2x traffic spike at {now-5m}. Connection pool max_connections=10 is insufficient for current load. Confidence level: HIGH.",
+
+  "hypotheses": [
+    {"title": "Redis connection pool exhaustion", "confidence": 0.92, "status": "HIGH", "color": "green"},
+    {"title": "Downstream service degradation", "confidence": 0.15, "status": "LOW", "color": "yellow"},
+    {"title": "Recent deployment regression", "confidence": 0.08, "status": "LOW", "color": "dim"},
+    {"title": "Database query timeout", "confidence": 0.05, "status": "RULED OUT", "color": "dim"}
+  ],
+
+  "correlations": [
+    {"evidence": "Redis pool at max capacity", "status": "CONFIRMED", "color": "green"},
+    {"evidence": "Traffic spike coincides with errors", "status": "CONFIRMED", "color": "green"},
+    {"evidence": "No circuit breaker configured", "status": "CONFIRMED", "color": "green"},
+    {"evidence": "Recent deployment causation", "status": "RULED OUT", "color": "dim"}
+  ],
+
+  "root_cause": "Redis connection pool exhaustion due to traffic spike",
+
+  "recommendations": [
+    "Increase Redis connection pool max_connections from 10 to 50",
+    "Implement connection pool circuit breaker with 5s timeout",
+    "Add auto-scaling rule based on Redis connection utilization",
+    "Set up PagerDuty alert for connection pool usage > 80%"
+  ],
+
+  "evidence_summary": {
+    "error_rate": "23% 5xx errors",
+    "threshold": "1%",
+    "first_occurrence": "{now-3m}",
+    "affected_pods": "checkout-service-7d4f8b6c9-xxxxx (3 replicas)",
+    "correlation_confidence": "92%"
+  },
+
+  "timeline": [
+    {"time": "{now-5m}", "event": "Traffic spike detected (3x baseline)"},
+    {"time": "{now-3m}", "event": "First 5xx errors recorded", "highlight": true},
+    {"time": "{now-2m}", "event": "PagerDuty alert triggered"},
+    {"time": "{now-1m}", "event": "AutoSRE investigation started"},
+    {"time": "{now}", "event": "Root cause identified", "highlight": true, "success": true}
+  ]
+}
