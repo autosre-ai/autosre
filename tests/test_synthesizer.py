@@ -236,3 +236,129 @@ class TestSynthesizerSynthesize:
         assert len(result.hypotheses) == 1
         assert result.primary_hypothesis is not None
         assert result.primary_hypothesis.hypothesis == "Database connection pool exhausted"
+
+
+class TestSynthesizerValidateHypothesis:
+    """Test the validate_hypothesis method."""
+
+    @pytest.mark.asyncio
+    async def test_validate_hypothesis_no_evidence(self, sample_state):
+        """Hypothesis with no supporting evidence should have reduced confidence."""
+        hypothesis = Hypothesis(
+            hypothesis="Database connection pool exhausted",
+            priority="high",
+            confidence=0.8,
+            agents_to_test=["db-agent"],
+        )
+        
+        synthesizer = Synthesizer()
+        validated = await synthesizer.validate_hypothesis(hypothesis, sample_state)
+        
+        # Confidence should be reduced (0.8 * 0.7 = 0.56)
+        assert validated.confidence < hypothesis.confidence
+        assert validated.confidence == pytest.approx(0.504, rel=0.01)  # 0.8 * 0.7 * 0.9 (pending agent)
+
+    @pytest.mark.asyncio
+    async def test_validate_hypothesis_with_supporting_evidence(self, sample_state):
+        """Hypothesis with supporting evidence should have maintained or boosted confidence."""
+        now = datetime.now(timezone.utc)
+        
+        hypothesis = Hypothesis(
+            hypothesis="Database connection pool exhausted",
+            priority="high",
+            confidence=0.7,
+            agents_to_test=["db-agent"],
+        )
+        
+        # Add evidence that explicitly supports this hypothesis
+        sample_state.agent_results["db-agent"] = AgentResult(
+            agent_id="db-agent",
+            status="completed",
+            evidence=[
+                Evidence(
+                    source="db-agent",
+                    skill="postgres",
+                    finding="Connection pool at 100% capacity",
+                    confidence=0.9,
+                    quality_score=0.8,
+                    timestamp=now,
+                    supports_hypothesis="Database connection pool exhausted",
+                )
+            ],
+        )
+        
+        synthesizer = Synthesizer()
+        validated = await synthesizer.validate_hypothesis(hypothesis, sample_state)
+        
+        # Confidence should be boosted since we have high-quality supporting evidence
+        assert validated.confidence >= hypothesis.confidence
+        assert validated.hypothesis == hypothesis.hypothesis
+
+    @pytest.mark.asyncio
+    async def test_validate_hypothesis_keyword_matching(self, sample_state):
+        """Hypothesis validation should work with implicit keyword matching."""
+        now = datetime.now(timezone.utc)
+        
+        hypothesis = Hypothesis(
+            hypothesis="Memory leak causing high latency response",
+            priority="high",
+            confidence=0.6,
+            agents_to_test=["metrics-agent"],
+        )
+        
+        # Add evidence with overlapping keywords (memory, latency)
+        sample_state.agent_results["metrics-agent"] = AgentResult(
+            agent_id="metrics-agent",
+            status="completed",
+            evidence=[
+                Evidence(
+                    source="metrics-agent",
+                    skill="prometheus",
+                    finding="Memory usage increasing, latency degrading",
+                    confidence=0.85,
+                    quality_score=0.75,
+                    timestamp=now,
+                )
+            ],
+        )
+        
+        synthesizer = Synthesizer()
+        validated = await synthesizer.validate_hypothesis(hypothesis, sample_state)
+        
+        # Should recognize keyword overlap and boost confidence
+        assert validated.confidence >= hypothesis.confidence
+
+    @pytest.mark.asyncio
+    async def test_validate_hypothesis_pending_agents(self, sample_state):
+        """Hypothesis with pending agents should have slightly reduced confidence."""
+        now = datetime.now(timezone.utc)
+        
+        hypothesis = Hypothesis(
+            hypothesis="CPU throttling causing slowdown",
+            priority="medium",
+            confidence=0.7,
+            agents_to_test=["metrics-agent", "k8s-agent"],  # k8s-agent hasn't run
+        )
+        
+        # Only metrics-agent has results
+        sample_state.agent_results["metrics-agent"] = AgentResult(
+            agent_id="metrics-agent",
+            status="completed",
+            evidence=[
+                Evidence(
+                    source="metrics-agent",
+                    skill="prometheus",
+                    finding="CPU throttling detected on pods",
+                    confidence=0.9,
+                    quality_score=0.8,
+                    timestamp=now,
+                    supports_hypothesis="CPU throttling causing slowdown",
+                )
+            ],
+        )
+        
+        synthesizer = Synthesizer()
+        validated = await synthesizer.validate_hypothesis(hypothesis, sample_state)
+        
+        # Confidence boosted by evidence but penalized for pending agent
+        assert validated.confidence < 1.0  # Can't be 100% with pending agents

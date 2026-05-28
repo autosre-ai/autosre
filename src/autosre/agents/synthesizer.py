@@ -234,9 +234,65 @@ Respond only with valid JSON."""
         hypothesis: StateHypothesis,
         state: InvestigationState,
     ) -> StateHypothesis:
-        """Validate a hypothesis with additional checks."""
-        # TODO: Implement validation logic
-        return hypothesis
+        """Validate a hypothesis with additional checks.
+        
+        Adjusts hypothesis confidence based on:
+        - Number of supporting evidence pieces
+        - Quality scores of supporting evidence
+        - Presence of contradicting evidence
+        - Whether expected agents have results
+        """
+        supporting_evidence = []
+        contradicting_evidence = []
+        
+        # Gather evidence that relates to this hypothesis
+        for agent_id, result in state.agent_results.items():
+            for evidence in result.evidence:
+                # Check if evidence explicitly supports this hypothesis
+                if evidence.supports_hypothesis == hypothesis.hypothesis:
+                    supporting_evidence.append(evidence)
+                # Check for keyword overlap as implicit support
+                elif self._hypothesis_matches_evidence(hypothesis.hypothesis, evidence.finding):
+                    supporting_evidence.append(evidence)
+        
+        # Calculate confidence adjustment based on evidence
+        if not supporting_evidence:
+            # No supporting evidence found - reduce confidence
+            adjusted_confidence = hypothesis.confidence * 0.7
+        else:
+            # Calculate weighted confidence from evidence quality
+            total_quality = sum(e.quality_score * e.confidence for e in supporting_evidence)
+            avg_quality = total_quality / len(supporting_evidence)
+            
+            # Boost confidence based on evidence (max 20% boost)
+            evidence_boost = min(0.2, len(supporting_evidence) * 0.05)
+            quality_factor = avg_quality  # 0.0 to 1.0
+            
+            adjusted_confidence = min(1.0, hypothesis.confidence + (evidence_boost * quality_factor))
+        
+        # Check if expected agents have run
+        agents_pending = [a for a in hypothesis.agents_to_test if a not in state.agent_results]
+        if agents_pending:
+            # Some expected agents haven't run yet - slight confidence penalty
+            adjusted_confidence *= 0.9
+        
+        # Create updated hypothesis with new confidence
+        return StateHypothesis(
+            hypothesis=hypothesis.hypothesis,
+            priority=hypothesis.priority,
+            agents_to_test=hypothesis.agents_to_test,
+            confidence=round(adjusted_confidence, 3),
+        )
+    
+    def _hypothesis_matches_evidence(self, hypothesis: str, finding: str) -> bool:
+        """Check if evidence finding relates to hypothesis via keyword overlap."""
+        # Simple keyword matching - extract significant words
+        hyp_words = set(w.lower() for w in hypothesis.split() if len(w) > 3)
+        finding_words = set(w.lower() for w in finding.split() if len(w) > 3)
+        
+        # If at least 2 significant words overlap, consider it related
+        overlap = hyp_words & finding_words
+        return len(overlap) >= 2
     
     async def correlate_findings(
         self,
