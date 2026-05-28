@@ -311,6 +311,18 @@ autosre runbook list
 
 # Use investigation templates
 autosre template list
+
+# Manage plugins
+autosre plugin list
+
+# Team collaboration
+autosre team list
+
+# Compare investigations
+autosre diff INV_ID_1 INV_ID_2
+
+# Autonomous agent mode
+autosre agent run
 ```
 
 📚 **Full CLI documentation:** [docs/COMMANDS.md](docs/COMMANDS.md)

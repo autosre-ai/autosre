@@ -1,6 +1,6 @@
 # Installation
 
-This guide covers all installation methods for OpenSRE.
+This guide covers all installation methods for AutoSRE.
 
 ## Requirements
 
@@ -25,10 +25,10 @@ This guide covers all installation methods for OpenSRE.
 
 ```bash
 # Install from PyPI
-pip install opensre
+pip install autosre-ai
 
 # Verify installation
-opensre --version
+autosre --version
 ```
 
 ### Method 2: pipx (Isolated)
@@ -38,19 +38,19 @@ opensre --version
 pip install pipx
 pipx ensurepath
 
-# Install OpenSRE
-pipx install opensre
+# Install AutoSRE
+pipx install autosre-ai
 
 # Verify
-opensre --version
+autosre --version
 ```
 
 ### Method 3: From Source
 
 ```bash
 # Clone repository
-git clone https://github.com/srisainath/opensre.git
-cd opensre
+git clone https://github.com/autosre-ai/autosre.git
+cd autosre
 
 # Create virtual environment
 python -m venv venv
@@ -68,29 +68,29 @@ pip install -e ".[dev]"
 
 ```bash
 # Pull image
-docker pull ghcr.io/srisainath/opensre:latest
+docker pull ghcr.io/autosre-ai/autosre:latest
 
 # Run
 docker run -d \
-  --name opensre \
+  --name autosre \
   -p 8000:8000 \
   -e OPENSRE_PROMETHEUS_URL=http://prometheus:9090 \
   -e OPENSRE_LLM_PROVIDER=ollama \
   -e OPENSRE_OLLAMA_HOST=http://host.docker.internal:11434 \
   -v ~/.kube/config:/app/.kube/config:ro \
-  ghcr.io/srisainath/opensre:latest
+  ghcr.io/autosre-ai/autosre:latest
 ```
 
 ### Method 5: Helm (Kubernetes)
 
 ```bash
 # Add Helm repository
-helm repo add opensre https://srisainath.github.io/opensre
+helm repo add autosre https://autosre-ai.github.io/autosre
 helm repo update
 
 # Install
-helm install opensre opensre/opensre \
-  --namespace opensre \
+helm install autosre autosre/autosre \
+  --namespace autosre \
   --create-namespace \
   --values values.yaml
 ```
@@ -102,8 +102,8 @@ See [Deployment Guide](deployment.md) for Kubernetes configuration.
 ### 1. Verify Installation
 
 ```bash
-opensre --version
-opensre status
+autosre --version
+autosre status
 ```
 
 ### 2. Configure Environment
@@ -116,27 +116,14 @@ cp .env.example .env
 nano .env
 ```
 
-### 3. Install Skills
+### 3. Run Doctor Check
 
 ```bash
-# List available skills
-opensre skill list
+# Check all connections
+autosre doctor
 
-# Install skills you need
-opensre skill install prometheus kubernetes slack
-```
-
-### 4. Test Connection
-
-```bash
-# Test Prometheus
-opensre test prometheus
-
-# Test Kubernetes
-opensre test kubernetes
-
-# Test LLM
-opensre test llm
+# Test model connection
+autosre model test
 ```
 
 ## Upgrading
@@ -144,13 +131,13 @@ opensre test llm
 ### pip
 
 ```bash
-pip install --upgrade opensre
+pip install --upgrade autosre-ai
 ```
 
 ### Docker
 
 ```bash
-docker pull ghcr.io/srisainath/opensre:latest
+docker pull ghcr.io/autosre-ai/autosre:latest
 docker-compose up -d
 ```
 
@@ -158,7 +145,7 @@ docker-compose up -d
 
 ```bash
 helm repo update
-helm upgrade opensre opensre/opensre --namespace opensre
+helm upgrade autosre autosre/autosre --namespace autosre
 ```
 
 ## Uninstalling
@@ -166,22 +153,22 @@ helm upgrade opensre opensre/opensre --namespace opensre
 ### pip
 
 ```bash
-pip uninstall opensre
+pip uninstall autosre-ai
 ```
 
 ### Docker
 
 ```bash
-docker stop opensre
-docker rm opensre
-docker rmi ghcr.io/srisainath/opensre:latest
+docker stop autosre
+docker rm autosre
+docker rmi ghcr.io/autosre-ai/autosre:latest
 ```
 
 ### Helm
 
 ```bash
-helm uninstall opensre --namespace opensre
-kubectl delete namespace opensre
+helm uninstall autosre --namespace autosre
+kubectl delete namespace autosre
 ```
 
 ## Troubleshooting Installation
@@ -193,19 +180,19 @@ kubectl delete namespace opensre
 python --version
 
 # Use specific Python version
-python3.11 -m pip install opensre
+python3.11 -m pip install autosre-ai
 ```
 
 ### Permission Issues
 
 ```bash
 # Install to user directory
-pip install --user opensre
+pip install --user autosre-ai
 
 # Or use virtual environment
 python -m venv venv
 source venv/bin/activate
-pip install opensre
+pip install autosre-ai
 ```
 
 ### Missing Dependencies
@@ -218,7 +205,7 @@ sudo apt-get install python3-dev build-essential
 xcode-select --install
 
 # Then reinstall
-pip install opensre
+pip install autosre-ai
 ```
 
 ### SSL Certificate Issues
@@ -228,11 +215,11 @@ pip install opensre
 pip install --upgrade certifi
 
 # Or skip verification (not recommended for production)
-pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org opensre
+pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org autosre-ai
 ```
 
 ## Next Steps
 
 - **[Getting Started](getting-started.md)** — First-time setup
-- **[Configuration](configuration.md)** — Configure OpenSRE
+- **[Configuration](configuration.md)** — Configure AutoSRE
 - **[Deployment](deployment.md)** — Production deployment

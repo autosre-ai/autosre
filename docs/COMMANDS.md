@@ -728,6 +728,272 @@ autosre benchmark llm [OPTIONS]
 
 ---
 
+## Plugin Commands
+
+### `autosre plugin list`
+
+Show installed plugins.
+
+```bash
+autosre plugin list [OPTIONS]
+```
+
+---
+
+### `autosre plugin info`
+
+Show detailed plugin information.
+
+```bash
+autosre plugin info PLUGIN_NAME [OPTIONS]
+```
+
+---
+
+### `autosre plugin enable`
+
+Enable a plugin.
+
+```bash
+autosre plugin enable PLUGIN_NAME [OPTIONS]
+```
+
+---
+
+### `autosre plugin disable`
+
+Disable a plugin.
+
+```bash
+autosre plugin disable PLUGIN_NAME [OPTIONS]
+```
+
+---
+
+### `autosre plugin install`
+
+Install a plugin from a source.
+
+```bash
+autosre plugin install SOURCE [OPTIONS]
+```
+
+---
+
+### `autosre plugin uninstall`
+
+Uninstall a plugin.
+
+```bash
+autosre plugin uninstall PLUGIN_NAME [OPTIONS]
+```
+
+---
+
+### `autosre plugin create`
+
+Create a new plugin from template.
+
+```bash
+autosre plugin create [OPTIONS]
+```
+
+---
+
+## Team Commands
+
+### `autosre team share`
+
+Share an investigation with the team.
+
+```bash
+autosre team share INVESTIGATION_ID [OPTIONS]
+```
+
+---
+
+### `autosre team comment`
+
+Add a comment to an investigation.
+
+```bash
+autosre team comment INVESTIGATION_ID MESSAGE [OPTIONS]
+```
+
+---
+
+### `autosre team assign`
+
+Assign an investigation to a team member.
+
+```bash
+autosre team assign INVESTIGATION_ID ASSIGNEE [OPTIONS]
+```
+
+---
+
+### `autosre team list`
+
+Show team investigations.
+
+```bash
+autosre team list [OPTIONS]
+```
+
+---
+
+### `autosre team comments`
+
+Show comments on an investigation.
+
+```bash
+autosre team comments INVESTIGATION_ID [OPTIONS]
+```
+
+---
+
+## Template Commands
+
+### `autosre template list`
+
+List all available investigation templates.
+
+```bash
+autosre template list [OPTIONS]
+```
+
+---
+
+### `autosre template show`
+
+Show details of a specific investigation template.
+
+```bash
+autosre template show TEMPLATE_ID [OPTIONS]
+```
+
+---
+
+### `autosre template use`
+
+Start an investigation using a template.
+
+```bash
+autosre template use TEMPLATE_ID [OPTIONS]
+```
+
+---
+
+### `autosre template create`
+
+Create a new investigation template interactively.
+
+```bash
+autosre template create [OPTIONS]
+```
+
+---
+
+## Agent Commands
+
+### `autosre agent run`
+
+Run the agent in watch mode, continuously monitoring for alerts.
+
+```bash
+autosre agent run [OPTIONS]
+```
+
+**Options:**
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--config`, `-c` | Agent configuration file | None |
+| `--dry-run` | Run without taking actions | False |
+
+---
+
+### `autosre agent analyze`
+
+Analyze an alert and suggest remediation.
+
+```bash
+autosre agent analyze ALERT [OPTIONS]
+```
+
+---
+
+## History Commands
+
+### `autosre history list`
+
+List recent incident investigations.
+
+```bash
+autosre history list [OPTIONS]
+```
+
+---
+
+### `autosre history show`
+
+View detailed information about a specific investigation.
+
+```bash
+autosre history show INVESTIGATION_ID [OPTIONS]
+```
+
+---
+
+### `autosre history search`
+
+Search past investigations by text query.
+
+```bash
+autosre history search QUERY [OPTIONS]
+```
+
+---
+
+### `autosre history export`
+
+Export a specific investigation to a file.
+
+```bash
+autosre history export INVESTIGATION_ID OUTPUT_PATH [OPTIONS]
+```
+
+---
+
+### `autosre history stats`
+
+Show statistics about past investigations.
+
+```bash
+autosre history stats [OPTIONS]
+```
+
+---
+
+### `autosre history diff`
+
+Compare two investigations side-by-side.
+
+```bash
+autosre history diff INVESTIGATION_ID1 INVESTIGATION_ID2 [OPTIONS]
+```
+
+---
+
+### `autosre diff`
+
+Quick alias for `history diff` — compare two investigations side-by-side.
+
+```bash
+autosre diff INVESTIGATION_ID1 INVESTIGATION_ID2 [OPTIONS]
+```
+
+---
+
 ## Exit Codes
 
 | Code | Meaning |

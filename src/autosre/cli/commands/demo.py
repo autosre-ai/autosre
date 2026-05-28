@@ -307,10 +307,11 @@ class DemoInvestigationRunner:
         console.print()
         console.print("[bold]🎯 Calculating Confidence...[/]")
         
-        # More dramatic percentage counter with accelerating speed
+        # Dramatic percentage counter with snappy acceleration
         with Live(Text(""), console=console, refresh_per_second=60, transient=True) as live:
-            # Faster: fewer frames but still impressive 
-            for pct in list(range(0, 50, 10)) + list(range(50, 80, 5)) + list(range(80, 92, 2)):
+            # Even faster: only key frames for maximum impact
+            keyframes = [0, 25, 50, 70, 85, 92]
+            for pct in keyframes:
                 bar_filled = int(pct / 5)
                 bar_empty = 20 - bar_filled
                 color = "yellow" if pct < 60 else "cyan" if pct < 80 else "green"
@@ -320,9 +321,8 @@ class DemoInvestigationRunner:
                 bar_text.append("░" * bar_empty, style="dim")
                 bar_text.append(f"] {pct}%", style=color)
                 live.update(bar_text)
-                # Snappy animation
-                delay = 0.03 if pct < 50 else 0.02 if pct < 80 else 0.015
-                time.sleep(delay)
+                # Very snappy - just enough to see the animation
+                time.sleep(0.08)
         
         # Final flash effect - show 92% with emphasis
         console.print(f"   [bold green]████████████████████[/] [bold white on green] 92% [/] [bold green]HIGH CONFIDENCE ✨[/]")
@@ -609,7 +609,7 @@ class DemoInvestigationRunner:
                 transient=True,
             ) as progress:
                 task = progress.add_task("", total=None)
-                time.sleep(0.02)  # Instant thinking
+                time.sleep(0.03)  # Snappy thinking
         
         # Dramatic AI streaming insight effect - use scenario data if available
         if self.scenario and "ai_insight" in self.scenario:
@@ -624,10 +624,13 @@ class DemoInvestigationRunner:
         
         with Live(Text("", style="dim italic"), console=console, refresh_per_second=60, transient=False) as live:
             displayed = ""
-            for char in ai_insight:
+            # Type faster in chunks for snappier feel
+            for i, char in enumerate(ai_insight):
                 displayed += char
-                live.update(Text(displayed, style="dim italic"))
-                time.sleep(0.002)  # Rapid typing effect
+                # Only update every 3rd character for speed, but always show final
+                if i % 3 == 0 or i == len(ai_insight) - 1:
+                    live.update(Text(displayed, style="dim italic"))
+                    time.sleep(0.003)  # Rapid typing effect
         
         console.print()
         
@@ -658,21 +661,16 @@ class DemoInvestigationRunner:
             # Animate the bar filling up using Live
             final_filled = int(confidence * 20)
             
-            # Faster animation - only show key frames
+            # Single frame animation - just show the bar building once
             with Live(Text(""), console=console, refresh_per_second=30, transient=True) as live:
-                # Show only 3 key frames for speed
-                frames = [0, final_filled // 2, final_filled]
-                for filled in frames:
-                    if filled > final_filled:
-                        continue
-                    bar_empty = 20 - filled
-                    bar_text = Text()
-                    bar_text.append("█" * filled, style=color)
-                    bar_text.append("░" * bar_empty, style="dim")
-                    current_pct = int((filled / 20) * 100) if final_filled > 0 else int(confidence * 100)
-                    bar_text.append(f"  {current_pct:>3}%  {title}")
-                    live.update(bar_text)
-                    time.sleep(0.01)  # Instant animation
+                # Just show the final state with a brief reveal
+                bar_text = Text()
+                bar_text.append("█" * final_filled, style=color)
+                bar_text.append("░" * (20 - final_filled), style="dim")
+                current_pct = int(confidence * 100)
+                bar_text.append(f"  {current_pct:>3}%  {title}")
+                live.update(bar_text)
+                time.sleep(0.02)  # Brief flash
             
             # Print final state
             console.print(f" [{color}]{'█' * final_filled}[/][dim]{'░' * (20 - final_filled)}[/]  [bold]{confidence:.0%}[/]  {title}  [{color}]{status}[/]")
