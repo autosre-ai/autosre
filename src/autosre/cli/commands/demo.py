@@ -327,16 +327,23 @@ class DemoInvestigationRunner:
         # Final flash effect - show 92% with emphasis
         console.print(f"   [bold green]████████████████████[/] [bold white on green] 92% [/] [bold green]HIGH CONFIDENCE ✨[/]")
         
-        # Show impressive findings panel
+        # Show impressive findings panel with dramatic effect
         console.print()
+        
+        # Flash effect for root cause reveal
+        import os
+        if os.environ.get("TERM"):
+            # Terminal bell for dramatic effect (optional)
+            pass
+        
         console.print(Rule("[bold green]✅ ROOT CAUSE IDENTIFIED[/]", style="green"))
         console.print()
         
-        # Root cause panel
+        # Root cause panel with pulsing border effect
         console.print(Panel(
-            f"[bold red]{root_cause}[/]",
-            title="[bold white on red] 🎯 ROOT CAUSE [/]",
-            border_style="red",
+            f"[bold white on red] 🎯 {root_cause} [/]",
+            title="[bold blink]ROOT CAUSE FOUND[/]",
+            border_style="bold red",
             padding=(1, 2),
         ))
         
@@ -957,7 +964,12 @@ def run(
     # Show impressive completion summary
     console.print()
     from rich.rule import Rule
-    console.print(Rule("[bold green]🎉 INVESTIGATION COMPLETE[/]", style="green"))
+    
+    # Dramatic completion banner
+    console.print()
+    console.print("[bold green]" + "═" * 78 + "[/]")
+    console.print("[bold green]" + " " * 25 + "🎉 INVESTIGATION COMPLETE 🎉" + " " * 25 + "[/]")
+    console.print("[bold green]" + "═" * 78 + "[/]")
     console.print()
     
     # Final summary panel with stats
@@ -977,17 +989,18 @@ def run(
     
     summary_text = (
         f"[bold green]✅ Investigation Successful[/]\n\n"
-        f"[bold]Investigation ID:[/]  [cyan]{result['investigation_id']}[/]\n"
-        f"[bold]Time to Resolution:[/] [yellow]{result['duration_seconds']:.1f}s[/] [dim](vs ~30min manual)[/]\n"
-        f"[bold]Speed:[/]             [bold green]⚡ {speed_multiplier:.0f}x FASTER[/]\n"
-        f"[bold]Est. Savings:[/]      [bold green]💰 ${total_savings:,}[/] [dim](eng time + revenue)[/]\n"
-        f"[bold]Error Trend:[/]       [red]{sparkline}[/] [dim]→ resolving[/]\n"
-        f"[bold]Root Cause:[/]        [red]{result['root_cause']}[/]\n\n"
+        f"[bold]📋 Investigation ID:[/]  [cyan]{result['investigation_id']}[/]\n"
+        f"[bold]⏱️  Time to Resolution:[/] [bold yellow]{result['duration_seconds']:.1f}s[/] [dim](vs ~30min manual)[/]\n"
+        f"[bold]⚡ Speed:[/]             [bold green]🚀 {speed_multiplier:.0f}x FASTER THAN MANUAL[/]\n"
+        f"[bold]💰 Est. Savings:[/]      [bold green]${total_savings:,}[/] [dim](eng time + revenue protected)[/]\n"
+        f"[bold]📈 Error Trend:[/]       [red]{sparkline}[/] [green]→ resolving[/]\n"
+        f"[bold]🎯 Root Cause:[/]        [bold red]{result['root_cause']}[/]\n\n"
         f"[dim]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]\n\n"
+        f"[bold cyan]⚡ AutoSRE - AI-Powered Incident Investigation[/]\n\n"
         f"[bold]Next Steps:[/]\n"
-        f"  1. Review recommended actions above\n"
-        f"  2. Implement critical fixes first\n"
-        f"  3. Schedule post-mortem within 48h\n\n"
+        f"  [green]1.[/] Review recommended actions above\n"
+        f"  [green]2.[/] Implement critical fixes first\n"
+        f"  [green]3.[/] Schedule post-mortem within 48h\n\n"
         f"[dim]Run [cyan]autosre investigate[/dim] [dim]for real incident analysis[/]"
     )
     console.print(Panel(

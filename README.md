@@ -234,7 +234,7 @@ autosre run "High error rate on checkout" --service checkout
 autosre status
 
 # Interactive chat session
-autosre chat start
+autosre chat
 
 # Run health check
 autosre doctor
