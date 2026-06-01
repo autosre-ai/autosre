@@ -16,5 +16,5 @@ prometheus-client>=0.19
 httpx>=0.26
 pandas>=3.0.2
 slack-sdk>=3.27
-chromadb>=0.4
+chromadb>=1.5.9
 sentence-transformers>=2.3
