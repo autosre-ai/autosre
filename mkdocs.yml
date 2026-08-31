@@ -1,0 +1,106 @@
+site_name: AutoSRE
+site_description: Autonomous incident investigation, root cause analysis, and intelligent remediation
+site_url: https://autosre-ai.github.io/autosre/
+site_author: Sri Sainath Adusumilli
+
+repo_name: autosre-ai/autosre
+repo_url: https://github.com/autosre-ai/autosre
+edit_uri: edit/main/docs/
+
+copyright: Copyright &copy; 2026 Sri Sainath Adusumilli &mdash; Apache 2.0
+
+theme:
+  name: material
+  custom_dir: docs/overrides
+  logo: assets/logo.svg
+  favicon: assets/favicon.svg
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      auto_append:
+        - docs/includes/abbreviations.md
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+exclude_docs: |
+  README.md
+  images/README.md
+
+plugins:
+  - search
+  - minify:
+      minify_html: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/autosre-ai
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/autosre-ai/
+    - icon: fontawesome/brands/linkedin
+      link: https://www.linkedin.com/in/srisainath3456/
+
+# Nav is generated automatically from the docs/ tree.
+# Legacy top-level uppercase docs are kept for backwards-compatible links.
+
+validation:
+  omitted_files: ignore
+  absolute_links: ignore
+  unrecognized_links: ignore
+  anchors: ignore
+  links:
+    not_found: ignore
+  nav:
+    omitted_files: ignore
+    not_found: ignore

@@ -45,3 +45,7 @@ htmlcov/
 volumes/
 reference-opensre/
 .venv/
+
+# mkdocs local build
+site/
+.venv/
